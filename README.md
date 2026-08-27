@@ -1,49 +1,56 @@
-# OSAL Code Generator (Python GUI)
+# KIWI OSAL Code Generator
 
-Приложение генерирует C-файлы OSAL для embedded-проектов на основе шаблонов в `osal_templates`.
+KIWI generates C OSAL sources for embedded projects from configurable templates.
 
-## Возможности
+## Repository structure
 
-- GUI (Tkinter) с аккуратным тёмным интерфейсом.
-- Настройка префикса модуля (замена `sys_param_srv` / `SysParamSrv` / `sysParamSrv` / `SYS_PARAM_SRV`).
-- Выбор набора API:
-  - Queues
-  - Locks
-  - Threads
-  - Time
-  - Memory
-- Выбор порта:
-  - `freertos` — поддерживается сейчас
-  - `posix (coming soon)` — предусмотрено на будущее
-- Генерация структуры:
-  - `<prefix>/...`
-  - `<prefix>/portable/...`
-  - `<prefix>/<prefix>_osal_profile.h`
-
-## Запуск из исходников
-
-```bash
-python osal_codegen_app.py
+```text
+kiwi/
+├── generator/                 Python GUI and generator build files
+├── osal/                      Base OSAL template
+│   ├── CMakeLists.txt
+│   └── portable/
+│       ├── freertos/          FreeRTOS port template
+│       ├── posix/             POSIX port scaffold
+│       └── cmsis_rtos2/       CMSIS-RTOS v2 port scaffold
+├── test/                      Test infrastructure
+├── doc/                       Images and project documentation
+├── .github/                   GitHub CI/CD infrastructure
+└── .gitlab/                   GitLab CI/CD infrastructure
 ```
 
-## Сборка `.exe`
+## Supported ports
 
-### Вариант 1 (Windows)
+- `freertos` — supported
+- `posix (coming soon)`
+- `cmsis rtos v2 (coming soon)`
 
-Запустить `build_exe.bat`.
+## Available API groups
 
-### Вариант 2 (вручную)
+- Queues
+- Locks
+- Threads
+- Time
+- Memory
+
+## Run from sources
 
 ```bash
-python -m pip install -r requirements.txt
-pyinstaller --noconfirm --clean --onefile --windowed --name OSAL_Code_Generator --add-data "osal_templates;osal_templates" osal_codegen_app.py
+python generator/osal_codegen_app.py
 ```
 
-Готовый файл будет в `dist/OSAL_Code_Generator.exe`.
+## Build Windows executable
 
-> Важно: шаблоны `osal_templates` вшиваются в `.exe`, поэтому приложение корректно работает без ошибки `templates directory not found`.
+Run:
 
-## Как работает ограничение API
+```text
+generator/build_exe.bat
+```
 
-Для отключённых групп API генератор выставляет соответствующие функции в vtable порта `freertos` в `NULL`.
-Это позволяет формировать профиль, где, например, используются только lock-механизмы.
+The executable is created in:
+
+```text
+generator/dist/OSAL_Code_Generator.exe
+```
+
+The PyInstaller package includes the `osal/` template tree, so the executable can resolve templates without the source repository beside it.
