@@ -1,0 +1,4 @@
+/generator/build/
+/generator/dist/
+__pycache__/
+*.pyc

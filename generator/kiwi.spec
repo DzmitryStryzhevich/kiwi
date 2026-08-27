@@ -8,6 +8,8 @@ a = Analysis(
     datas=[
         ('../osal', 'osal'),
         ('../doc/kiwi.png', 'doc'),
+        ('../doc/kiwi_header.png', 'doc'),
+        ('../doc/kiwi_window.png', 'doc'),
         ('../doc/kiwi.ico', 'doc'),
     ],
     hiddenimports=[],
