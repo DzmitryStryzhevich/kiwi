@@ -1,10 +1,12 @@
 @echo off
 setlocal
 
+cd /d "%~dp0"
+
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 
-pyinstaller --noconfirm --clean --onefile --windowed --name OSAL_Code_Generator --add-data "osal_templates;osal_templates" osal_codegen_app.py
+pyinstaller --noconfirm --clean OSAL_Code_Generator.spec
 
 echo.
 echo Build completed. EXE is in dist\OSAL_Code_Generator.exe

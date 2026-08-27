@@ -10,29 +10,30 @@ from dataclasses import dataclass
 
 
 ROOT = pathlib.Path(__file__).resolve().parent
+PROJECT_ROOT = ROOT.parent
 
 
 def resolve_templates_dir() -> pathlib.Path:
     """
-    Resolve path to osal templates for both source run and PyInstaller .exe.
+    Resolve path to OSAL templates for both source run and PyInstaller .exe.
     """
     candidates: list[pathlib.Path] = []
 
     # PyInstaller onefile/onedir unpack directory.
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass:
-        candidates.append(pathlib.Path(meipass) / "osal_templates")
+        candidates.append(pathlib.Path(meipass) / "osal")
 
     # Script location and current working directory.
-    candidates.append(ROOT / "osal_templates")
-    candidates.append(pathlib.Path.cwd() / "osal_templates")
+    candidates.append(PROJECT_ROOT / "osal")
+    candidates.append(pathlib.Path.cwd() / "osal")
 
     for path in candidates:
         if path.exists() and path.is_dir():
             return path
 
     searched = "\n".join(f" - {p}" for p in candidates)
-    raise FileNotFoundError(f"osal_templates directory not found. Checked:\n{searched}")
+    raise FileNotFoundError(f"osal directory not found. Checked:\n{searched}")
 
 
 @dataclass(frozen=True)
@@ -149,7 +150,7 @@ class App(tk.Tk):
         self._configure_styles()
 
         self.prefix_var = tk.StringVar(value="sys_param_srv")
-        self.dest_var = tk.StringVar(value=str(ROOT / "generated"))
+        self.dest_var = tk.StringVar(value=str(PROJECT_ROOT / "generated"))
         self.port_var = tk.StringVar(value="freertos")
 
         self.api_vars = {
@@ -167,7 +168,7 @@ class App(tk.Tk):
         self.style.configure("Title.TLabel", background="#182235", foreground="#f3f6ff", font=("Segoe UI", 15, "bold"))
         self.style.configure("Hint.TLabel", background="#182235", foreground="#b6c4dc", font=("Segoe UI", 10))
         self.style.configure("Body.TLabel", background="#182235", foreground="#e7eeff", font=("Segoe UI", 11))
-        self.style.configure("Primary.TButton", font=("Segoe UI", 10, "bold"), padding=8)
+        self.style.configure("Action.TButton", font=("Segoe UI", 10), padding=8)
         self.style.configure("TCheckbutton", background="#182235", foreground="#e7eeff", font=("Segoe UI", 10))
 
     def _build_ui(self) -> None:
@@ -189,14 +190,14 @@ class App(tk.Tk):
         prefix_entry.grid(row=0, column=1, sticky="ew", padx=(10, 0), pady=(0, 8))
 
         ttk.Label(form, text="Port", style="Body.TLabel").grid(row=1, column=0, sticky="w", pady=(0, 8))
-        port_combo = ttk.Combobox(form, textvariable=self.port_var, values=["freertos", "posix (coming soon)"], state="readonly", width=38)
+        port_combo = ttk.Combobox(form, textvariable=self.port_var, values=["freertos", "posix (coming soon)", "cmsis rtos v2 (coming soon)"], state="readonly", width=38)
         port_combo.grid(row=1, column=1, sticky="ew", padx=(10, 0), pady=(0, 8))
 
         ttk.Label(form, text="Output Folder", style="Body.TLabel").grid(row=2, column=0, sticky="w")
         path_frame = ttk.Frame(form, style="Card.TFrame")
         path_frame.grid(row=2, column=1, sticky="ew", padx=(10, 0))
         ttk.Entry(path_frame, textvariable=self.dest_var).pack(side="left", fill="x", expand=True)
-        ttk.Button(path_frame, text="Browse", command=self._select_destination).pack(side="left", padx=(8, 0))
+        ttk.Button(path_frame, text="Browse", style="Action.TButton", command=self._select_destination).pack(side="left", padx=(8, 0))
 
         form.columnconfigure(1, weight=1)
 
@@ -217,7 +218,7 @@ class App(tk.Tk):
             ttk.Checkbutton(checks, text=labels[key], variable=self.api_vars[key]).grid(row=0, column=idx, padx=(0, 12), sticky="w")
 
         tips = (
-            "• Choose FreeRTOS now. POSIX option is visible for future extension.\n"
+            "• Choose FreeRTOS now. POSIX and CMSIS RTOS v2 are visible for future extension.\n"
             "• Disable APIs you don't need (e.g., only locks).\n"
             "• The tool rewrites module prefix in symbols and file names."
         )
@@ -225,8 +226,8 @@ class App(tk.Tk):
 
         actions = ttk.Frame(outer, style="Card.TFrame")
         actions.pack(fill="x")
-        ttk.Button(actions, text="Generate", style="Primary.TButton", command=self.generate).pack(side="left")
-        ttk.Button(actions, text="Open Output Folder", command=self._open_output).pack(side="left", padx=(10, 0))
+        ttk.Button(actions, text="Generate", style="Action.TButton", command=self.generate).pack(side="left")
+        ttk.Button(actions, text="Open Output Folder", style="Action.TButton", command=self._open_output).pack(side="left", padx=(10, 0))
 
         self.log = tk.Text(outer, height=12, bg="#0d1422", fg="#d9e5ff", insertbackground="#d9e5ff", relief="flat")
         self.log.pack(fill="both", expand=True, pady=(20, 0))
@@ -278,14 +279,16 @@ class App(tk.Tk):
 
         try:
             module_dir = output_root / forms.snake
-            portable_dir = module_dir / "portable"
+            portable_dir = module_dir / "portable" / "freertos"
             portable_dir.mkdir(parents=True, exist_ok=True)
 
             files = [
+                templates_dir / "CMakeLists.txt",
                 templates_dir / "template_osal.h",
                 templates_dir / "template_osal.c",
-                templates_dir / "portable" / "template_osal_freertos.h",
-                templates_dir / "portable" / "template_osal_freertos.c",
+                templates_dir / "portable" / "freertos" / "CMakeLists.txt",
+                templates_dir / "portable" / "freertos" / "template_osal_freertos.h",
+                templates_dir / "portable" / "freertos" / "template_osal_freertos.c",
             ]
 
             for src in files:
@@ -304,7 +307,7 @@ class App(tk.Tk):
             profile_path.write_text(render_profile_header(forms, selected, port="freertos"), encoding="utf-8")
             self._log(f"Generated: {profile_path}")
 
-            shutil.copy2(ROOT / "README.md", output_root / "README_generator.md") if (ROOT / "README.md").exists() else None
+            shutil.copy2(PROJECT_ROOT / "README.md", output_root / "README_generator.md") if (PROJECT_ROOT / "README.md").exists() else None
 
         except Exception as exc:
             messagebox.showerror("Generation failed", str(exc))
