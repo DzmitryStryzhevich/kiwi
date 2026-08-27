@@ -2,10 +2,14 @@
 
 
 a = Analysis(
-    ['osal_codegen_app.py'],
+    ['kiwi_codegen_app.py'],
     pathex=[],
     binaries=[],
-    datas=[('../osal', 'osal')],
+    datas=[
+        ('../osal', 'osal'),
+        ('../doc/kiwi.png', 'doc'),
+        ('../doc/kiwi.ico', 'doc'),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -22,7 +26,8 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='OSAL_Code_Generator',
+    name='kiwi',
+    icon='../doc/kiwi.ico',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

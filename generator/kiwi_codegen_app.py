@@ -13,6 +13,17 @@ ROOT = pathlib.Path(__file__).resolve().parent
 PROJECT_ROOT = ROOT.parent
 
 
+def resolve_project_asset(relative_path: str) -> pathlib.Path:
+    """Resolve a project asset for both source run and PyInstaller bundle."""
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        bundled = pathlib.Path(meipass) / relative_path
+        if bundled.exists():
+            return bundled
+
+    return PROJECT_ROOT / relative_path
+
+
 def resolve_templates_dir() -> pathlib.Path:
     """
     Resolve path to OSAL templates for both source run and PyInstaller .exe.
@@ -140,7 +151,8 @@ def render_profile_header(forms: PrefixForms, selected_apis: set[str], port: str
 class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("OSAL C Code Generator")
+        self.title("kiwi")
+        self._set_window_icon()
         self.geometry("820x620")
         self.minsize(780, 560)
         self.configure(bg="#101826")
@@ -149,9 +161,9 @@ class App(tk.Tk):
         self.style.theme_use("clam")
         self._configure_styles()
 
-        self.prefix_var = tk.StringVar(value="sys_param_srv")
+        self.prefix_var = tk.StringVar(value="foo_module")
         self.dest_var = tk.StringVar(value=str(PROJECT_ROOT / "generated"))
-        self.port_var = tk.StringVar(value="freertos")
+        self.port_var = tk.StringVar(value="FreeRTOS")
 
         self.api_vars = {
             "queue": tk.BooleanVar(value=True),
@@ -162,6 +174,24 @@ class App(tk.Tk):
         }
 
         self._build_ui()
+
+    def _set_window_icon(self) -> None:
+        """Set the KIWI application icon for source and packaged execution."""
+        try:
+            icon_png = resolve_project_asset("doc/kiwi.png")
+            if icon_png.exists():
+                self._window_icon = tk.PhotoImage(file=str(icon_png))
+                self.iconphoto(True, self._window_icon)
+        except tk.TclError:
+            pass
+
+        if sys.platform == "win32":
+            try:
+                icon_ico = resolve_project_asset("doc/kiwi.ico")
+                if icon_ico.exists():
+                    self.iconbitmap(default=str(icon_ico))
+            except tk.TclError:
+                pass
 
     def _configure_styles(self) -> None:
         self.style.configure("Card.TFrame", background="#182235")
@@ -175,7 +205,7 @@ class App(tk.Tk):
         outer = ttk.Frame(self, style="Card.TFrame", padding=20)
         outer.pack(fill="both", expand=True, padx=20, pady=20)
 
-        ttk.Label(outer, text="OSAL Generator for Embedded Projects", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(outer, text="KIWI OSAL Generator for Embedded Projects", style="Title.TLabel").pack(anchor="w")
         ttk.Label(
             outer,
             text="Generate C source/header files from templates with custom prefix and API profile.",
@@ -190,7 +220,9 @@ class App(tk.Tk):
         prefix_entry.grid(row=0, column=1, sticky="ew", padx=(10, 0), pady=(0, 8))
 
         ttk.Label(form, text="Port", style="Body.TLabel").grid(row=1, column=0, sticky="w", pady=(0, 8))
-        port_combo = ttk.Combobox(form, textvariable=self.port_var, values=["freertos", "posix (coming soon)", "cmsis rtos v2 (coming soon)"], state="readonly", width=38)
+        port_combo = ttk.Combobox(form, textvariable=self.port_var, state="readonly", width=38)
+        port_combo["values"] = ("FreeRTOS", "POSIX", "CMSIS RTOS v2")
+        port_combo.current(0)
         port_combo.grid(row=1, column=1, sticky="ew", padx=(10, 0), pady=(0, 8))
 
         ttk.Label(form, text="Output Folder", style="Body.TLabel").grid(row=2, column=0, sticky="w")
@@ -218,7 +250,7 @@ class App(tk.Tk):
             ttk.Checkbutton(checks, text=labels[key], variable=self.api_vars[key]).grid(row=0, column=idx, padx=(0, 12), sticky="w")
 
         tips = (
-            "• Choose FreeRTOS now. POSIX and CMSIS RTOS v2 are visible for future extension.\n"
+            "• FreeRTOS generation is available now; POSIX and CMSIS RTOS v2 are reserved for future ports.\n"
             "• Disable APIs you don't need (e.g., only locks).\n"
             "• The tool rewrites module prefix in symbols and file names."
         )
@@ -226,8 +258,13 @@ class App(tk.Tk):
 
         actions = ttk.Frame(outer, style="Card.TFrame")
         actions.pack(fill="x")
-        ttk.Button(actions, text="Generate", style="Action.TButton", command=self.generate).pack(side="left")
-        ttk.Button(actions, text="Open Output Folder", style="Action.TButton", command=self._open_output).pack(side="left", padx=(10, 0))
+
+        action_buttons = ttk.Frame(actions, style="Card.TFrame")
+        action_buttons.pack(side="left")
+        ttk.Button(action_buttons, text="Generate", style="Action.TButton", command=self.generate).pack(side="left")
+        ttk.Button(action_buttons, text="Open Output Folder", style="Action.TButton", command=self._open_output).pack(side="left", padx=(10, 0))
+
+        self._add_corner_logo(actions)
 
         self.log = tk.Text(outer, height=12, bg="#0d1422", fg="#d9e5ff", insertbackground="#d9e5ff", relief="flat")
         self.log.pack(fill="both", expand=True, pady=(20, 0))
@@ -253,6 +290,25 @@ class App(tk.Tk):
                 os.startfile(str(output))  # type: ignore[attr-defined]
         except Exception:
             messagebox.showinfo("Info", f"Output: {output}")
+
+    def _add_corner_logo(self, parent: ttk.Frame) -> None:
+        """Render a larger KIWI icon on the form above the console area."""
+        try:
+            icon_png = resolve_project_asset("doc/kiwi.png")
+            if not icon_png.exists():
+                return
+
+            logo = tk.PhotoImage(file=str(icon_png))
+            max_size = 112
+            scale = max(1, max(logo.width(), logo.height()) // max_size)
+            if scale > 1:
+                logo = logo.subsample(scale, scale)
+
+            self._form_logo = logo
+            logo_label = tk.Label(parent, image=self._form_logo, bg="#182235", bd=0, highlightthickness=0)
+            logo_label.pack(side="right", anchor="se")
+        except tk.TclError:
+            pass
 
     def generate(self) -> None:
         prefix_raw = self.prefix_var.get().strip()
