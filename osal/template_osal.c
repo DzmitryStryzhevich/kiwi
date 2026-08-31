@@ -1,3 +1,8 @@
+/*
+ * SPDX-License-Identifier: MIT
+ * Copyright (c) 2026 Kiwi contributors
+ */
+
 /**
  * \file      template_osal.c
  * \brief     OSAL layer interface implementation for Template.

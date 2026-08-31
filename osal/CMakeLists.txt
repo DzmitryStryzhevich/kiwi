@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Kiwi contributors
+
 # Base OSAL template build script.
 # The generator replaces the "template" prefix in target and file names.
 

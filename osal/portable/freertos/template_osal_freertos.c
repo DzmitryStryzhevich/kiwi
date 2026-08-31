@@ -1,3 +1,8 @@
+/*
+ * SPDX-License-Identifier: MIT
+ * Copyright (c) 2026 Kiwi contributors
+ */
+
 /**
  * \file      template_osal_freertos.c
  * \brief     FreeRTOS OSAL port for Template.

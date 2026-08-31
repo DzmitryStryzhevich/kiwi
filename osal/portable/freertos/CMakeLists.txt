@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Kiwi contributors
+
 # FreeRTOS OSAL port template build script.
 # FreeRTOS include paths and libraries are expected to be provided by the parent project.
 

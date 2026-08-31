@@ -1,3 +1,8 @@
+/*
+ * SPDX-License-Identifier: MIT
+ * Copyright (c) 2026 Kiwi contributors
+ */
+
 #ifndef TEMPLATE_OSAL_FREERTOS_H_
 #define TEMPLATE_OSAL_FREERTOS_H_
 

@@ -147,6 +147,11 @@ def render_profile_header(forms: PrefixForms, selected_apis: frozenset[str], por
     }
 
     lines = [
+        "/*",
+        " * SPDX-License-Identifier: MIT",
+        " * Copyright (c) 2026 Kiwi contributors",
+        " */",
+        "",
         f"#ifndef {guard}",
         f"#define {guard}",
         "",
@@ -324,6 +329,9 @@ def _render_base_cmake(forms: PrefixForms, config: GenerationConfig) -> str:
     include_dir = "${CMAKE_CURRENT_LIST_DIR}/include" if config.split_src_inc_files else "${CMAKE_CURRENT_LIST_DIR}"
     return "\n".join(
         [
+            "# SPDX-License-Identifier: MIT",
+            "# Copyright (c) 2026 Kiwi contributors",
+            "",
             "# Base OSAL generated build script.",
             "",
             f"add_library({forms.snake}_osal STATIC",
@@ -353,6 +361,9 @@ def _render_port_cmake(forms: PrefixForms, config: GenerationConfig) -> str:
     )
     return "\n".join(
         [
+            "# SPDX-License-Identifier: MIT",
+            "# Copyright (c) 2026 Kiwi contributors",
+            "",
             "# FreeRTOS OSAL port generated build script.",
             "# FreeRTOS include paths and libraries are expected from the parent project.",
             "",
@@ -385,6 +396,9 @@ def _render_combined_cmake(forms: PrefixForms, config: GenerationConfig) -> str:
     include_dir = "${CMAKE_CURRENT_LIST_DIR}/include" if config.split_src_inc_files else "${CMAKE_CURRENT_LIST_DIR}"
     return "\n".join(
         [
+            "# SPDX-License-Identifier: MIT",
+            "# Copyright (c) 2026 Kiwi contributors",
+            "",
             "# Combined base + FreeRTOS OSAL generated build script.",
             "# FreeRTOS include paths and libraries are expected from the parent project.",
             "",
