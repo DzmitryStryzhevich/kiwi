@@ -247,7 +247,7 @@ Code generation and runtime validation complement each other:
 
 ```text
 kiwi/
-├── generator/                 Python GUI and generator build files
+├── generator/                 Code-generation core, CLI/UI frontends and build files
 ├── osal/                      Base OSAL template
 │   ├── CMakeLists.txt
 │   └── portable/
@@ -299,11 +299,19 @@ foo_module
 
 ## Running from source
 
-From the repository root:
+From the repository root, run the GUI frontend with:
 
 ```bash
-python generator/kiwi_codegen_app.py
+python generator/kiwi_codegen_ui_app.py
 ```
+
+Run the CLI frontend with:
+
+```bash
+python generator/kiwi_codegen_cli_app.py --help
+```
+
+Both frontends use the shared `generator/kiwi_codegen.py` code-generation core.
 
 ## Building the Windows executable
 
@@ -315,11 +323,14 @@ generator/build_exe.bat
 
 The build script installs the required Python packages and invokes PyInstaller.
 
-The executable is created at:
+The build creates two executables:
 
 ```text
 generator/dist/kiwi.exe
+generator/dist/kiwi_gui.exe
 ```
+
+`kiwi.exe` is the CLI frontend and `kiwi_gui.exe` is the GUI frontend. Both use the same code-generation core.
 
 The PyInstaller bundle includes the OSAL template tree and KIWI application artwork so the generated executable can run without requiring the source repository beside it.
 

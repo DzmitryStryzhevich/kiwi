@@ -6,15 +6,25 @@ import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-import kiwi_codegen_cli_app as codegen
+import kiwi_codegen as codegen
 
 
 ROOT = pathlib.Path(__file__).resolve().parent
-PROJECT_ROOT = codegen.PROJECT_ROOT
+PROJECT_ROOT = ROOT.parent
+
+def _resolve_app_asset(relative_path: str) -> pathlib.Path:
+    """Resolve a GUI asset for source execution and PyInstaller bundles."""
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        bundled = pathlib.Path(meipass) / relative_path
+        if bundled.exists():
+            return bundled
+
+    return PROJECT_ROOT / relative_path
 
 
 class App(tk.Tk):
-    """Tk frontend for the autonomous KIWI CLI/backend generator."""
+    """Tk frontend for the shared KIWI code-generation core."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -56,7 +66,7 @@ class App(tk.Tk):
 
     def _set_window_icon(self) -> None:
         try:
-            icon_png = codegen.resolve_project_asset("doc/kiwi_window.png")
+            icon_png = _resolve_app_asset("doc/kiwi_window.png")
             if icon_png.exists():
                 self._window_icon = tk.PhotoImage(file=str(icon_png))
                 self.iconphoto(True, self._window_icon)
@@ -65,7 +75,7 @@ class App(tk.Tk):
 
         if sys.platform == "win32":
             try:
-                icon_ico = codegen.resolve_project_asset("doc/kiwi.ico")
+                icon_ico = _resolve_app_asset("doc/kiwi.ico")
                 if icon_ico.exists():
                     self.wm_iconbitmap(str(icon_ico))
             except tk.TclError:
@@ -121,7 +131,7 @@ class App(tk.Tk):
         ).pack(anchor="w")
         ttk.Label(
             header_text,
-            text="UI frontend for the autonomous KIWI CLI code-generation backend.",
+            text="UI frontend for the shared KIWI code-generation core.",
             style="Hint.TLabel",
         ).pack(anchor="w", pady=(4, 0))
 
@@ -278,7 +288,7 @@ class App(tk.Tk):
 
     def _add_header_logo(self, parent: ttk.Frame) -> None:
         try:
-            icon_png = codegen.resolve_project_asset("doc/kiwi_header.png")
+            icon_png = _resolve_app_asset("doc/kiwi_header.png")
             if not icon_png.exists():
                 return
 
