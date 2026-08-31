@@ -9,7 +9,7 @@ Good contribution candidates include:
 - new portable OSAL backends;
 - completion and maintenance of POSIX and CMSIS-RTOS2 ports;
 - future C++ generation/port support;
-- additional automated tests and CI coverage;
+- additional automated tests, host/test OSAL backends and CI coverage;
 - generator-core improvements;
 - CLI and GUI usability improvements;
 - YAML profile compatibility/migration support;
@@ -19,7 +19,9 @@ Good contribution candidates include:
 
 ## Before changing the OSAL API
 
-Avoid adding a primitive only because one backend exposes it. A new generic API group should have clear component-level semantics that can be represented consistently across the intended backends.
+Avoid adding a primitive only because one backend exposes it. A new generic API group should have clear component-level semantics that can be represented consistently across the intended backends. The generic name and behavior must follow the KIWI vocabulary rather than inheriting whichever `create`/`destroy`, `give`/`take`, `post`/`pend`, or similar terminology happens to be used by the first backend.
+
+Before implementing a new primitive, define its component-visible behavior: blocking versus non-blocking operation, timeout meaning, ISR/thread context, lifecycle/ownership, success and failure semantics, and how those rules map to every intended backend. See [`osal/README.md`](osal/README.md#one-contract-one-meaning).
 
 When introducing a new primitive group, update the whole vertical slice rather than only one file:
 
@@ -78,7 +80,9 @@ New behavior should ideally include tests. The automated test suite is still pla
 
 See [`test/README.md`](test/README.md) for the planned coverage model.
 
-For bug fixes, add a regression test when the relevant test infrastructure exists. For new ports, include at least build/syntax coverage and focused tests for lifecycle, resource handling and backend-specific semantics.
+For bug fixes, add a regression test when the relevant test infrastructure exists. For new ports, include at least build/syntax coverage and focused tests for lifecycle, resource handling and backend-specific semantics. Tests should verify the generic semantic contract, not merely that native OS calls can be invoked.
+
+A test backend may provide deterministic controls to the test harness (for example failure injection or synthetic time), but those controls must not leak into the component-facing OSAL contract.
 
 ## Documentation
 
