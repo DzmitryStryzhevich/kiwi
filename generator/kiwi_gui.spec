@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['kiwi_codegen_cli_app.py'],
+    ['kiwi_codegen_ui_app.py'],
     pathex=[],
     binaries=[],
     datas=[
@@ -28,7 +28,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='kiwi',
+    name='kiwi_gui',
     icon='../doc/kiwi.ico',
     debug=False,
     bootloader_ignore_signals=False,
@@ -36,7 +36,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
