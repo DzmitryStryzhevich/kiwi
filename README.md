@@ -24,7 +24,7 @@ Usage examples for the generated generic OSAL API are collected in [`examples/`]
 
 | Target | Language | Status | Notes |
 | --- | --- | --- | --- |
-| FreeRTOS | C | Implemented | Current working portable backend |
+| FreeRTOS | C | Implemented | Queues, stream buffers, locks, counting semaphores, threads, critical sections, software timers, time and memory |
 | POSIX | C | Planned | Host/portable backend scaffold exists |
 | CMSIS-RTOS2 | C | Planned | Portable backend scaffold exists |
 | C++ OSAL variant | C++ | Planned | C++ generation/port support is on the roadmap |

@@ -38,6 +38,15 @@
 #endif
 // END QUEUE
 
+// BEGIN STREAM_BUFFER
+/**
+ * \brief Template OSAL stream buffer slots number.
+ */
+#ifndef TEMPLATE_OSAL_STREAM_BUFFER_SLOTS_NUM
+    #define TEMPLATE_OSAL_STREAM_BUFFER_SLOTS_NUM    (2u)
+#endif
+// END STREAM_BUFFER
+
 // BEGIN LOCK
 /**
  * \brief Template OSAL lock objects number.
@@ -46,6 +55,15 @@
     #define TEMPLATE_OSAL_LOCK_OBJ_SLOTS_NUM    (2u)
 #endif
 // END LOCK
+
+// BEGIN SEMAPHORE
+/**
+ * \brief Template OSAL counting semaphore slots number.
+ */
+#ifndef TEMPLATE_OSAL_SEMAPHORE_SLOTS_NUM
+    #define TEMPLATE_OSAL_SEMAPHORE_SLOTS_NUM    (2u)
+#endif
+// END SEMAPHORE
 
 // BEGIN THREAD
 /**
@@ -56,6 +74,15 @@
 #endif
 // END THREAD
 
+// BEGIN SOFTWARE_TIMER
+/**
+ * \brief Template OSAL software timer slots number.
+ */
+#ifndef TEMPLATE_OSAL_SOFTWARE_TIMER_SLOTS_NUM
+    #define TEMPLATE_OSAL_SOFTWARE_TIMER_SLOTS_NUM    (2u)
+#endif
+// END SOFTWARE_TIMER
+
 // BEGIN MEMORY
 /**
  * \brief Template OSAL memory registry slots number.
@@ -65,19 +92,17 @@
 #endif
 // END MEMORY
 
-// BEGIN TIME
 /**
- * \brief Template indefinite timeout definition.
+ * \brief Template indefinite timeout definition used by timeout-aware primitives.
  */
 #define TEMPLATE_OSAL_INFINITY_TOUT    ((Template_osalTimeMs_t)-1)
-// END TIME
 
 /**
  * \def    TEMPLATE_OSAL_OBJ_HANDLE_INVALID
  * \brief  Sentinel value for an invalid/empty OSAL object handle.
  *
  * \details Used to denote an uninitialized or released handle in registries
- *          (queues/locks/threads). This equals NULL by design and is checked
+ *          (queues, stream buffers, locks, semaphores, timers, threads and memory). This equals NULL by design and is checked
  *          against before any dereference or registry lookup.
  */
 #ifndef TEMPLATE_OSAL_OBJ_HANDLE_INVALID
@@ -107,15 +132,38 @@ typedef enum
     TEMPLATE_OSAL_QUEUE_IS_FULL_ERR,              //!< Predicate/operation indicates full queue.
     // END QUEUE
 
+    // BEGIN STREAM_BUFFER
+    TEMPLATE_OSAL_STREAM_BUFFER_CREATE_ERR,          //!< Failed to create a stream buffer or reserve a registry slot.
+    TEMPLATE_OSAL_STREAM_BUFFER_MEM_ALLOCATION_ERR,  //!< Backend memory allocation failed during stream buffer creation.
+    TEMPLATE_OSAL_STREAM_BUFFER_IS_EMPTY_ERR,        //!< No data was available before receive completed.
+    TEMPLATE_OSAL_STREAM_BUFFER_IS_FULL_ERR,         //!< No bytes could be written because no capacity was available.
+    TEMPLATE_OSAL_STREAM_BUFFER_RESET_ERR,           //!< Failed to reset a stream buffer to its empty state.
+    // END STREAM_BUFFER
+
     // BEGIN LOCK
     TEMPLATE_OSAL_LOCK_OBJ_CREATE_ERR,            //!< Failed to create a lock object (mutex/semaphore).
     TEMPLATE_OSAL_LOCK_OBJ_MEM_ALLOCATION_ERR,    //!< Memory allocation failure for lock object.
     // END LOCK
 
+    // BEGIN SEMAPHORE
+    TEMPLATE_OSAL_SEMAPHORE_CREATE_ERR,              //!< Failed to create a counting semaphore or reserve a registry slot.
+    TEMPLATE_OSAL_SEMAPHORE_MEM_ALLOCATION_ERR,      //!< Backend memory allocation failed during semaphore creation.
+    TEMPLATE_OSAL_SEMAPHORE_ACQUIRE_ERR,             //!< Counting semaphore could not be acquired.
+    TEMPLATE_OSAL_SEMAPHORE_RELEASE_ERR,             //!< Counting semaphore could not be released.
+    // END SEMAPHORE
+
     // BEGIN THREAD
     TEMPLATE_OSAL_THREAD_CREATE_ERR,              //!< Failed to create a thread.
     TEMPLATE_OSAL_THREAD_MEM_ALLOCATION_ERR,      //!< Memory allocation failure during thread creation.
     // END THREAD
+
+    // BEGIN SOFTWARE_TIMER
+    TEMPLATE_OSAL_SOFTWARE_TIMER_CREATE_ERR,         //!< Failed to create a software timer or reserve a registry slot.
+    TEMPLATE_OSAL_SOFTWARE_TIMER_MEM_ALLOCATION_ERR, //!< Backend memory allocation failed during software timer creation.
+    TEMPLATE_OSAL_SOFTWARE_TIMER_START_ERR,          //!< Failed to start a software timer.
+    TEMPLATE_OSAL_SOFTWARE_TIMER_STOP_ERR,           //!< Failed to stop a software timer.
+    TEMPLATE_OSAL_SOFTWARE_TIMER_RESET_ERR,          //!< Failed to reset/restart a software timer period.
+    // END SOFTWARE_TIMER
 
     // BEGIN MEMORY
     TEMPLATE_OSAL_MEM_ALLOCATION_ERR,             //!< Backend failed to allocate memory.
@@ -136,12 +184,31 @@ typedef uint32_t Template_osalTimeMs_t;
 typedef void *Template_osalQueueHandle_t;
 // END QUEUE
 
+// BEGIN STREAM_BUFFER
+/**
+ * \brief Template OSAL stream buffer handle type definition.
+ */
+typedef void *Template_osalStreamBufferHandle_t;
+// END STREAM_BUFFER
+
 // BEGIN LOCK
 /**
  * \brief Template OSAL lock object type definition.
  */
 typedef void *Template_osalLockObjHandle_t;
 // END LOCK
+
+// BEGIN SEMAPHORE
+/**
+ * \brief Template OSAL counting semaphore handle type definition.
+ */
+typedef void *Template_osalSemaphoreHandle_t;
+
+/**
+ * \brief Template OSAL counting semaphore counter type.
+ */
+typedef uint32_t Template_osalSemaphoreCount_t;
+// END SEMAPHORE
 
 // BEGIN THREAD
 /**
@@ -156,6 +223,39 @@ typedef void *Template_osalThreadHandle_t;
  */
 typedef void *Template_osalMemHandle_t;
 // END MEMORY
+
+// BEGIN SOFTWARE_TIMER
+/**
+ * \brief Template OSAL software timer handle type definition.
+ */
+typedef void *Template_osalSoftwareTimerHandle_t;
+
+/**
+ * \brief Software timer expiration callback.
+ */
+typedef void (*Template_osalSoftwareTimerExpiredCb_f)(void *const timerParam);
+
+/**
+ * \brief Template OSAL software timer configuration.
+ */
+typedef struct
+{
+    const char                            *name;            /*!< Optional timer name. */
+    void                                  *timerParam;      /*!< User parameter passed to callback; may be NULL. */
+    Template_osalSoftwareTimerExpiredCb_f timerExpiredCb;  /*!< Expiration callback; must not be NULL. */
+    bool                                   autoReload;       /*!< true = periodic, false = one-shot. */
+    Template_osalTimeMs_t                  periodMs;         /*!< Timer period in milliseconds; must be non-zero. */
+} Template_osalSoftwareTimerCfg_s;
+
+/**
+ * \brief Template OSAL software timer registry object.
+ */
+typedef struct
+{
+    Template_osalSoftwareTimerCfg_s    cfg;     /*!< Creation configuration snapshot. */
+    Template_osalSoftwareTimerHandle_t handle;  /*!< RTOS-native timer handle. */
+} Template_osalSoftwareTimer_s;
+// END SOFTWARE_TIMER
 
 // BEGIN THREAD
 /**
@@ -247,6 +347,41 @@ typedef struct
                                        const void * const queueItemPtr);
 
     /**
+     * \brief  Inserts an item into a queue, waiting up to the requested timeout for capacity.
+     * \param  osal          OSAL instance.
+     * \param  queueHandle   Handle to the target queue.
+     * \param  queueItemPtr  Pointer to the item to be inserted into the queue.
+     * \param  timeoutMs     Maximum time in milliseconds to wait for free queue capacity.
+     * \return Template_osalErr_e (0 on success, timeout/error otherwise).
+     */
+    Template_osalErr_e (*queueItemPost)(void * const osal,
+                                        const Template_osalQueueHandle_t queueHandle,
+                                        const void * const queueItemPtr,
+                                        const Template_osalTimeMs_t timeoutMs);
+
+    /**
+     * \brief  Retrieves an already available item without waiting.
+     * \param  osal          OSAL instance.
+     * \param  queueHandle   Handle to the source queue.
+     * \param  queueItemPtr  Pointer to the destination buffer for the retrieved item.
+     * \return Template_osalErr_e (0 on success, empty/error otherwise).
+     */
+    Template_osalErr_e (*queueItemGet)(void * const osal,
+                                       const Template_osalQueueHandle_t queueHandle,
+                                       void * const queueItemPtr);
+
+    /**
+     * \brief  Waits indefinitely for an item and retrieves it.
+     * \param  osal          OSAL instance.
+     * \param  queueHandle   Handle to the source queue.
+     * \param  queueItemPtr  Pointer to the destination buffer for the retrieved item.
+     * \return Template_osalErr_e (0 on success, error otherwise).
+     */
+    Template_osalErr_e (*queueItemWait)(void * const osal,
+                                        const Template_osalQueueHandle_t queueHandle,
+                                        void * const queueItemPtr);
+
+    /**
      * \brief  Retrieves an item from a queue with blocking and timeout.
      * \param  osal           OSAL instance.
      * \param  queueHandle    Handle to the target queue.
@@ -268,6 +403,73 @@ typedef struct
     Template_osalErr_e (*queueReset)(void * const osal,
                                      const Template_osalQueueHandle_t queueHandle);
     // END QUEUE
+
+    // BEGIN STREAM_BUFFER
+    /*-------------------------------- Stream buffers --------------------------------*/
+
+    /**
+     * \brief  Create a byte stream buffer.
+     * \param  osal                OSAL instance.
+     * \param  bufferSizeBytes     Total stream-buffer capacity in bytes.
+     * \param  triggerLevelBytes   Receive trigger level in bytes.
+     * \param  streamBufferHandle  Output pointer receiving the created handle.
+     * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+     */
+    Template_osalErr_e (*streamBufferCreate)(void * const osal,
+                                              const size_t bufferSizeBytes,
+                                              const size_t triggerLevelBytes,
+                                              Template_osalStreamBufferHandle_t * const streamBufferHandle);
+
+    /**
+     * \brief  Delete a byte stream buffer.
+     * \param  osal                OSAL instance.
+     * \param  streamBufferHandle  Registered stream-buffer handle.
+     * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+     */
+    Template_osalErr_e (*streamBufferDelete)(void * const osal,
+                                              const Template_osalStreamBufferHandle_t streamBufferHandle);
+
+    /**
+     * \brief  Send bytes without waiting for capacity.
+     * \param  osal                OSAL instance.
+     * \param  streamBufferHandle  Registered stream-buffer handle.
+     * \param  data                Source byte buffer.
+     * \param  dataLengthBytes     Number of bytes requested for transmission.
+     * \param  bytesSent           Output number of bytes accepted by the backend.
+     * \return Template_osalErr_e, zero value means the operation was valid; inspect bytesSent for transfer length.
+     */
+    Template_osalErr_e (*streamBufferSend)(void * const osal,
+                                            const Template_osalStreamBufferHandle_t streamBufferHandle,
+                                            const void * const data,
+                                            const size_t dataLengthBytes,
+                                            size_t * const bytesSent);
+
+    /**
+     * \brief  Receive bytes using an explicit timeout.
+     * \param  osal                OSAL instance.
+     * \param  streamBufferHandle  Registered stream-buffer handle.
+     * \param  data                Destination byte buffer.
+     * \param  dataLengthBytes     Maximum number of bytes to receive.
+     * \param  timeoutMs           Maximum wait in milliseconds.
+     * \param  bytesReceived       Output number of bytes received.
+     * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+     */
+    Template_osalErr_e (*streamBufferReceive)(void * const osal,
+                                               const Template_osalStreamBufferHandle_t streamBufferHandle,
+                                               void * const data,
+                                               const size_t dataLengthBytes,
+                                               const Template_osalTimeMs_t timeoutMs,
+                                               size_t * const bytesReceived);
+
+    /**
+     * \brief  Reset a byte stream buffer to the empty state.
+     * \param  osal                OSAL instance.
+     * \param  streamBufferHandle  Registered stream-buffer handle.
+     * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+     */
+    Template_osalErr_e (*streamBufferReset)(void * const osal,
+                                             const Template_osalStreamBufferHandle_t streamBufferHandle);
+    // END STREAM_BUFFER
 
     // BEGIN LOCK
     /*------------------------------------ Locks -------------------------------------*/
@@ -309,6 +511,72 @@ typedef struct
                                  const Template_osalLockObjHandle_t lockObjHandle);
 
     // END LOCK
+
+    // BEGIN SEMAPHORE
+    /*------------------------------ Counting semaphores -----------------------------*/
+
+    /**
+     * \brief  Create a counting semaphore.
+     * \param  osal             OSAL instance.
+     * \param  maxCount         Maximum semaphore count.
+     * \param  initialCount     Initial semaphore count.
+     * \param  semaphoreHandle  Output pointer receiving the created handle.
+     * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+     */
+    Template_osalErr_e (*semaphoreCreate)(void * const osal,
+                                           const Template_osalSemaphoreCount_t maxCount,
+                                           const Template_osalSemaphoreCount_t initialCount,
+                                           Template_osalSemaphoreHandle_t * const semaphoreHandle);
+
+    /**
+     * \brief  Delete a counting semaphore.
+     * \param  osal             OSAL instance.
+     * \param  semaphoreHandle  Registered semaphore handle.
+     * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+     */
+    Template_osalErr_e (*semaphoreDelete)(void * const osal,
+                                           const Template_osalSemaphoreHandle_t semaphoreHandle);
+
+    /**
+     * \brief  Acquire one semaphore count without waiting.
+     * \param  osal             OSAL instance.
+     * \param  semaphoreHandle  Registered semaphore handle.
+     * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+     */
+    Template_osalErr_e (*semaphoreAcquire)(void * const osal,
+                                            const Template_osalSemaphoreHandle_t semaphoreHandle);
+
+    /**
+     * \brief  Acquire one semaphore count using an explicit timeout.
+     * \param  osal             OSAL instance.
+     * \param  semaphoreHandle  Registered semaphore handle.
+     * \param  timeoutMs        Maximum wait in milliseconds.
+     * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+     */
+    Template_osalErr_e (*semaphoreAcquireWait)(void * const osal,
+                                                const Template_osalSemaphoreHandle_t semaphoreHandle,
+                                                const Template_osalTimeMs_t timeoutMs);
+
+    /**
+     * \brief  Release one count to a semaphore.
+     * \param  osal             OSAL instance.
+     * \param  semaphoreHandle  Registered semaphore handle.
+     * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+     */
+    Template_osalErr_e (*semaphoreRelease)(void * const osal,
+                                            const Template_osalSemaphoreHandle_t semaphoreHandle);
+
+    /**
+     * \brief  Read the current semaphore count.
+     * \param  osal             OSAL instance.
+     * \param  semaphoreHandle  Registered semaphore handle.
+     * \param  semaphoreCount   Output pointer receiving the current count.
+     * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+     */
+    Template_osalErr_e (*semaphoreCountGet)(void * const osal,
+                                             const Template_osalSemaphoreHandle_t semaphoreHandle,
+                                             Template_osalSemaphoreCount_t * const semaphoreCount);
+    // END SEMAPHORE
 
     // BEGIN THREAD
     /*----------------------------------- Threads ------------------------------------*/
@@ -359,14 +627,83 @@ typedef struct
      */
     Template_osalErr_e (*threadDelay)(void * const osal,
                                       const Template_osalTimeMs_t delayMs);
+
     /**
      * \brief  Terminate the calling thread (does not return).
      * \note   This function never returns control to the caller.
      * \param  osal  OSAL instance (must be valid).
-     * \return Template_osalErr_e (0 on success).
      */
-    Template_osalErr_e (*threadExit)(void *const osal);
+    void (*threadExit)(void *const osal);
     // END THREAD
+
+    // BEGIN CRITICAL_SECTION
+    /*------------------------------- Critical section ------------------------------*/
+
+    /**
+     * \brief  Enter a short OS critical section.
+     * \param  osal  OSAL instance.
+     * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+     */
+    Template_osalErr_e (*criticalSectionEnter)(void * const osal);
+
+    /**
+     * \brief  Exit a previously entered OS critical section.
+     * \param  osal  OSAL instance.
+     * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+     */
+    Template_osalErr_e (*criticalSectionExit)(void * const osal);
+    // END CRITICAL_SECTION
+
+    // BEGIN SOFTWARE_TIMER
+    /*-------------------------------- Software timers -------------------------------*/
+
+    /**
+     * \brief  Create a one-shot or auto-reload software timer.
+     * \param  osal         OSAL instance.
+     * \param  timerHandle  Output pointer receiving the created timer handle.
+     * \param  timerCfg     Timer callback, user parameter, reload policy and period.
+     * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+     */
+    Template_osalErr_e (*softwareTimerCreate)(void * const osal,
+                                               Template_osalSoftwareTimerHandle_t * const timerHandle,
+                                               Template_osalSoftwareTimerCfg_s timerCfg);
+
+    /**
+     * \brief  Delete a software timer.
+     * \param  osal         OSAL instance.
+     * \param  timerHandle  Registered software-timer handle.
+     * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+     */
+    Template_osalErr_e (*softwareTimerDelete)(void * const osal,
+                                               const Template_osalSoftwareTimerHandle_t timerHandle);
+
+    /**
+     * \brief  Start a software timer.
+     * \param  osal         OSAL instance.
+     * \param  timerHandle  Registered software-timer handle.
+     * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+     */
+    Template_osalErr_e (*softwareTimerStart)(void * const osal,
+                                              const Template_osalSoftwareTimerHandle_t timerHandle);
+
+    /**
+     * \brief  Stop a software timer.
+     * \param  osal         OSAL instance.
+     * \param  timerHandle  Registered software-timer handle.
+     * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+     */
+    Template_osalErr_e (*softwareTimerStop)(void * const osal,
+                                             const Template_osalSoftwareTimerHandle_t timerHandle);
+
+    /**
+     * \brief  Reset and restart a software-timer period.
+     * \param  osal         OSAL instance.
+     * \param  timerHandle  Registered software-timer handle.
+     * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+     */
+    Template_osalErr_e (*softwareTimerReset)(void * const osal,
+                                              const Template_osalSoftwareTimerHandle_t timerHandle);
+    // END SOFTWARE_TIMER
 
     // BEGIN TIME
     /*------------------------------------- Time -------------------------------------*/
@@ -420,7 +757,7 @@ typedef struct
 /**
  * \struct  Template_osalPtable_s
  * \brief   Protected OSAL helpers for backend ports (registry utilities etc).
- * \details Internal slot/handle lookup helpers for queues, locks, threads, and memory.
+ * \details Internal slot/handle lookup helpers for every registry-backed primitive group.
  *          Returned IDs are 1-based (index + 1). Zero value indicates "not found"/"no free slot".
  * \note    This is a ptable API intended for OSAL backends only.
  */
@@ -447,6 +784,26 @@ typedef struct
 
     // END QUEUE
 
+    // BEGIN STREAM_BUFFER
+    /*----------------------------- Stream buffers ----------------------------*/
+
+    /**
+     * \brief  Find a free stream-buffer slot in the internal registry.
+     * \param  osalPort  Derived OSAL instance pointer (opaque in base).
+     * \return size_t    Slot ID (index + 1) if a free slot exists; 0 otherwise.
+     */
+    size_t (*streamBufferFreeSlotFind)(void * const osalPort);
+
+    /**
+     * \brief  Find a stream-buffer handle in the internal registry.
+     * \param  osalPort           Derived OSAL instance pointer (opaque in base).
+     * \param  streamBufferHandle Stream-buffer handle to search.
+     * \return size_t             Stream-buffer ID (index + 1) if found; 0 otherwise.
+     */
+    size_t (*streamBufferHandleFind)(void * const osalPort,
+                                     const Template_osalStreamBufferHandle_t streamBufferHandle);
+    // END STREAM_BUFFER
+
     // BEGIN LOCK
     /*-------------------------------- Locks --------------------------------*/
 
@@ -467,6 +824,26 @@ typedef struct
                                 const Template_osalLockObjHandle_t lockObjHandle);
     // END LOCK
 
+    // BEGIN SEMAPHORE
+    /*--------------------------- Counting semaphores --------------------------*/
+
+    /**
+     * \brief  Find a free counting-semaphore slot in the internal registry.
+     * \param  osalPort  Derived OSAL instance pointer (opaque in base).
+     * \return size_t    Slot ID (index + 1) if a free slot exists; 0 otherwise.
+     */
+    size_t (*semaphoreFreeSlotFind)(void * const osalPort);
+
+    /**
+     * \brief  Find a counting-semaphore handle in the internal registry.
+     * \param  osalPort        Derived OSAL instance pointer (opaque in base).
+     * \param  semaphoreHandle Counting-semaphore handle to search.
+     * \return size_t          Semaphore ID (index + 1) if found; 0 otherwise.
+     */
+    size_t (*semaphoreHandleFind)(void * const osalPort,
+                                  const Template_osalSemaphoreHandle_t semaphoreHandle);
+    // END SEMAPHORE
+
     // BEGIN THREAD
     /*------------------------------- Threads -------------------------------*/
 
@@ -485,7 +862,36 @@ typedef struct
      */
     size_t (*threadHandleFind)(void * const osalPort,
                                const Template_osalThreadHandle_t threadHandle);
+
+    /**
+     * \brief  Clear a thread registry slot.
+     * \param  osalPort   Derived OSAL instance pointer (opaque in base).
+     * \param  threadIdx  Zero-based thread registry index.
+     * \return None.
+     */
+    void (*threadSlotClear)(void * const osalPort,
+                            const size_t threadIdx);
     // END THREAD
+
+    // BEGIN SOFTWARE_TIMER
+    /*----------------------------- Software timers ----------------------------*/
+
+    /**
+     * \brief  Find a free software-timer slot in the internal registry.
+     * \param  osalPort  Derived OSAL instance pointer (opaque in base).
+     * \return size_t    Slot ID (index + 1) if a free slot exists; 0 otherwise.
+     */
+    size_t (*softwareTimerFreeSlotFind)(void * const osalPort);
+
+    /**
+     * \brief  Find a software-timer handle in the internal registry.
+     * \param  osalPort    Derived OSAL instance pointer (opaque in base).
+     * \param  timerHandle Software-timer handle to search.
+     * \return size_t      Software-timer ID (index + 1) if found; 0 otherwise.
+     */
+    size_t (*softwareTimerHandleFind)(void * const osalPort,
+                                      const Template_osalSoftwareTimerHandle_t timerHandle);
+    // END SOFTWARE_TIMER
 
     // BEGIN MEMORY
     /*-------------------------------- Memory --------------------------------*/
@@ -506,13 +912,15 @@ typedef struct
     size_t (*memHandleFind)(void * const osalPort,
                             const void * const ptr);
     // END MEMORY
+
+    uint8_t reserved; /*!< Keeps the protected table valid when no registry-backed primitive is selected. */
 } Template_osalPtable_s;
 
 
 /**
  * \struct  Template_osal_s
  * \brief   OS Abstraction Layer (OSAL) interface descriptor.
- * \details Descriptor for a particular RTOS port: queues, locks, threads, memory registry, vtable table.
+ * \details Descriptor for a particular OS port: component-scoped resource registries, vtable, protected ptable and validation state.
  */
 typedef struct
 {
@@ -525,15 +933,30 @@ typedef struct
     Template_osalQueueHandle_t queueObjHandle[TEMPLATE_OSAL_QUEUE_SLOTS_NUM];
     // END QUEUE
 
+    // BEGIN STREAM_BUFFER
+    /* Stream buffer handles */
+    Template_osalStreamBufferHandle_t streamBufferObjHandle[TEMPLATE_OSAL_STREAM_BUFFER_SLOTS_NUM];
+    // END STREAM_BUFFER
+
     // BEGIN LOCK
     /* Lock objects handles */
     Template_osalLockObjHandle_t lockObjHandle[TEMPLATE_OSAL_LOCK_OBJ_SLOTS_NUM];
     // END LOCK
 
+    // BEGIN SEMAPHORE
+    /* Counting semaphore handles */
+    Template_osalSemaphoreHandle_t semaphoreObjHandle[TEMPLATE_OSAL_SEMAPHORE_SLOTS_NUM];
+    // END SEMAPHORE
+
     // BEGIN THREAD
     /* Threads handles */
     Template_osalThread_s threadObjHandle[TEMPLATE_OSAL_THREAD_SLOTS_NUM];
     // END THREAD
+
+    // BEGIN SOFTWARE_TIMER
+    /* Software timer objects */
+    Template_osalSoftwareTimer_s softwareTimerObj[TEMPLATE_OSAL_SOFTWARE_TIMER_SLOTS_NUM];
+    // END SOFTWARE_TIMER
 
     // BEGIN MEMORY
     /* Memory registry handles (opaque) */
@@ -654,6 +1077,41 @@ Template_osalErr_e template_osalQueueItemPut(Template_osal_s *const osal,
                                              const void *const queueItemPtr);
 
 /**
+ * \brief Post an item to the queue, waiting up to the requested timeout for free capacity.
+ * \param osal          Pointer to OSAL instance.
+ * \param queueHandle   Queue handle in which to put the item.
+ * \param queueItemPtr  Pointer to the item source buffer.
+ * \param timeoutMs     Maximum wait time in milliseconds.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalQueueItemPost(Template_osal_s *const osal,
+                                              const Template_osalQueueHandle_t queueHandle,
+                                              const void *const queueItemPtr,
+                                              const Template_osalTimeMs_t timeoutMs);
+
+/**
+ * \brief Get an already available item from the queue without waiting.
+ * \param osal          Pointer to OSAL instance.
+ * \param queueHandle   Queue handle from which to get the item.
+ * \param queueItemPtr  Pointer to the destination buffer for the item.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalQueueItemGet(Template_osal_s *const osal,
+                                             const Template_osalQueueHandle_t queueHandle,
+                                             void *const queueItemPtr);
+
+/**
+ * \brief Wait indefinitely for an item and retrieve it from the queue.
+ * \param osal          Pointer to OSAL instance.
+ * \param queueHandle   Queue handle from which to get the item.
+ * \param queueItemPtr  Pointer to the destination buffer for the item.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalQueueItemWait(Template_osal_s *const osal,
+                                              const Template_osalQueueHandle_t queueHandle,
+                                              void *const queueItemPtr);
+
+/**
  * \brief Get item from the queue.
  * \note  Blocking call with specified wait.
  * \param osal          Pointer to OSAL instance.
@@ -688,6 +1146,84 @@ Template_osalErr_e template_osalQueueHandleGet(Template_osal_s *const osal,
                                                Template_osalQueueHandle_t *const queueHandle);
 
 // END QUEUE
+
+// BEGIN STREAM_BUFFER
+/*-------------------------------- Stream buffers -------------------------------*/
+
+/**
+ * \brief Create a byte stream buffer.
+ * \param osal               Pointer to OSAL instance.
+ * \param bufferSizeBytes    Stream buffer capacity in bytes.
+ * \param triggerLevelBytes  Minimum number of bytes that should unblock a waiting receiver.
+ * \param streamBufferHandle Output pointer receiving the created stream buffer handle.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalStreamBufferCreate(Template_osal_s *const osal,
+                                                    const size_t bufferSizeBytes,
+                                                    const size_t triggerLevelBytes,
+                                                    Template_osalStreamBufferHandle_t *const streamBufferHandle);
+
+/**
+ * \brief Delete a stream buffer.
+ * \param osal                Pointer to OSAL instance.
+ * \param streamBufferHandle  Handle of the stream buffer to delete.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalStreamBufferDelete(Template_osal_s *const osal,
+                                                    const Template_osalStreamBufferHandle_t streamBufferHandle);
+
+/**
+ * \brief Send bytes to a stream buffer without waiting for capacity.
+ * \param osal                Pointer to OSAL instance.
+ * \param streamBufferHandle  Target stream buffer handle.
+ * \param data                Pointer to source bytes.
+ * \param dataLengthBytes     Number of bytes requested for transfer.
+ * \param bytesSent           Output pointer receiving the number of bytes actually written.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalStreamBufferSend(Template_osal_s *const osal,
+                                                  const Template_osalStreamBufferHandle_t streamBufferHandle,
+                                                  const void *const data,
+                                                  const size_t dataLengthBytes,
+                                                  size_t *const bytesSent);
+
+/**
+ * \brief Receive bytes from a stream buffer with an explicit timeout.
+ * \param osal                Pointer to OSAL instance.
+ * \param streamBufferHandle  Source stream buffer handle.
+ * \param data                Destination buffer.
+ * \param dataLengthBytes     Maximum number of bytes to receive.
+ * \param timeoutMs           Maximum wait in milliseconds; zero means non-blocking.
+ * \param bytesReceived       Output pointer receiving the number of bytes actually read.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalStreamBufferReceive(Template_osal_s *const osal,
+                                                     const Template_osalStreamBufferHandle_t streamBufferHandle,
+                                                     void *const data,
+                                                     const size_t dataLengthBytes,
+                                                     const Template_osalTimeMs_t timeoutMs,
+                                                     size_t *const bytesReceived);
+
+/**
+ * \brief Reset a stream buffer to its initial empty state.
+ * \param osal                Pointer to OSAL instance.
+ * \param streamBufferHandle  Stream buffer handle to reset.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalStreamBufferReset(Template_osal_s *const osal,
+                                                   const Template_osalStreamBufferHandle_t streamBufferHandle);
+
+/**
+ * \brief Get a stream buffer handle from a stable registry slot.
+ * \param osal                 Pointer to OSAL instance.
+ * \param streamBufferSlotInd  Zero-based stream buffer registry slot index.
+ * \param streamBufferHandle   Output pointer receiving the current slot handle.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalStreamBufferHandleGet(Template_osal_s *const osal,
+                                                       const size_t streamBufferSlotInd,
+                                                       Template_osalStreamBufferHandle_t *const streamBufferHandle);
+// END STREAM_BUFFER
 
 // BEGIN LOCK
 /*------------------------------------- Locks --------------------------------*/
@@ -739,6 +1275,83 @@ Template_osalErr_e template_osalLockObjHandleGet(Template_osal_s *const osal,
                                                  const size_t lockObjSlotInd,
                                                  Template_osalLockObjHandle_t *const lockObjHandle);
 // END LOCK
+
+// BEGIN SEMAPHORE
+/*------------------------------ Counting semaphores ---------------------------*/
+
+/**
+ * \brief Create a counting semaphore.
+ * \param osal             Pointer to OSAL instance.
+ * \param maxCount         Maximum semaphore count; must be greater than zero.
+ * \param initialCount     Initial count; must not exceed \p maxCount.
+ * \param semaphoreHandle  Output pointer receiving the created semaphore handle.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalSemaphoreCreate(Template_osal_s *const osal,
+                                                 const Template_osalSemaphoreCount_t maxCount,
+                                                 const Template_osalSemaphoreCount_t initialCount,
+                                                 Template_osalSemaphoreHandle_t *const semaphoreHandle);
+
+/**
+ * \brief Delete a counting semaphore.
+ * \param osal             Pointer to OSAL instance.
+ * \param semaphoreHandle  Handle of the semaphore to delete.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalSemaphoreDelete(Template_osal_s *const osal,
+                                                 const Template_osalSemaphoreHandle_t semaphoreHandle);
+
+/**
+ * \brief Acquire a counting semaphore without waiting.
+ * \param osal             Pointer to OSAL instance.
+ * \param semaphoreHandle  Semaphore handle to acquire.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalSemaphoreAcquire(Template_osal_s *const osal,
+                                                  const Template_osalSemaphoreHandle_t semaphoreHandle);
+
+/**
+ * \brief Acquire a counting semaphore with an explicit timeout.
+ * \param osal             Pointer to OSAL instance.
+ * \param semaphoreHandle  Semaphore handle to acquire.
+ * \param timeoutMs        Maximum wait in milliseconds; zero means non-blocking.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalSemaphoreAcquireWait(Template_osal_s *const osal,
+                                                      const Template_osalSemaphoreHandle_t semaphoreHandle,
+                                                      const Template_osalTimeMs_t timeoutMs);
+
+/**
+ * \brief Release one count to a counting semaphore.
+ * \param osal             Pointer to OSAL instance.
+ * \param semaphoreHandle  Semaphore handle to release.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalSemaphoreRelease(Template_osal_s *const osal,
+                                                  const Template_osalSemaphoreHandle_t semaphoreHandle);
+
+/**
+ * \brief Read the current counting semaphore value.
+ * \param osal             Pointer to OSAL instance.
+ * \param semaphoreHandle  Semaphore handle to query.
+ * \param semaphoreCount   Output pointer receiving the current count.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalSemaphoreCountGet(Template_osal_s *const osal,
+                                                   const Template_osalSemaphoreHandle_t semaphoreHandle,
+                                                   Template_osalSemaphoreCount_t *const semaphoreCount);
+
+/**
+ * \brief Get a semaphore handle from a stable registry slot.
+ * \param osal             Pointer to OSAL instance.
+ * \param semaphoreSlotInd Zero-based semaphore registry slot index.
+ * \param semaphoreHandle  Output pointer receiving the current slot handle.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalSemaphoreHandleGet(Template_osal_s *const osal,
+                                                    const size_t semaphoreSlotInd,
+                                                    Template_osalSemaphoreHandle_t *const semaphoreHandle);
+// END SEMAPHORE
 
 // BEGIN THREAD
 /*------------------------------------ Threads -------------------------------*/
@@ -809,6 +1422,87 @@ Template_osalErr_e template_osalThreadHandleGet(Template_osal_s *const osal,
                                                 const size_t threadSlotInd,
                                                 Template_osalThreadHandle_t *const threadHandle);
 // END THREAD
+
+// BEGIN CRITICAL_SECTION
+/*------------------------------- Critical section ----------------------------*/
+
+/**
+ * \brief Enter a short OS critical section.
+ * \details The matching exit call shall be made from the same execution context according to the backend contract.
+ * \param osal Pointer to OSAL instance.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalCriticalSectionEnter(Template_osal_s *const osal);
+
+/**
+ * \brief Exit a previously entered OS critical section.
+ * \param osal Pointer to OSAL instance.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalCriticalSectionExit(Template_osal_s *const osal);
+// END CRITICAL_SECTION
+
+// BEGIN SOFTWARE_TIMER
+/*-------------------------------- Software timers -----------------------------*/
+
+/**
+ * \brief Create a one-shot or auto-reload software timer.
+ * \param osal        Pointer to OSAL instance.
+ * \param timerHandle Output pointer receiving the created timer handle.
+ * \param timerCfg    Timer name, callback, callback parameter, reload policy and period.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalSoftwareTimerCreate(Template_osal_s *const osal,
+                                                     Template_osalSoftwareTimerHandle_t *const timerHandle,
+                                                     Template_osalSoftwareTimerCfg_s timerCfg);
+
+/**
+ * \brief Delete a software timer.
+ * \param osal        Pointer to OSAL instance.
+ * \param timerHandle Handle of the timer to delete.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalSoftwareTimerDelete(Template_osal_s *const osal,
+                                                     const Template_osalSoftwareTimerHandle_t timerHandle);
+
+/**
+ * \brief Start a software timer using its configured period.
+ * \param osal        Pointer to OSAL instance.
+ * \param timerHandle Timer handle to start.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalSoftwareTimerStart(Template_osal_s *const osal,
+                                                    const Template_osalSoftwareTimerHandle_t timerHandle);
+
+/**
+ * \brief Stop a software timer.
+ * \param osal        Pointer to OSAL instance.
+ * \param timerHandle Timer handle to stop.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalSoftwareTimerStop(Template_osal_s *const osal,
+                                                   const Template_osalSoftwareTimerHandle_t timerHandle);
+
+/**
+ * \brief Reset a software timer and restart its configured period.
+ * \param osal        Pointer to OSAL instance.
+ * \param timerHandle Timer handle to reset.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalSoftwareTimerReset(Template_osal_s *const osal,
+                                                    const Template_osalSoftwareTimerHandle_t timerHandle);
+
+/**
+ * \brief Get a software timer handle from a stable registry slot.
+ * \param osal         Pointer to OSAL instance.
+ * \param timerSlotInd Zero-based software timer registry slot index.
+ * \param timerHandle  Output pointer receiving the current slot handle.
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalSoftwareTimerHandleGet(Template_osal_s *const osal,
+                                                        const size_t timerSlotInd,
+                                                        Template_osalSoftwareTimerHandle_t *const timerHandle);
+// END SOFTWARE_TIMER
 
 // BEGIN TIME
 /*-------------------------------------- Time --------------------------------*/

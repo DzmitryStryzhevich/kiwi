@@ -60,20 +60,29 @@ The current API follows a constrained vocabulary. The important terms are intend
 | --- | --- |
 | `Create` | Create an OS resource, register it in the owning OSAL instance and establish its lifecycle ownership. |
 | `Delete` | Explicitly release an OS resource and remove it from the owning OSAL registry. A backend may map this to native `delete`, `destroy`, `deinit` or an equivalent operation. |
-| `Put` | Producer-side submission of data without waiting for capacity. If the target cannot accept the item immediately, the operation reports that condition rather than silently blocking. |
-| `Pend` | Consumer-side wait for data/resource availability with an explicit timeout. `0` represents an immediate attempt; `TEMPLATE_OSAL_INFINITY_TOUT` represents an unbounded wait where the backend can support it. |
-| `Get` | Query or retrieve already available state, metadata or a registered handle. `Get` does not imply creation, ownership transfer or an implicit wait. |
-| `Post` | Reserved semantic for producer-side signaling/event publication in primitive groups that use it: signal an occurrence without waiting for a consumer. It is not a synonym for resource creation or lookup. |
+| `Put` | Immediate producer-side submission. The call does not wait for capacity; a full destination is reported to the caller. |
+| `Post` | Producer-side submission with an explicit maximum wait for capacity. `0` therefore degenerates to an immediate attempt, while `TEMPLATE_OSAL_INFINITY_TOUT` means an unbounded wait where the backend supports it. |
+| `Get` | Immediate consumer-side retrieval of already available data. The call does not wait for data to arrive. |
+| `Wait` | Consumer-side retrieval with an unbounded wait for data/resource availability. It is intentionally distinct from `Get` and from a finite `Pend`. |
+| `Pend` | Consumer-side retrieval with an explicit timeout. `0` means an immediate attempt; `TEMPLATE_OSAL_INFINITY_TOUT` requests an unbounded wait where supported. |
+| `Acquire` | Immediate attempt to consume one unit of a synchronization resource such as a counting semaphore. |
+| `AcquireWait` | Acquire a synchronization resource while waiting up to an explicit timeout. |
+| `Release` | Return one unit to a synchronization resource. It is not a synonym for deleting that resource. |
+| `Send` / `Receive` | Transfer a byte stream. `Send` reports the number of bytes accepted; `Receive` reports the number of bytes obtained and may use an explicit receive timeout. |
 | `Lock` / `Unlock` | Acquire and release component-visible mutual exclusion using the contract defined by the generic layer, not the native mutex vocabulary. |
-| `Reset` | Return a reusable resource to its defined empty/initial operational state without deleting and recreating the resource. |
+| `CriticalSectionEnter` / `CriticalSectionExit` | Enter and leave a critical section. These operations protect a short execution region; they are not lifecycle operations and do not create a lock object. |
+| `Start` / `Stop` | Start or stop an existing software timer without changing its ownership. |
+| `Reset` | Return a reusable resource to its defined empty/initial operational state, or restart the period of a software timer, without deleting and recreating the resource. |
 | `Suspend` / `Resume` | Stop and restore execution eligibility of an existing thread without changing its ownership. |
 | `Delay` | Block the calling thread for the requested OSAL time interval. |
-| `Exit` | Terminate the calling thread according to the OSAL lifecycle contract. |
-| `Malloc` / `Free` | Allocate and release memory through the OSAL backend while keeping the allocation under OSAL ownership/bookkeeping. |
+| `ThreadExit` | Terminate the calling thread according to the OSAL lifecycle contract. |
+| `MemAlloc` / `MemFree` | Allocate and release memory through the OSAL backend while keeping the allocation under OSAL ownership/bookkeeping. |
 
 Not every term is used by every primitive group, and future APIs should not invent synonyms casually. When a new primitive is introduced, its generic vocabulary should be chosen by **component-level behavior**, not copied from whichever backend was implemented first.
 
-For example, the current queue contract uses `Put` for an immediate producer operation and `Pend` for the consumer operation that may wait for an item. The FreeRTOS backend maps these semantics to the appropriate FreeRTOS calls; a POSIX or CMSIS backend must reproduce the same observable contract even though its native API and terminology differ.
+The queue API makes the distinction explicit: `Put` is an immediate producer operation, `Post` is producer-side submission with a timeout, `Get` is an immediate consumer operation, `Wait` waits indefinitely, and `Pend` waits up to a caller-supplied timeout. A component can therefore infer blocking behavior from the KIWI operation itself instead of memorizing RTOS-specific call names.
+
+The same principle applies to counting semaphores (`Acquire`, `AcquireWait`, `Release`), stream buffers (`Send`, `Receive`), software timers (`Start`, `Stop`, `Reset`) and the other primitive groups. The FreeRTOS backend maps these semantics to native FreeRTOS calls; future POSIX, CMSIS-RTOS2 or C++ backends must reproduce the same observable contract even when their native APIs and terminology differ.
 
 This semantic normalization solves several practical problems:
 
@@ -245,9 +254,9 @@ All operating-system access performed through the OSAL passes through one contro
 Typical trace points include:
 
 - resource creation/deletion;
-- queue operations;
-- lock acquisition/release;
-- thread lifecycle;
+- queue and stream-buffer operations;
+- lock, semaphore and critical-section operations;
+- thread and software-timer lifecycle;
 - time and memory operations;
 - backend failures;
 - invalid execution context;
@@ -312,14 +321,18 @@ FreeRTOS is the current implemented backend. POSIX and CMSIS-RTOS2 remain planne
 
 ## Current generated primitive groups
 
-The code generator currently exposes the following implemented API groups:
+The FreeRTOS backend and generator currently support these API groups:
 
-- queues;
+- queues (`Put`, `Post`, `Get`, `Wait`, `Pend`, reset and lifecycle operations);
+- stream buffers;
 - locks;
+- counting semaphores;
 - threads;
+- critical sections;
+- software timers, including one-shot/auto-reload mode and user callbacks;
 - time;
 - memory.
 
-The primitive set is intentionally kept small while the architecture and generator contract are stabilized. Future primitive groups should be added only after their generic behavior and naming can be defined consistently across the intended backends.
+Event Flags / Event Groups are not implemented yet, but they are planned. Their generic semantics and ownership/context rules will be defined before the first backend implementation instead of being copied directly from one RTOS API.
 
-That semantic definition is part of the feature, not documentation added after the implementation.
+Future primitive groups should be added only after their generic behavior and naming can be defined consistently across the intended backends. That semantic definition is part of the feature, not documentation added after the implementation.

@@ -18,8 +18,12 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-/* FreeRTOS core (tskIDLE_PRIORITY, etc.) */
+/* FreeRTOS core and native semaphore handle used by the backend. */
 #include "FreeRTOS.h"
+#include "semphr.h"
+// BEGIN THREAD
+#include "task.h"
+// END THREAD
 
 /*===========================================================[MACRO DEFINITIONS]============================================*/
 
@@ -63,12 +67,14 @@ typedef struct
  * \struct  Template_osalFreertos_s
  * \brief   Template FreeRTOS OSAL structure.
  * \details FreeRTOS-specific extension of the Template OSAL. The base must be the first field.
+ *          resourceMutex protects internal resource registries and is never exposed as a client lock.
  */
 typedef struct
 {
-    Template_osal_s              base;       /*!< Base OSAL object.                        */
-    Template_osalFreertosParam_s param;      /*!< FreeRTOS-specific configuration (opt.).  */
-    bool                         validFlag;     /*!< Validation flag.                         */
+    Template_osal_s              base;          /*!< Base OSAL object; must remain first. */
+    Template_osalFreertosParam_s param;         /*!< FreeRTOS-specific configuration. */
+    SemaphoreHandle_t            resourceMutex; /*!< Backend-owned registry synchronization mutex. */
+    bool                         validFlag;     /*!< Backend validation flag. */
 } Template_osalFreertos_s;
 
 /*===========================================================[PUBLIC INTERFACE]=============================================*/

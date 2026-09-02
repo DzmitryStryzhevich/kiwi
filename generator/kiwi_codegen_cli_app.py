@@ -59,11 +59,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     api_group = parser.add_argument_group("API selection")
     for api_name in codegen.SUPPORTED_APIS:
+        option_name = api_name.replace("_", "-")
         api_group.add_argument(
-            f"--use-{api_name}-api",
+            f"--use-{option_name}-api",
             action="store_true",
             default=None,
-            help=f"Enable the {api_name} API group.",
+            help=f"Enable the {api_name.replace('_', ' ')} API group.",
         )
 
     layout = parser.add_argument_group("Output layout")

@@ -79,8 +79,12 @@ The current CLI supports the following positive switches:
 | Option | API group |
 | --- | --- |
 | `--use-queue-api` | Queues |
+| `--use-stream-buffer-api` | Stream buffers |
 | `--use-lock-api` | Locks |
+| `--use-semaphore-api` | Counting semaphores |
 | `--use-thread-api` | Threads |
+| `--use-critical-section-api` | Critical sections |
+| `--use-software-timer-api` | Software timers |
 | `--use-time-api` | Time |
 | `--use-memory-api` | Memory |
 
@@ -140,13 +144,17 @@ A generation profile captures **what KIWI should generate**, not where the resul
 A profile currently has this shape:
 
 ```yaml
-kiwi_profile_version: 1
+kiwi_profile_version: 2
 module_prefix: foo_module
 port: FreeRTOS
 api:
   queue: true
+  stream_buffer: false
   lock: false
+  semaphore: false
   thread: true
+  critical_section: false
+  software_timer: true
   time: false
   memory: false
 layout:
@@ -154,7 +162,7 @@ layout:
   split_src_inc_files: true
 ```
 
-`kiwi_profile_version` is the version of the profile schema. It is independent of the OSAL implementation version and exists so future versions of KIWI can validate or migrate older profile formats deliberately.
+`kiwi_profile_version` is the version of the profile schema. Version 2 adds the expanded primitive-selection fields. The current generator also accepts version 1 profiles and treats primitive fields that did not exist in version 1 as disabled, so profiles created before this expansion remain usable. The profile schema version is independent of the OSAL implementation version.
 
 The default file name suggested by the GUI is:
 
@@ -203,25 +211,23 @@ The upper settings group controls the target and generated-directory layout.
 
 ### API Set checkboxes
 
-The first row contains the currently implemented generator selections:
+The API selector contains the currently implemented FreeRTOS primitive groups:
 
 | Checkbox | Effect |
 | --- | --- |
-| `Queues` | Include the queue API group |
-| `Locks` | Include the lock API group |
-| `Threads` | Include the thread API group |
-| `Time` | Include the time API group |
-| `Memory` | Include the memory API group |
+| `Queues` | Include queue lifecycle plus `Put`, `Post`, `Get`, `Wait`, `Pend` and reset operations |
+| `Stream Buffers` | Include byte-stream create/delete/send/receive/reset operations |
+| `Locks` | Include recursive mutual-exclusion lock objects |
+| `Counting Semaphores` | Include create/delete/acquire/acquire-with-timeout/release/count operations |
+| `Threads` | Include thread lifecycle, suspend/resume, delay and self-exit operations |
+| `Critical Sections` | Include enter/exit operations for short FreeRTOS critical regions |
+| `Software Timers` | Include create/delete/start/stop/reset, one-shot/auto-reload and callback configuration |
+| `Time` | Include system time retrieval |
+| `Memory` | Include OS-backed allocation/free with OSAL registry bookkeeping |
 
-These correspond directly to the CLI `--use-*-api` switches.
+These correspond directly to the CLI `--use-*-api` switches and to fields in the YAML profile.
 
-The GUI also currently displays roadmap placeholders for:
-
-- `Event Groups`;
-- `Software Timers`;
-- `Stream Buffers`.
-
-These three controls are **not connected to generation yet** and do not change generated output. They are intentionally left as placeholders until those primitive groups are implemented in the OSAL templates and shared code-generation core.
+`Event Flags / Groups (planned)` remains visible only as a disabled roadmap item. It does not affect generation.
 
 ### GUI buttons
 

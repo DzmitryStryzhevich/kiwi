@@ -16,13 +16,24 @@ import yaml
 ROOT = pathlib.Path(__file__).resolve().parent
 PROJECT_ROOT = ROOT.parent
 
-PROFILE_SCHEMA_VERSION = 1
+PROFILE_SCHEMA_VERSION = 2
+SUPPORTED_PROFILE_SCHEMA_VERSIONS = frozenset({1, PROFILE_SCHEMA_VERSION})
 DEFAULT_MODULE_PREFIX = "foo_module"
 DEFAULT_PORT = "FreeRTOS"
 DEFAULT_SPLIT_INTO_PORT_DIR = False
 DEFAULT_SPLIT_SRC_INC_FILES = False
 
-SUPPORTED_APIS = ("queue", "lock", "thread", "time", "memory")
+SUPPORTED_APIS = (
+    "queue",
+    "stream_buffer",
+    "lock",
+    "semaphore",
+    "thread",
+    "critical_section",
+    "software_timer",
+    "time",
+    "memory",
+)
 DEFAULT_APIS = frozenset()
 SUPPORTED_PORTS = ("FreeRTOS", "POSIX", "CMSIS RTOS v2")
 IMPLEMENTED_PORTS = frozenset({"FreeRTOS"})
@@ -112,10 +123,14 @@ def apply_api_profile_markers(content: str, selected_apis: set[str] | frozenset[
     """Keep enabled template sections and remove disabled API groups."""
     marker_to_api = {
         "QUEUE": "queue",
+        "STREAM_BUFFER": "stream_buffer",
         "LOCK": "lock",
+        "SEMAPHORE": "semaphore",
         "THREAD": "thread",
-        "MEMORY": "memory",
+        "CRITICAL_SECTION": "critical_section",
+        "SOFTWARE_TIMER": "software_timer",
         "TIME": "time",
+        "MEMORY": "memory",
     }
 
     for marker, api_name in marker_to_api.items():
@@ -140,8 +155,12 @@ def render_profile_header(forms: PrefixForms, selected_apis: frozenset[str], por
 
     flags = {
         "queue": "QUEUE",
+        "stream_buffer": "STREAM_BUFFER",
         "lock": "LOCK",
+        "semaphore": "SEMAPHORE",
         "thread": "THREAD",
+        "critical_section": "CRITICAL_SECTION",
+        "software_timer": "SOFTWARE_TIMER",
         "time": "TIME",
         "memory": "MEMORY",
     }
@@ -267,10 +286,13 @@ def load_profile(path: str | pathlib.Path) -> GenerationConfig:
         raise CodegenError("Profile root must be a mapping.")
 
     version = raw.get("kiwi_profile_version")
-    if version != PROFILE_SCHEMA_VERSION:
+    if version not in SUPPORTED_PROFILE_SCHEMA_VERSIONS:
+        supported_versions = ", ".join(
+            str(item) for item in sorted(SUPPORTED_PROFILE_SCHEMA_VERSIONS)
+        )
         raise CodegenError(
             f"Unsupported KIWI profile version: {version!r}. "
-            f"Expected {PROFILE_SCHEMA_VERSION}."
+            f"Supported versions: {supported_versions}."
         )
 
     api_raw = _require_mapping(raw.get("api"), "api")

@@ -47,12 +47,10 @@ class App(tk.Tk):
             for name in codegen.SUPPORTED_APIS
         }
 
-        # Preserve the already-present future API placeholders. They remain
-        # deliberately disconnected from generation in this architecture step.
+        # Event Flags / Event Groups remain a roadmap item until their unified
+        # semantics and backend contract are defined.
         self.planned_api_vars = {
             "event_group": tk.BooleanVar(value=False),
-            "software_timer": tk.BooleanVar(value=False),
-            "stream_buffer": tk.BooleanVar(value=False),
         }
 
         self.split_into_port_dir_var = tk.BooleanVar(
@@ -193,27 +191,30 @@ class App(tk.Tk):
 
         checks = ttk.Frame(api_card, style="Card.TFrame")
         checks.pack(anchor="w", pady=(8, 0))
-        labels = {
-            "queue": "Queues",
-            "lock": "Locks",
-            "thread": "Threads",
-            "time": "Time",
-            "memory": "Memory",
-        }
-        for idx, key in enumerate(labels):
+        labels = (
+            ("queue", "Queues"),
+            ("stream_buffer", "Stream Buffers"),
+            ("lock", "Locks"),
+            ("semaphore", "Counting Semaphores"),
+            ("thread", "Threads"),
+            ("critical_section", "Critical Sections"),
+            ("software_timer", "Software Timers"),
+            ("time", "Time"),
+            ("memory", "Memory"),
+        )
+        for idx, (key, label) in enumerate(labels):
+            row = idx // 5
+            column = idx % 5
             ttk.Checkbutton(
-                checks, text=labels[key], variable=self.api_vars[key]
-            ).grid(row=0, column=idx, padx=(0, 12), sticky="w")
+                checks, text=label, variable=self.api_vars[key]
+            ).grid(row=row, column=column, padx=(0, 12), pady=(0 if row == 0 else 8, 0), sticky="w")
 
-        planned_labels = {
-            "event_group": "Event Groups",
-            "software_timer": "Software Timers",
-            "stream_buffer": "Stream Buffers",
-        }
-        for idx, key in enumerate(planned_labels):
-            ttk.Checkbutton(
-                checks, text=planned_labels[key], variable=self.planned_api_vars[key]
-            ).grid(row=1, column=idx, padx=(0, 12), pady=(8, 0), sticky="w")
+        ttk.Checkbutton(
+            checks,
+            text="Event Flags / Groups (planned)",
+            variable=self.planned_api_vars["event_group"],
+            state="disabled",
+        ).grid(row=2, column=0, columnspan=2, padx=(0, 12), pady=(8, 0), sticky="w")
 
 
         actions = ttk.Frame(outer, style="Card.TFrame")
