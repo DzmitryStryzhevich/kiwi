@@ -62,12 +62,12 @@ static void template_osalResetObjects(Template_osal_s *const osal);
 /**
  * \brief  Find a free queue slot.
  */
-static size_t template_osalRegQueueFreeSlotFind(void * const osalPort);
+static size_t template_osalRegQueueFreeSlotFind(void *const osalPort);
 
 /**
  * \brief  Find queue handle.
  */
-static size_t template_osalRegQueueHandleFind(void * const osalPort,
+static size_t template_osalRegQueueHandleFind(void *const osalPort,
                                               const Template_osalQueueHandle_t queueHandle);
 // END QUEUE
 
@@ -75,12 +75,12 @@ static size_t template_osalRegQueueHandleFind(void * const osalPort,
 /**
  * \brief  Find a free stream-buffer slot.
  */
-static size_t template_osalRegStreamBufferFreeSlotFind(void * const osalPort);
+static size_t template_osalRegStreamBufferFreeSlotFind(void *const osalPort);
 
 /**
  * \brief  Find a stream-buffer handle.
  */
-static size_t template_osalRegStreamBufferHandleFind(void * const osalPort,
+static size_t template_osalRegStreamBufferHandleFind(void *const osalPort,
                                                      const Template_osalStreamBufferHandle_t streamBufferHandle);
 // END STREAM_BUFFER
 
@@ -88,12 +88,12 @@ static size_t template_osalRegStreamBufferHandleFind(void * const osalPort,
 /**
  * \brief  Find a free lock object slot.
  */
-static size_t template_osalRegLockFreeSlotFind(void * const osalPort);
+static size_t template_osalRegLockFreeSlotFind(void *const osalPort);
 
 /**
  * \brief  Find lock object handle.
  */
-static size_t template_osalRegLockHandleFind(void * const osalPort,
+static size_t template_osalRegLockHandleFind(void *const osalPort,
                                              const Template_osalLockObjHandle_t lockObjHandle);
 // END LOCK
 
@@ -101,12 +101,12 @@ static size_t template_osalRegLockHandleFind(void * const osalPort,
 /**
  * \brief  Find a free counting-semaphore slot.
  */
-static size_t template_osalRegSemaphoreFreeSlotFind(void * const osalPort);
+static size_t template_osalRegSemaphoreFreeSlotFind(void *const osalPort);
 
 /**
  * \brief  Find a counting-semaphore handle.
  */
-static size_t template_osalRegSemaphoreHandleFind(void * const osalPort,
+static size_t template_osalRegSemaphoreHandleFind(void *const osalPort,
                                                   const Template_osalSemaphoreHandle_t semaphoreHandle);
 // END SEMAPHORE
 
@@ -114,18 +114,18 @@ static size_t template_osalRegSemaphoreHandleFind(void * const osalPort,
 /**
  * \brief  Find a free thread slot.
  */
-static size_t template_osalRegThreadFreeSlotFind(void * const osalPort);
+static size_t template_osalRegThreadFreeSlotFind(void *const osalPort);
 
 /**
  * \brief  Find thread handle.
  */
-static size_t template_osalRegThreadHandleFind(void * const osalPort,
+static size_t template_osalRegThreadHandleFind(void *const osalPort,
                                                const Template_osalThreadHandle_t threadHandle);
 
 /**
  * \brief  Clear a thread registry slot.
  */
-static void template_osalRegThreadSlotClear(void * const osalPort,
+static void template_osalRegThreadSlotClear(void *const osalPort,
                                             const size_t threadIdx);
 // END THREAD
 
@@ -133,12 +133,12 @@ static void template_osalRegThreadSlotClear(void * const osalPort,
 /**
  * \brief  Find a free software-timer slot.
  */
-static size_t template_osalRegSoftwareTimerFreeSlotFind(void * const osalPort);
+static size_t template_osalRegSoftwareTimerFreeSlotFind(void *const osalPort);
 
 /**
  * \brief  Find a software-timer handle.
  */
-static size_t template_osalRegSoftwareTimerHandleFind(void * const osalPort,
+static size_t template_osalRegSoftwareTimerHandleFind(void *const osalPort,
                                                       const Template_osalSoftwareTimerHandle_t timerHandle);
 // END SOFTWARE_TIMER
 
@@ -146,13 +146,13 @@ static size_t template_osalRegSoftwareTimerHandleFind(void * const osalPort,
 /**
  * \brief  Find a free memory slot.
  */
-static size_t template_osalRegMemFreeSlotFind(void * const osalPort);
+static size_t template_osalRegMemFreeSlotFind(void *const osalPort);
 
 /**
  * \brief  Find pointer in memory registry.
  */
-static size_t template_osalRegMemHandleFind(void * const osalPort,
-                                            const void * const ptr);
+static size_t template_osalRegMemHandleFind(void *const osalPort,
+                                            const void *const ptr);
 // END MEMORY
 
 /**
@@ -1031,9 +1031,9 @@ Template_osalErr_e template_osalQueueHandleGet(Template_osal_s *const osal,
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
 Template_osalErr_e template_osalStreamBufferCreate(Template_osal_s *const osal,
-                                                    const size_t bufferSizeBytes,
-                                                    const size_t triggerLevelBytes,
-                                                    Template_osalStreamBufferHandle_t *const streamBufferHandle)
+                                                   const size_t bufferSizeBytes,
+                                                   const size_t triggerLevelBytes,
+                                                   Template_osalStreamBufferHandle_t *const streamBufferHandle)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalStreamBufferCreate(%p, %zu, %zu, %p)",
@@ -1092,7 +1092,7 @@ Template_osalErr_e template_osalStreamBufferCreate(Template_osal_s *const osal,
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
 Template_osalErr_e template_osalStreamBufferDelete(Template_osal_s *const osal,
-                                                    const Template_osalStreamBufferHandle_t streamBufferHandle)
+                                                   const Template_osalStreamBufferHandle_t streamBufferHandle)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalStreamBufferDelete(%p, %p)",
@@ -1148,10 +1148,10 @@ Template_osalErr_e template_osalStreamBufferDelete(Template_osal_s *const osal,
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
 Template_osalErr_e template_osalStreamBufferSend(Template_osal_s *const osal,
-                                                  const Template_osalStreamBufferHandle_t streamBufferHandle,
-                                                  const void *const data,
-                                                  const size_t dataLengthBytes,
-                                                  size_t *const bytesSent)
+                                                 const Template_osalStreamBufferHandle_t streamBufferHandle,
+                                                 const void *const data,
+                                                 const size_t dataLengthBytes,
+                                                 size_t *const bytesSent)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalStreamBufferSend(%p, %p, %p, %zu, %p)",
@@ -1216,11 +1216,11 @@ Template_osalErr_e template_osalStreamBufferSend(Template_osal_s *const osal,
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
 Template_osalErr_e template_osalStreamBufferReceive(Template_osal_s *const osal,
-                                                     const Template_osalStreamBufferHandle_t streamBufferHandle,
-                                                     void *const data,
-                                                     const size_t dataLengthBytes,
-                                                     const Template_osalTimeMs_t timeoutMs,
-                                                     size_t *const bytesReceived)
+                                                    const Template_osalStreamBufferHandle_t streamBufferHandle,
+                                                    void *const data,
+                                                    const size_t dataLengthBytes,
+                                                    const Template_osalTimeMs_t timeoutMs,
+                                                    size_t *const bytesReceived)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalStreamBufferReceive(%p, %p, %p, %zu, %u, %p)",
@@ -1282,7 +1282,7 @@ Template_osalErr_e template_osalStreamBufferReceive(Template_osal_s *const osal,
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
 Template_osalErr_e template_osalStreamBufferReset(Template_osal_s *const osal,
-                                                   const Template_osalStreamBufferHandle_t streamBufferHandle)
+                                                  const Template_osalStreamBufferHandle_t streamBufferHandle)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalStreamBufferReset(%p, %p)",
@@ -1336,8 +1336,8 @@ Template_osalErr_e template_osalStreamBufferReset(Template_osal_s *const osal,
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
 Template_osalErr_e template_osalStreamBufferHandleGet(Template_osal_s *const osal,
-                                                       const size_t streamBufferSlotInd,
-                                                       Template_osalStreamBufferHandle_t *const streamBufferHandle)
+                                                      const size_t streamBufferSlotInd,
+                                                      Template_osalStreamBufferHandle_t *const streamBufferHandle)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalStreamBufferHandleGet(%p, %zu, %p)",
@@ -1628,9 +1628,9 @@ Template_osalErr_e template_osalLockObjHandleGet(Template_osal_s *const osal,
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
 Template_osalErr_e template_osalSemaphoreCreate(Template_osal_s *const osal,
-                                                 const Template_osalSemaphoreCount_t maxCount,
-                                                 const Template_osalSemaphoreCount_t initialCount,
-                                                 Template_osalSemaphoreHandle_t *const semaphoreHandle)
+                                                const Template_osalSemaphoreCount_t maxCount,
+                                                const Template_osalSemaphoreCount_t initialCount,
+                                                Template_osalSemaphoreHandle_t *const semaphoreHandle)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalSemaphoreCreate(%p, %u, %u, %p)",
@@ -1793,8 +1793,8 @@ Template_osalErr_e template_osalSemaphoreAcquire(Template_osal_s *const osal,
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
 Template_osalErr_e template_osalSemaphoreAcquireWait(Template_osal_s *const osal,
-                                                      const Template_osalSemaphoreHandle_t semaphoreHandle,
-                                                      const Template_osalTimeMs_t timeoutMs)
+                                                     const Template_osalSemaphoreHandle_t semaphoreHandle,
+                                                     const Template_osalTimeMs_t timeoutMs)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalSemaphoreAcquireWait(%p, %p, %u)",
@@ -1901,8 +1901,8 @@ Template_osalErr_e template_osalSemaphoreRelease(Template_osal_s *const osal,
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
 Template_osalErr_e template_osalSemaphoreCountGet(Template_osal_s *const osal,
-                                                   const Template_osalSemaphoreHandle_t semaphoreHandle,
-                                                   Template_osalSemaphoreCount_t *const semaphoreCount)
+                                                  const Template_osalSemaphoreHandle_t semaphoreHandle,
+                                                  Template_osalSemaphoreCount_t *const semaphoreCount)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalSemaphoreCountGet(%p, %p, %p)",
@@ -1957,8 +1957,8 @@ Template_osalErr_e template_osalSemaphoreCountGet(Template_osal_s *const osal,
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
 Template_osalErr_e template_osalSemaphoreHandleGet(Template_osal_s *const osal,
-                                                    const size_t semaphoreSlotInd,
-                                                    Template_osalSemaphoreHandle_t *const semaphoreHandle)
+                                                   const size_t semaphoreSlotInd,
+                                                   Template_osalSemaphoreHandle_t *const semaphoreHandle)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalSemaphoreHandleGet(%p, %zu, %p)",
@@ -2432,8 +2432,8 @@ Template_osalErr_e template_osalCriticalSectionExit(Template_osal_s *const osal)
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
 Template_osalErr_e template_osalSoftwareTimerCreate(Template_osal_s *const osal,
-                                                     Template_osalSoftwareTimerHandle_t *const timerHandle,
-                                                     Template_osalSoftwareTimerCfg_s timerCfg)
+                                                    Template_osalSoftwareTimerHandle_t *const timerHandle,
+                                                    Template_osalSoftwareTimerCfg_s timerCfg)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerCreate(%p, %p, {%s, %p, %p, %d, %u})",
@@ -2707,8 +2707,8 @@ Template_osalErr_e template_osalSoftwareTimerReset(Template_osal_s *const osal,
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
 Template_osalErr_e template_osalSoftwareTimerHandleGet(Template_osal_s *const osal,
-                                                        const size_t timerSlotInd,
-                                                        Template_osalSoftwareTimerHandle_t *const timerHandle)
+                                                       const size_t timerSlotInd,
+                                                       Template_osalSoftwareTimerHandle_t *const timerHandle)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerHandleGet(%p, %zu, %p)",
@@ -2850,11 +2850,10 @@ Template_osalErr_e template_osalMalloc(Template_osal_s *const osal,
     {
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalMalloc -> %d",
-                            (retStatus != TEMPLATE_OSAL_NO_ERR) ? retStatus :
-                            TEMPLATE_OSAL_MEM_ALLOCATION_ERR);
+                            (retStatus != TEMPLATE_OSAL_NO_ERR) ? retStatus : TEMPLATE_OSAL_MEM_ALLOCATION_ERR);
 
         return (retStatus != TEMPLATE_OSAL_NO_ERR) ? retStatus
-                                                        : TEMPLATE_OSAL_MEM_ALLOCATION_ERR;  // Exit: Error: backend failed or returned NULL
+                                                   : TEMPLATE_OSAL_MEM_ALLOCATION_ERR;  // Exit: Error: backend failed or returned NULL
     }
 
     *outPtr = ptr;
@@ -3055,7 +3054,7 @@ static void template_osalResetObjects(Template_osal_s *const osal)
  * \param  osalPort  Derived OSAL pointer.
  * \return Slot ID (index + 1) or 0 if none.
  */
-static size_t template_osalRegQueueFreeSlotFind(void * const osalPort)
+static size_t template_osalRegQueueFreeSlotFind(void *const osalPort)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalRegQueueFreeSlotFind(%p)", osalPort);
@@ -3088,7 +3087,7 @@ static size_t template_osalRegQueueFreeSlotFind(void * const osalPort)
  * \param  queueHandle  Handle to search.
  * \return Queue ID (index + 1) or 0 if not found.
  */
-static size_t template_osalRegQueueHandleFind(void * const osalPort,
+static size_t template_osalRegQueueHandleFind(void *const osalPort,
                                               const Template_osalQueueHandle_t queueHandle)
 {
     /* Trace input args */
@@ -3125,7 +3124,7 @@ static size_t template_osalRegQueueHandleFind(void * const osalPort,
  * \param  osalPort  Derived OSAL pointer.
  * \return Slot ID (index + 1) or 0 if none.
  */
-static size_t template_osalRegStreamBufferFreeSlotFind(void * const osalPort)
+static size_t template_osalRegStreamBufferFreeSlotFind(void *const osalPort)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalRegStreamBufferFreeSlotFind(%p)", osalPort);
@@ -3158,7 +3157,7 @@ static size_t template_osalRegStreamBufferFreeSlotFind(void * const osalPort)
  * \param  streamBufferHandle Handle to search.
  * \return Stream-buffer ID (index + 1) or 0 if not found.
  */
-static size_t template_osalRegStreamBufferHandleFind(void * const osalPort,
+static size_t template_osalRegStreamBufferHandleFind(void *const osalPort,
                                                      const Template_osalStreamBufferHandle_t streamBufferHandle)
 {
     /* Trace input args */
@@ -3197,7 +3196,7 @@ static size_t template_osalRegStreamBufferHandleFind(void * const osalPort,
  * \param  osalPort  Derived OSAL pointer.
  * \return Slot ID (index + 1) or 0 if none.
  */
-static size_t template_osalRegLockFreeSlotFind(void * const osalPort)
+static size_t template_osalRegLockFreeSlotFind(void *const osalPort)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalRegLockFreeSlotFind(%p)", osalPort);
@@ -3230,7 +3229,7 @@ static size_t template_osalRegLockFreeSlotFind(void * const osalPort)
  * \param  lockObjHandle Handle to search.
  * \return Lock ID (index + 1) or 0 if not found.
  */
-static size_t template_osalRegLockHandleFind(void * const osalPort,
+static size_t template_osalRegLockHandleFind(void *const osalPort,
                                              const Template_osalLockObjHandle_t lockObjHandle)
 {
     /* Trace input args */
@@ -3267,7 +3266,7 @@ static size_t template_osalRegLockHandleFind(void * const osalPort,
  * \param  osalPort  Derived OSAL pointer.
  * \return Slot ID (index + 1) or 0 if none.
  */
-static size_t template_osalRegSemaphoreFreeSlotFind(void * const osalPort)
+static size_t template_osalRegSemaphoreFreeSlotFind(void *const osalPort)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalRegSemaphoreFreeSlotFind(%p)", osalPort);
@@ -3300,7 +3299,7 @@ static size_t template_osalRegSemaphoreFreeSlotFind(void * const osalPort)
  * \param  semaphoreHandle Handle to search.
  * \return Semaphore ID (index + 1) or 0 if not found.
  */
-static size_t template_osalRegSemaphoreHandleFind(void * const osalPort,
+static size_t template_osalRegSemaphoreHandleFind(void *const osalPort,
                                                   const Template_osalSemaphoreHandle_t semaphoreHandle)
 {
     /* Trace input args */
@@ -3339,7 +3338,7 @@ static size_t template_osalRegSemaphoreHandleFind(void * const osalPort,
  * \param  osalPort  Derived OSAL pointer.
  * \return Slot ID (index + 1) or 0 if none.
  */
-static size_t template_osalRegThreadFreeSlotFind(void * const osalPort)
+static size_t template_osalRegThreadFreeSlotFind(void *const osalPort)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalRegThreadFreeSlotFind(%p)", osalPort);
@@ -3372,7 +3371,7 @@ static size_t template_osalRegThreadFreeSlotFind(void * const osalPort)
  * \param  threadHandle Handle to search.
  * \return Thread ID (index + 1) or 0 if not found.
  */
-static size_t template_osalRegThreadHandleFind(void * const osalPort,
+static size_t template_osalRegThreadHandleFind(void *const osalPort,
                                                const Template_osalThreadHandle_t threadHandle)
 {
     /* Trace input args */
@@ -3407,7 +3406,7 @@ static size_t template_osalRegThreadHandleFind(void * const osalPort,
  * \param  threadIdx  Zero-based thread registry index.
  * \return None.
  */
-static void template_osalRegThreadSlotClear(void * const osalPort,
+static void template_osalRegThreadSlotClear(void *const osalPort,
                                             const size_t threadIdx)
 {
     /* Trace input args */
@@ -3440,7 +3439,7 @@ static void template_osalRegThreadSlotClear(void * const osalPort,
  * \param  osalPort  Derived OSAL pointer.
  * \return Slot ID (index + 1) or 0 if none.
  */
-static size_t template_osalRegSoftwareTimerFreeSlotFind(void * const osalPort)
+static size_t template_osalRegSoftwareTimerFreeSlotFind(void *const osalPort)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalRegSoftwareTimerFreeSlotFind(%p)", osalPort);
@@ -3473,7 +3472,7 @@ static size_t template_osalRegSoftwareTimerFreeSlotFind(void * const osalPort)
  * \param  timerHandle Handle to search.
  * \return Software-timer ID (index + 1) or 0 if not found.
  */
-static size_t template_osalRegSoftwareTimerHandleFind(void * const osalPort,
+static size_t template_osalRegSoftwareTimerHandleFind(void *const osalPort,
                                                       const Template_osalSoftwareTimerHandle_t timerHandle)
 {
     /* Trace input args */
@@ -3513,7 +3512,7 @@ static size_t template_osalRegSoftwareTimerHandleFind(void * const osalPort,
  * \param  osalPort  Derived OSAL pointer.
  * \return Slot ID (index + 1) or 0 if none.
  */
-static size_t template_osalRegMemFreeSlotFind(void * const osalPort)
+static size_t template_osalRegMemFreeSlotFind(void *const osalPort)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalRegMemFreeSlotFind(%p)", osalPort);
@@ -3546,8 +3545,8 @@ static size_t template_osalRegMemFreeSlotFind(void * const osalPort)
  * \param  ptr       Pointer to search.
  * \return Memory ID (index + 1) or 0 if not found.
  */
-static size_t template_osalRegMemHandleFind(void * const osalPort,
-                                            const void * const ptr)
+static size_t template_osalRegMemHandleFind(void *const osalPort,
+                                            const void *const ptr)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalRegMemHandleFind(%p, %p)", osalPort, ptr);

@@ -1,10 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import shutil
+
+
+clang_format = shutil.which("clang-format")
+if clang_format is None:
+    raise RuntimeError("clang-format was not found. Install generator requirements first.")
+
 
 a = Analysis(
     ['kiwi_codegen_cli_app.py'],
     pathex=[],
-    binaries=[],
+    binaries=[(clang_format, '.')],
     datas=[
         ('../osal', 'osal'),
         ('../doc/kiwi.png', 'doc'),

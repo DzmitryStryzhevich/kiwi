@@ -35,6 +35,8 @@ Install the Python dependencies from the repository root or from `generator/`:
 python -m pip install -r generator/requirements.txt
 ```
 
+KIWI owns the formatting of generated C sources. The pinned `clang-format` version from `requirements.txt` is invoked automatically by the shared code-generation core after rendering. Generated `.c` and `.h` files therefore do not depend on a user or parent-project `.clang-format` configuration. Packaged CLI and GUI executables include the same formatter binary.
+
 ## Running from source
 
 CLI:

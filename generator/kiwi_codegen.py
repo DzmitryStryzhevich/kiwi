@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import pathlib
 import re
 import shutil
+import subprocess
 import sys
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any
@@ -37,6 +38,38 @@ SUPPORTED_APIS = (
 DEFAULT_APIS = frozenset()
 SUPPORTED_PORTS = ("FreeRTOS", "POSIX", "CMSIS RTOS v2")
 IMPLEMENTED_PORTS = frozenset({"FreeRTOS"})
+
+CLANG_FORMAT_VERSION = "18.1.8"
+CLANG_FORMAT_STYLE = (
+    "{BasedOnStyle: LLVM, "
+    "AlignAfterOpenBracket: Align, "
+    "AlignConsecutiveAssignments: {Enabled: true, AcrossEmptyLines: false, AcrossComments: false, AlignCompound: false, PadOperators: true}, "
+    "AlignConsecutiveDeclarations: {Enabled: true, AcrossEmptyLines: false, AcrossComments: false}, "
+    "AlignConsecutiveMacros: {Enabled: true, AcrossEmptyLines: false, AcrossComments: false}, "
+    "AlignOperands: Align, "
+    "AlignTrailingComments: {Kind: Always, OverEmptyLines: 0}, "
+    "AllowAllParametersOfDeclarationOnNextLine: false, "
+    "AllowShortBlocksOnASingleLine: Never, "
+    "AllowShortFunctionsOnASingleLine: None, "
+    "AllowShortIfStatementsOnASingleLine: Never, "
+    "AllowShortLoopsOnASingleLine: false, "
+    "BinPackArguments: true, "
+    "BinPackParameters: true, "
+    "BreakBeforeBinaryOperators: None, "
+    "BreakBeforeBraces: Allman, "
+    "ColumnLimit: 128, "
+    "ContinuationIndentWidth: 4, "
+    "DerivePointerAlignment: false, "
+    "IndentPPDirectives: BeforeHash, "
+    "IndentWidth: 4, "
+    "MaxEmptyLinesToKeep: 2, "
+    "PenaltyBreakBeforeFirstCallParameter: 1000, "
+    "PointerAlignment: Right, "
+    "PPIndentWidth: 4, "
+    "ReflowComments: false, "
+    "SortIncludes: Never, "
+    "UseTab: Never}"
+)
 
 
 class CodegenError(RuntimeError):
@@ -451,9 +484,95 @@ def _render_combined_cmake(forms: PrefixForms, config: GenerationConfig) -> str:
     )
 
 
+def _ensure_final_newline(content: str) -> str:
+    """Normalize generated text to exactly one final newline."""
+    return content.rstrip("\r\n") + "\n"
+
+
+def _resolve_clang_format() -> pathlib.Path:
+    """Resolve the pinned clang-format executable for source and packaged execution."""
+    executable_name = "clang-format.exe" if sys.platform == "win32" else "clang-format"
+    candidates: list[pathlib.Path] = []
+
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.append(pathlib.Path(meipass) / executable_name)
+
+    candidates.append(ROOT / executable_name)
+
+    path_executable = shutil.which("clang-format")
+    if path_executable:
+        candidates.append(pathlib.Path(path_executable))
+
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_file():
+            return candidate
+
+    raise CodegenError(
+        "clang-format was not found. Install generator requirements or use a packaged KIWI executable."
+    )
+
+
+def _verify_clang_format_version(executable: pathlib.Path) -> None:
+    """Require the formatter version owned by the KIWI code generator."""
+    try:
+        result = subprocess.run(
+            [str(executable), "--version"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise CodegenError(f"Failed to execute clang-format: {exc}") from exc
+
+    if CLANG_FORMAT_VERSION not in result.stdout:
+        raise CodegenError(
+            f"Unsupported clang-format version. KIWI requires {CLANG_FORMAT_VERSION}; "
+            f"detected: {result.stdout.strip()}"
+        )
+
+
+def _format_generated_sources(
+    generated: Iterable[pathlib.Path],
+    log: Callable[[str], None],
+) -> None:
+    """Apply the fixed KIWI formatting policy to generated C source files."""
+    source_files = [path for path in generated if path.suffix.lower() in {".c", ".h"}]
+    if not source_files:
+        return
+
+    executable = _resolve_clang_format()
+    _verify_clang_format_version(executable)
+
+    for path in source_files:
+        try:
+            subprocess.run(
+                [
+                    str(executable),
+                    f"--style={CLANG_FORMAT_STYLE}",
+                    "-i",
+                    str(path),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except (OSError, subprocess.CalledProcessError) as exc:
+            stderr = getattr(exc, "stderr", "") or ""
+            details = stderr.strip() or str(exc)
+            raise CodegenError(f"Failed to format generated file '{path}': {details}") from exc
+
+        path.write_text(
+            _ensure_final_newline(path.read_text(encoding="utf-8")),
+            encoding="utf-8",
+            newline="\n",
+        )
+        log(f"Formatted: {path}")
+
+
 def _write_text(path: pathlib.Path, content: str, generated: list[pathlib.Path], log: Callable[[str], None]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8", newline="\n")
+    path.write_text(_ensure_final_newline(content), encoding="utf-8", newline="\n")
     generated.append(path)
     log(f"Generated: {path}")
 
@@ -534,6 +653,8 @@ def generate(
         _write_text(port_cmake, _render_port_cmake(forms, config), generated, log)
     else:
         _write_text(root_cmake, _render_combined_cmake(forms, config), generated, log)
+
+    _format_generated_sources(generated, log)
 
     readme = PROJECT_ROOT / "README.md"
     if readme.exists():

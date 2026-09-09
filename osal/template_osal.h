@@ -286,9 +286,9 @@ typedef enum
 typedef struct
 {
     Template_osalThreadWorker_f worker;       /*!< Worker entry function. */
-    const char                  *name;           /*!< Optional thread name.  */
-    size_t                      stackSize;       /*!< Expressed in bytes */
-    void                        *args;           /*!< Worker arg parameter (passed as arg to worker). */
+    const char                  *name;        /*!< Optional thread name.  */
+    size_t                      stackSize;    /*!< Expressed in bytes */
+    void                        *args;        /*!< Worker arg parameter (passed as arg to worker). */
     Template_osalThreadPrio_e   prio;         /*!< Thread priority.*/
 } Template_osalThreadCfg_s;
 
@@ -321,10 +321,10 @@ typedef struct
      * \param  queueHandle    Pointer to store the created queue handle.
      * \return Template_osalErr_e (0 on success).
      */
-    Template_osalErr_e (*queueCreate)(void * const osal,
+    Template_osalErr_e (*queueCreate)(void *const osal,
                                       const size_t queueItemSize,
                                       const size_t queueDepth,
-                                      Template_osalQueueHandle_t * const queueHandle);
+                                      Template_osalQueueHandle_t *const queueHandle);
 
     /**
      * \brief  Deletes a message queue.
@@ -332,7 +332,7 @@ typedef struct
      * \param  queueHandle  Handle to the queue to be deleted.
      * \return Template_osalErr_e (0 on success).
      */
-    Template_osalErr_e (*queueDelete)(void * const osal,
+    Template_osalErr_e (*queueDelete)(void *const osal,
                                       const Template_osalQueueHandle_t queueHandle);
 
     /**
@@ -342,9 +342,9 @@ typedef struct
      * \param  queueItemPtr  Pointer to the item to be inserted into the queue.
      * \return Template_osalErr_e (0 on success).
      */
-    Template_osalErr_e (*queueItemPut)(void * const osal,
+    Template_osalErr_e (*queueItemPut)(void *const osal,
                                        const Template_osalQueueHandle_t queueHandle,
-                                       const void * const queueItemPtr);
+                                       const void *const queueItemPtr);
 
     /**
      * \brief  Inserts an item into a queue, waiting up to the requested timeout for capacity.
@@ -354,9 +354,9 @@ typedef struct
      * \param  timeoutMs     Maximum time in milliseconds to wait for free queue capacity.
      * \return Template_osalErr_e (0 on success, timeout/error otherwise).
      */
-    Template_osalErr_e (*queueItemPost)(void * const osal,
+    Template_osalErr_e (*queueItemPost)(void *const osal,
                                         const Template_osalQueueHandle_t queueHandle,
-                                        const void * const queueItemPtr,
+                                        const void *const queueItemPtr,
                                         const Template_osalTimeMs_t timeoutMs);
 
     /**
@@ -366,9 +366,9 @@ typedef struct
      * \param  queueItemPtr  Pointer to the destination buffer for the retrieved item.
      * \return Template_osalErr_e (0 on success, empty/error otherwise).
      */
-    Template_osalErr_e (*queueItemGet)(void * const osal,
+    Template_osalErr_e (*queueItemGet)(void *const osal,
                                        const Template_osalQueueHandle_t queueHandle,
-                                       void * const queueItemPtr);
+                                       void *const queueItemPtr);
 
     /**
      * \brief  Waits indefinitely for an item and retrieves it.
@@ -377,9 +377,9 @@ typedef struct
      * \param  queueItemPtr  Pointer to the destination buffer for the retrieved item.
      * \return Template_osalErr_e (0 on success, error otherwise).
      */
-    Template_osalErr_e (*queueItemWait)(void * const osal,
+    Template_osalErr_e (*queueItemWait)(void *const osal,
                                         const Template_osalQueueHandle_t queueHandle,
-                                        void * const queueItemPtr);
+                                        void *const queueItemPtr);
 
     /**
      * \brief  Retrieves an item from a queue with blocking and timeout.
@@ -389,9 +389,9 @@ typedef struct
      * \param  timeoutMs      Maximum time (in milliseconds) to wait for an item.
      * \return Template_osalErr_e (0 on success, timeout/error otherwise).
      */
-    Template_osalErr_e (*queueItemPend)(void * const osal,
+    Template_osalErr_e (*queueItemPend)(void *const osal,
                                         const Template_osalQueueHandle_t queueHandle,
-                                        void * const queueItemPtr,
+                                        void *const queueItemPtr,
                                         const Template_osalTimeMs_t timeoutMs);
 
     /**
@@ -400,7 +400,7 @@ typedef struct
      * \param  queueHandle  Handle to the queue to be reset.
      * \return Template_osalErr_e (0 on success).
      */
-    Template_osalErr_e (*queueReset)(void * const osal,
+    Template_osalErr_e (*queueReset)(void *const osal,
                                      const Template_osalQueueHandle_t queueHandle);
     // END QUEUE
 
@@ -415,10 +415,10 @@ typedef struct
      * \param  streamBufferHandle  Output pointer receiving the created handle.
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
-    Template_osalErr_e (*streamBufferCreate)(void * const osal,
-                                              const size_t bufferSizeBytes,
-                                              const size_t triggerLevelBytes,
-                                              Template_osalStreamBufferHandle_t * const streamBufferHandle);
+    Template_osalErr_e (*streamBufferCreate)(void *const osal,
+                                             const size_t bufferSizeBytes,
+                                             const size_t triggerLevelBytes,
+                                             Template_osalStreamBufferHandle_t *const streamBufferHandle);
 
     /**
      * \brief  Delete a byte stream buffer.
@@ -426,8 +426,8 @@ typedef struct
      * \param  streamBufferHandle  Registered stream-buffer handle.
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
-    Template_osalErr_e (*streamBufferDelete)(void * const osal,
-                                              const Template_osalStreamBufferHandle_t streamBufferHandle);
+    Template_osalErr_e (*streamBufferDelete)(void *const osal,
+                                             const Template_osalStreamBufferHandle_t streamBufferHandle);
 
     /**
      * \brief  Send bytes without waiting for capacity.
@@ -438,11 +438,11 @@ typedef struct
      * \param  bytesSent           Output number of bytes accepted by the backend.
      * \return Template_osalErr_e, zero value means the operation was valid; inspect bytesSent for transfer length.
      */
-    Template_osalErr_e (*streamBufferSend)(void * const osal,
-                                            const Template_osalStreamBufferHandle_t streamBufferHandle,
-                                            const void * const data,
-                                            const size_t dataLengthBytes,
-                                            size_t * const bytesSent);
+    Template_osalErr_e (*streamBufferSend)(void *const osal,
+                                           const Template_osalStreamBufferHandle_t streamBufferHandle,
+                                           const void *const data,
+                                           const size_t dataLengthBytes,
+                                           size_t *const bytesSent);
 
     /**
      * \brief  Receive bytes using an explicit timeout.
@@ -454,12 +454,12 @@ typedef struct
      * \param  bytesReceived       Output number of bytes received.
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
-    Template_osalErr_e (*streamBufferReceive)(void * const osal,
-                                               const Template_osalStreamBufferHandle_t streamBufferHandle,
-                                               void * const data,
-                                               const size_t dataLengthBytes,
-                                               const Template_osalTimeMs_t timeoutMs,
-                                               size_t * const bytesReceived);
+    Template_osalErr_e (*streamBufferReceive)(void *const osal,
+                                              const Template_osalStreamBufferHandle_t streamBufferHandle,
+                                              void *const data,
+                                              const size_t dataLengthBytes,
+                                              const Template_osalTimeMs_t timeoutMs,
+                                              size_t *const bytesReceived);
 
     /**
      * \brief  Reset a byte stream buffer to the empty state.
@@ -467,8 +467,8 @@ typedef struct
      * \param  streamBufferHandle  Registered stream-buffer handle.
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
-    Template_osalErr_e (*streamBufferReset)(void * const osal,
-                                             const Template_osalStreamBufferHandle_t streamBufferHandle);
+    Template_osalErr_e (*streamBufferReset)(void *const osal,
+                                            const Template_osalStreamBufferHandle_t streamBufferHandle);
     // END STREAM_BUFFER
 
     // BEGIN LOCK
@@ -480,8 +480,8 @@ typedef struct
      * \param  lockObjHandle  Pointer to store the created lock object handle.
      * \return Template_osalErr_e (0 on success).
      */
-    Template_osalErr_e (*lockObjCreate)(void * const osal,
-                                        Template_osalLockObjHandle_t * const lockObjHandle);
+    Template_osalErr_e (*lockObjCreate)(void *const osal,
+                                        Template_osalLockObjHandle_t *const lockObjHandle);
 
     /**
      * \brief  Deletes a lock object.
@@ -489,7 +489,7 @@ typedef struct
      * \param  lockObjHandle  Handle to the lock object to be deleted.
      * \return Template_osalErr_e (0 on success).
      */
-    Template_osalErr_e (*lockObjDelete)(void * const osal,
+    Template_osalErr_e (*lockObjDelete)(void *const osal,
                                         const Template_osalLockObjHandle_t lockObjHandle);
 
     /**
@@ -498,7 +498,7 @@ typedef struct
      * \param  lockObjHandle  Handle to the lock object to acquire.
      * \return Template_osalErr_e (0 on success).
      */
-    Template_osalErr_e (*lock)(void * const osal,
+    Template_osalErr_e (*lock)(void *const osal,
                                const Template_osalLockObjHandle_t lockObjHandle);
 
     /**
@@ -507,7 +507,7 @@ typedef struct
      * \param  lockObjHandle  Handle to the lock object to release.
      * \return Template_osalErr_e (0 on success).
      */
-    Template_osalErr_e (*unlock)(void * const osal,
+    Template_osalErr_e (*unlock)(void *const osal,
                                  const Template_osalLockObjHandle_t lockObjHandle);
 
     // END LOCK
@@ -523,10 +523,10 @@ typedef struct
      * \param  semaphoreHandle  Output pointer receiving the created handle.
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
-    Template_osalErr_e (*semaphoreCreate)(void * const osal,
-                                           const Template_osalSemaphoreCount_t maxCount,
-                                           const Template_osalSemaphoreCount_t initialCount,
-                                           Template_osalSemaphoreHandle_t * const semaphoreHandle);
+    Template_osalErr_e (*semaphoreCreate)(void *const osal,
+                                          const Template_osalSemaphoreCount_t maxCount,
+                                          const Template_osalSemaphoreCount_t initialCount,
+                                          Template_osalSemaphoreHandle_t *const semaphoreHandle);
 
     /**
      * \brief  Delete a counting semaphore.
@@ -534,8 +534,8 @@ typedef struct
      * \param  semaphoreHandle  Registered semaphore handle.
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
-    Template_osalErr_e (*semaphoreDelete)(void * const osal,
-                                           const Template_osalSemaphoreHandle_t semaphoreHandle);
+    Template_osalErr_e (*semaphoreDelete)(void *const osal,
+                                          const Template_osalSemaphoreHandle_t semaphoreHandle);
 
     /**
      * \brief  Acquire one semaphore count without waiting.
@@ -543,8 +543,8 @@ typedef struct
      * \param  semaphoreHandle  Registered semaphore handle.
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
-    Template_osalErr_e (*semaphoreAcquire)(void * const osal,
-                                            const Template_osalSemaphoreHandle_t semaphoreHandle);
+    Template_osalErr_e (*semaphoreAcquire)(void *const osal,
+                                           const Template_osalSemaphoreHandle_t semaphoreHandle);
 
     /**
      * \brief  Acquire one semaphore count using an explicit timeout.
@@ -553,9 +553,9 @@ typedef struct
      * \param  timeoutMs        Maximum wait in milliseconds.
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
-    Template_osalErr_e (*semaphoreAcquireWait)(void * const osal,
-                                                const Template_osalSemaphoreHandle_t semaphoreHandle,
-                                                const Template_osalTimeMs_t timeoutMs);
+    Template_osalErr_e (*semaphoreAcquireWait)(void *const osal,
+                                               const Template_osalSemaphoreHandle_t semaphoreHandle,
+                                               const Template_osalTimeMs_t timeoutMs);
 
     /**
      * \brief  Release one count to a semaphore.
@@ -563,8 +563,8 @@ typedef struct
      * \param  semaphoreHandle  Registered semaphore handle.
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
-    Template_osalErr_e (*semaphoreRelease)(void * const osal,
-                                            const Template_osalSemaphoreHandle_t semaphoreHandle);
+    Template_osalErr_e (*semaphoreRelease)(void *const osal,
+                                           const Template_osalSemaphoreHandle_t semaphoreHandle);
 
     /**
      * \brief  Read the current semaphore count.
@@ -573,9 +573,9 @@ typedef struct
      * \param  semaphoreCount   Output pointer receiving the current count.
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
-    Template_osalErr_e (*semaphoreCountGet)(void * const osal,
-                                             const Template_osalSemaphoreHandle_t semaphoreHandle,
-                                             Template_osalSemaphoreCount_t * const semaphoreCount);
+    Template_osalErr_e (*semaphoreCountGet)(void *const osal,
+                                            const Template_osalSemaphoreHandle_t semaphoreHandle,
+                                            Template_osalSemaphoreCount_t *const semaphoreCount);
     // END SEMAPHORE
 
     // BEGIN THREAD
@@ -588,8 +588,8 @@ typedef struct
      * \param  threadCfg     Configuration parameters for the thread.
      * \return Template_osalErr_e (0 on success).
      */
-    Template_osalErr_e (*threadCreate)(void * const osal,
-                                       Template_osalThreadHandle_t * const threadHandle,
+    Template_osalErr_e (*threadCreate)(void *const osal,
+                                       Template_osalThreadHandle_t *const threadHandle,
                                        Template_osalThreadCfg_s threadCfg);
 
     /**
@@ -598,7 +598,7 @@ typedef struct
      * \param  threadHandle  Handle to the thread to be deleted.
      * \return Template_osalErr_e (0 on success).
      */
-    Template_osalErr_e (*threadDelete)(void * const osal,
+    Template_osalErr_e (*threadDelete)(void *const osal,
                                        const Template_osalThreadHandle_t threadHandle);
 
     /**
@@ -607,7 +607,7 @@ typedef struct
      * \param  threadHandle  Handle to the thread to be suspended.
      * \return Template_osalErr_e (0 on success).
      */
-    Template_osalErr_e (*threadSuspend)(void * const osal,
+    Template_osalErr_e (*threadSuspend)(void *const osal,
                                         const Template_osalThreadHandle_t threadHandle);
 
     /**
@@ -616,7 +616,7 @@ typedef struct
      * \param  threadHandle  Handle to the thread to be resumed.
      * \return Template_osalErr_e (0 on success).
      */
-    Template_osalErr_e (*threadResume)(void * const osal,
+    Template_osalErr_e (*threadResume)(void *const osal,
                                        const Template_osalThreadHandle_t threadHandle);
 
     /**
@@ -625,7 +625,7 @@ typedef struct
      * \param  delayMs   Delay duration in milliseconds.
      * \return Template_osalErr_e (0 on success).
      */
-    Template_osalErr_e (*threadDelay)(void * const osal,
+    Template_osalErr_e (*threadDelay)(void *const osal,
                                       const Template_osalTimeMs_t delayMs);
 
     /**
@@ -644,14 +644,14 @@ typedef struct
      * \param  osal  OSAL instance.
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
-    Template_osalErr_e (*criticalSectionEnter)(void * const osal);
+    Template_osalErr_e (*criticalSectionEnter)(void *const osal);
 
     /**
      * \brief  Exit a previously entered OS critical section.
      * \param  osal  OSAL instance.
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
-    Template_osalErr_e (*criticalSectionExit)(void * const osal);
+    Template_osalErr_e (*criticalSectionExit)(void *const osal);
     // END CRITICAL_SECTION
 
     // BEGIN SOFTWARE_TIMER
@@ -664,9 +664,9 @@ typedef struct
      * \param  timerCfg     Timer callback, user parameter, reload policy and period.
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
-    Template_osalErr_e (*softwareTimerCreate)(void * const osal,
-                                               Template_osalSoftwareTimerHandle_t * const timerHandle,
-                                               Template_osalSoftwareTimerCfg_s timerCfg);
+    Template_osalErr_e (*softwareTimerCreate)(void *const osal,
+                                              Template_osalSoftwareTimerHandle_t *const timerHandle,
+                                              Template_osalSoftwareTimerCfg_s timerCfg);
 
     /**
      * \brief  Delete a software timer.
@@ -674,8 +674,8 @@ typedef struct
      * \param  timerHandle  Registered software-timer handle.
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
-    Template_osalErr_e (*softwareTimerDelete)(void * const osal,
-                                               const Template_osalSoftwareTimerHandle_t timerHandle);
+    Template_osalErr_e (*softwareTimerDelete)(void *const osal,
+                                              const Template_osalSoftwareTimerHandle_t timerHandle);
 
     /**
      * \brief  Start a software timer.
@@ -683,8 +683,8 @@ typedef struct
      * \param  timerHandle  Registered software-timer handle.
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
-    Template_osalErr_e (*softwareTimerStart)(void * const osal,
-                                              const Template_osalSoftwareTimerHandle_t timerHandle);
+    Template_osalErr_e (*softwareTimerStart)(void *const osal,
+                                             const Template_osalSoftwareTimerHandle_t timerHandle);
 
     /**
      * \brief  Stop a software timer.
@@ -692,8 +692,8 @@ typedef struct
      * \param  timerHandle  Registered software-timer handle.
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
-    Template_osalErr_e (*softwareTimerStop)(void * const osal,
-                                             const Template_osalSoftwareTimerHandle_t timerHandle);
+    Template_osalErr_e (*softwareTimerStop)(void *const osal,
+                                            const Template_osalSoftwareTimerHandle_t timerHandle);
 
     /**
      * \brief  Reset and restart a software-timer period.
@@ -701,8 +701,8 @@ typedef struct
      * \param  timerHandle  Registered software-timer handle.
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
-    Template_osalErr_e (*softwareTimerReset)(void * const osal,
-                                              const Template_osalSoftwareTimerHandle_t timerHandle);
+    Template_osalErr_e (*softwareTimerReset)(void *const osal,
+                                             const Template_osalSoftwareTimerHandle_t timerHandle);
     // END SOFTWARE_TIMER
 
     // BEGIN TIME
@@ -714,8 +714,8 @@ typedef struct
      * \param  osTimeMs   Pointer to store the current time in milliseconds.
      * \return Template_osalErr_e (0 on success).
      */
-    Template_osalErr_e (*timeMsGet)(void * const osal,
-                                    Template_osalTimeMs_t * const osTimeMs);
+    Template_osalErr_e (*timeMsGet)(void *const osal,
+                                    Template_osalTimeMs_t *const osTimeMs);
     // END TIME
 
     // BEGIN MEMORY
@@ -728,9 +728,9 @@ typedef struct
      * \param  memPtr  Pointer to store the allocated memory address.
      * \return Template_osalErr_e (0 on success).
      */
-    Template_osalErr_e (*memAlloc)(void * const osal,
+    Template_osalErr_e (*memAlloc)(void *const osal,
                                    const size_t size,
-                                   void ** const memPtr);
+                                   void **const memPtr);
 
     /**
      * \brief  Frees a previously allocated memory block in the backend.
@@ -738,8 +738,8 @@ typedef struct
      * \param  ptr   Pointer to a block previously returned by memAlloc.
      * \return Template_osalErr_e (0 on success).
      */
-    Template_osalErr_e (*memFree)(void * const osal,
-                                  void * const ptr);
+    Template_osalErr_e (*memFree)(void *const osal,
+                                  void *const ptr);
     // END MEMORY
 
     /*---------------------------------- Predicate -----------------------------------*/
@@ -749,7 +749,7 @@ typedef struct
      * \param  osal  OSAL instance to validate.
      * \return true if the instance is valid and initialized, false otherwise.
      */
-    bool (*isValid)(const void * const osal);
+    bool (*isValid)(const void *const osal);
 } Template_osalVtable_s;
 
 /*-------------------------------- Protected  -------------------------------*/
@@ -771,7 +771,7 @@ typedef struct
      * \param  osalPort  Derived OSAL instance pointer (opaque in base).
      * \return size_t    Slot ID (index + 1) if free slot exists; 0 otherwise.
      */
-    size_t (*queueFreeSlotFind)(void * const osalPort);
+    size_t (*queueFreeSlotFind)(void *const osalPort);
 
     /**
      * \brief  Find a queue handle in the internal registry.
@@ -779,7 +779,7 @@ typedef struct
      * \param  queueHandle  Queue handle to search.
      * \return size_t       Queue ID (index + 1) if found; 0 otherwise.
      */
-    size_t (*queueHandleFind)(void * const osalPort,
+    size_t (*queueHandleFind)(void *const osalPort,
                               const Template_osalQueueHandle_t queueHandle);
 
     // END QUEUE
@@ -792,7 +792,7 @@ typedef struct
      * \param  osalPort  Derived OSAL instance pointer (opaque in base).
      * \return size_t    Slot ID (index + 1) if a free slot exists; 0 otherwise.
      */
-    size_t (*streamBufferFreeSlotFind)(void * const osalPort);
+    size_t (*streamBufferFreeSlotFind)(void *const osalPort);
 
     /**
      * \brief  Find a stream-buffer handle in the internal registry.
@@ -800,7 +800,7 @@ typedef struct
      * \param  streamBufferHandle Stream-buffer handle to search.
      * \return size_t             Stream-buffer ID (index + 1) if found; 0 otherwise.
      */
-    size_t (*streamBufferHandleFind)(void * const osalPort,
+    size_t (*streamBufferHandleFind)(void *const osalPort,
                                      const Template_osalStreamBufferHandle_t streamBufferHandle);
     // END STREAM_BUFFER
 
@@ -812,7 +812,7 @@ typedef struct
      * \param  osalPort  Derived OSAL instance pointer (opaque in base).
      * \return size_t    Slot ID (index + 1) if free slot exists; 0 otherwise.
      */
-    size_t (*lockObjFreeSlotFind)(void * const osalPort);
+    size_t (*lockObjFreeSlotFind)(void *const osalPort);
 
     /**
      * \brief  Find a lock object handle in the internal registry.
@@ -820,7 +820,7 @@ typedef struct
      * \param  lockObjHandle Lock object handle to search.
      * \return size_t        Lock object ID (index + 1) if found; 0 otherwise.
      */
-    size_t (*lockObjHandleFind)(void * const osalPort,
+    size_t (*lockObjHandleFind)(void *const osalPort,
                                 const Template_osalLockObjHandle_t lockObjHandle);
     // END LOCK
 
@@ -832,7 +832,7 @@ typedef struct
      * \param  osalPort  Derived OSAL instance pointer (opaque in base).
      * \return size_t    Slot ID (index + 1) if a free slot exists; 0 otherwise.
      */
-    size_t (*semaphoreFreeSlotFind)(void * const osalPort);
+    size_t (*semaphoreFreeSlotFind)(void *const osalPort);
 
     /**
      * \brief  Find a counting-semaphore handle in the internal registry.
@@ -840,7 +840,7 @@ typedef struct
      * \param  semaphoreHandle Counting-semaphore handle to search.
      * \return size_t          Semaphore ID (index + 1) if found; 0 otherwise.
      */
-    size_t (*semaphoreHandleFind)(void * const osalPort,
+    size_t (*semaphoreHandleFind)(void *const osalPort,
                                   const Template_osalSemaphoreHandle_t semaphoreHandle);
     // END SEMAPHORE
 
@@ -852,7 +852,7 @@ typedef struct
      * \param  osalPort  Derived OSAL instance pointer (opaque in base).
      * \return size_t    Slot ID (index + 1) if free slot exists; 0 otherwise.
      */
-    size_t (*threadFreeSlotFind)(void * const osalPort);
+    size_t (*threadFreeSlotFind)(void *const osalPort);
 
     /**
      * \brief  Find a thread handle in the internal registry.
@@ -860,7 +860,7 @@ typedef struct
      * \param  threadHandle Thread handle to search.
      * \return size_t       Thread ID (index + 1) if found; 0 otherwise.
      */
-    size_t (*threadHandleFind)(void * const osalPort,
+    size_t (*threadHandleFind)(void *const osalPort,
                                const Template_osalThreadHandle_t threadHandle);
 
     /**
@@ -869,7 +869,7 @@ typedef struct
      * \param  threadIdx  Zero-based thread registry index.
      * \return None.
      */
-    void (*threadSlotClear)(void * const osalPort,
+    void (*threadSlotClear)(void *const osalPort,
                             const size_t threadIdx);
     // END THREAD
 
@@ -881,7 +881,7 @@ typedef struct
      * \param  osalPort  Derived OSAL instance pointer (opaque in base).
      * \return size_t    Slot ID (index + 1) if a free slot exists; 0 otherwise.
      */
-    size_t (*softwareTimerFreeSlotFind)(void * const osalPort);
+    size_t (*softwareTimerFreeSlotFind)(void *const osalPort);
 
     /**
      * \brief  Find a software-timer handle in the internal registry.
@@ -889,7 +889,7 @@ typedef struct
      * \param  timerHandle Software-timer handle to search.
      * \return size_t      Software-timer ID (index + 1) if found; 0 otherwise.
      */
-    size_t (*softwareTimerHandleFind)(void * const osalPort,
+    size_t (*softwareTimerHandleFind)(void *const osalPort,
                                       const Template_osalSoftwareTimerHandle_t timerHandle);
     // END SOFTWARE_TIMER
 
@@ -901,7 +901,7 @@ typedef struct
      * \param  osalPort  Derived OSAL instance pointer (opaque in base).
      * \return size_t    Slot ID (index + 1) if free slot exists; 0 otherwise.
      */
-    size_t (*memFreeSlotFind)(void * const osalPort);
+    size_t (*memFreeSlotFind)(void *const osalPort);
 
     /**
      * \brief  Find an allocated pointer in the memory registry.
@@ -909,8 +909,8 @@ typedef struct
      * \param  ptr       Pointer to search.
      * \return size_t    Memory ID (index + 1) if found; 0 otherwise.
      */
-    size_t (*memHandleFind)(void * const osalPort,
-                            const void * const ptr);
+    size_t (*memHandleFind)(void *const osalPort,
+                            const void *const ptr);
     // END MEMORY
 
     uint8_t reserved; /*!< Keeps the protected table valid when no registry-backed primitive is selected. */
@@ -1159,9 +1159,9 @@ Template_osalErr_e template_osalQueueHandleGet(Template_osal_s *const osal,
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalStreamBufferCreate(Template_osal_s *const osal,
-                                                    const size_t bufferSizeBytes,
-                                                    const size_t triggerLevelBytes,
-                                                    Template_osalStreamBufferHandle_t *const streamBufferHandle);
+                                                   const size_t bufferSizeBytes,
+                                                   const size_t triggerLevelBytes,
+                                                   Template_osalStreamBufferHandle_t *const streamBufferHandle);
 
 /**
  * \brief Delete a stream buffer.
@@ -1170,7 +1170,7 @@ Template_osalErr_e template_osalStreamBufferCreate(Template_osal_s *const osal,
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalStreamBufferDelete(Template_osal_s *const osal,
-                                                    const Template_osalStreamBufferHandle_t streamBufferHandle);
+                                                   const Template_osalStreamBufferHandle_t streamBufferHandle);
 
 /**
  * \brief Send bytes to a stream buffer without waiting for capacity.
@@ -1182,10 +1182,10 @@ Template_osalErr_e template_osalStreamBufferDelete(Template_osal_s *const osal,
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalStreamBufferSend(Template_osal_s *const osal,
-                                                  const Template_osalStreamBufferHandle_t streamBufferHandle,
-                                                  const void *const data,
-                                                  const size_t dataLengthBytes,
-                                                  size_t *const bytesSent);
+                                                 const Template_osalStreamBufferHandle_t streamBufferHandle,
+                                                 const void *const data,
+                                                 const size_t dataLengthBytes,
+                                                 size_t *const bytesSent);
 
 /**
  * \brief Receive bytes from a stream buffer with an explicit timeout.
@@ -1198,11 +1198,11 @@ Template_osalErr_e template_osalStreamBufferSend(Template_osal_s *const osal,
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalStreamBufferReceive(Template_osal_s *const osal,
-                                                     const Template_osalStreamBufferHandle_t streamBufferHandle,
-                                                     void *const data,
-                                                     const size_t dataLengthBytes,
-                                                     const Template_osalTimeMs_t timeoutMs,
-                                                     size_t *const bytesReceived);
+                                                    const Template_osalStreamBufferHandle_t streamBufferHandle,
+                                                    void *const data,
+                                                    const size_t dataLengthBytes,
+                                                    const Template_osalTimeMs_t timeoutMs,
+                                                    size_t *const bytesReceived);
 
 /**
  * \brief Reset a stream buffer to its initial empty state.
@@ -1211,7 +1211,7 @@ Template_osalErr_e template_osalStreamBufferReceive(Template_osal_s *const osal,
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalStreamBufferReset(Template_osal_s *const osal,
-                                                   const Template_osalStreamBufferHandle_t streamBufferHandle);
+                                                  const Template_osalStreamBufferHandle_t streamBufferHandle);
 
 /**
  * \brief Get a stream buffer handle from a stable registry slot.
@@ -1221,8 +1221,8 @@ Template_osalErr_e template_osalStreamBufferReset(Template_osal_s *const osal,
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalStreamBufferHandleGet(Template_osal_s *const osal,
-                                                       const size_t streamBufferSlotInd,
-                                                       Template_osalStreamBufferHandle_t *const streamBufferHandle);
+                                                      const size_t streamBufferSlotInd,
+                                                      Template_osalStreamBufferHandle_t *const streamBufferHandle);
 // END STREAM_BUFFER
 
 // BEGIN LOCK
@@ -1288,9 +1288,9 @@ Template_osalErr_e template_osalLockObjHandleGet(Template_osal_s *const osal,
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalSemaphoreCreate(Template_osal_s *const osal,
-                                                 const Template_osalSemaphoreCount_t maxCount,
-                                                 const Template_osalSemaphoreCount_t initialCount,
-                                                 Template_osalSemaphoreHandle_t *const semaphoreHandle);
+                                                const Template_osalSemaphoreCount_t maxCount,
+                                                const Template_osalSemaphoreCount_t initialCount,
+                                                Template_osalSemaphoreHandle_t *const semaphoreHandle);
 
 /**
  * \brief Delete a counting semaphore.
@@ -1299,7 +1299,7 @@ Template_osalErr_e template_osalSemaphoreCreate(Template_osal_s *const osal,
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalSemaphoreDelete(Template_osal_s *const osal,
-                                                 const Template_osalSemaphoreHandle_t semaphoreHandle);
+                                                const Template_osalSemaphoreHandle_t semaphoreHandle);
 
 /**
  * \brief Acquire a counting semaphore without waiting.
@@ -1308,7 +1308,7 @@ Template_osalErr_e template_osalSemaphoreDelete(Template_osal_s *const osal,
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalSemaphoreAcquire(Template_osal_s *const osal,
-                                                  const Template_osalSemaphoreHandle_t semaphoreHandle);
+                                                 const Template_osalSemaphoreHandle_t semaphoreHandle);
 
 /**
  * \brief Acquire a counting semaphore with an explicit timeout.
@@ -1318,8 +1318,8 @@ Template_osalErr_e template_osalSemaphoreAcquire(Template_osal_s *const osal,
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalSemaphoreAcquireWait(Template_osal_s *const osal,
-                                                      const Template_osalSemaphoreHandle_t semaphoreHandle,
-                                                      const Template_osalTimeMs_t timeoutMs);
+                                                     const Template_osalSemaphoreHandle_t semaphoreHandle,
+                                                     const Template_osalTimeMs_t timeoutMs);
 
 /**
  * \brief Release one count to a counting semaphore.
@@ -1328,7 +1328,7 @@ Template_osalErr_e template_osalSemaphoreAcquireWait(Template_osal_s *const osal
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalSemaphoreRelease(Template_osal_s *const osal,
-                                                  const Template_osalSemaphoreHandle_t semaphoreHandle);
+                                                 const Template_osalSemaphoreHandle_t semaphoreHandle);
 
 /**
  * \brief Read the current counting semaphore value.
@@ -1338,8 +1338,8 @@ Template_osalErr_e template_osalSemaphoreRelease(Template_osal_s *const osal,
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalSemaphoreCountGet(Template_osal_s *const osal,
-                                                   const Template_osalSemaphoreHandle_t semaphoreHandle,
-                                                   Template_osalSemaphoreCount_t *const semaphoreCount);
+                                                  const Template_osalSemaphoreHandle_t semaphoreHandle,
+                                                  Template_osalSemaphoreCount_t *const semaphoreCount);
 
 /**
  * \brief Get a semaphore handle from a stable registry slot.
@@ -1349,8 +1349,8 @@ Template_osalErr_e template_osalSemaphoreCountGet(Template_osal_s *const osal,
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalSemaphoreHandleGet(Template_osal_s *const osal,
-                                                    const size_t semaphoreSlotInd,
-                                                    Template_osalSemaphoreHandle_t *const semaphoreHandle);
+                                                   const size_t semaphoreSlotInd,
+                                                   Template_osalSemaphoreHandle_t *const semaphoreHandle);
 // END SEMAPHORE
 
 // BEGIN THREAD
@@ -1453,8 +1453,8 @@ Template_osalErr_e template_osalCriticalSectionExit(Template_osal_s *const osal)
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalSoftwareTimerCreate(Template_osal_s *const osal,
-                                                     Template_osalSoftwareTimerHandle_t *const timerHandle,
-                                                     Template_osalSoftwareTimerCfg_s timerCfg);
+                                                    Template_osalSoftwareTimerHandle_t *const timerHandle,
+                                                    Template_osalSoftwareTimerCfg_s timerCfg);
 
 /**
  * \brief Delete a software timer.
@@ -1463,7 +1463,7 @@ Template_osalErr_e template_osalSoftwareTimerCreate(Template_osal_s *const osal,
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalSoftwareTimerDelete(Template_osal_s *const osal,
-                                                     const Template_osalSoftwareTimerHandle_t timerHandle);
+                                                    const Template_osalSoftwareTimerHandle_t timerHandle);
 
 /**
  * \brief Start a software timer using its configured period.
@@ -1472,7 +1472,7 @@ Template_osalErr_e template_osalSoftwareTimerDelete(Template_osal_s *const osal,
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalSoftwareTimerStart(Template_osal_s *const osal,
-                                                    const Template_osalSoftwareTimerHandle_t timerHandle);
+                                                   const Template_osalSoftwareTimerHandle_t timerHandle);
 
 /**
  * \brief Stop a software timer.
@@ -1481,7 +1481,7 @@ Template_osalErr_e template_osalSoftwareTimerStart(Template_osal_s *const osal,
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalSoftwareTimerStop(Template_osal_s *const osal,
-                                                   const Template_osalSoftwareTimerHandle_t timerHandle);
+                                                  const Template_osalSoftwareTimerHandle_t timerHandle);
 
 /**
  * \brief Reset a software timer and restart its configured period.
@@ -1490,7 +1490,7 @@ Template_osalErr_e template_osalSoftwareTimerStop(Template_osal_s *const osal,
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalSoftwareTimerReset(Template_osal_s *const osal,
-                                                    const Template_osalSoftwareTimerHandle_t timerHandle);
+                                                   const Template_osalSoftwareTimerHandle_t timerHandle);
 
 /**
  * \brief Get a software timer handle from a stable registry slot.
@@ -1500,8 +1500,8 @@ Template_osalErr_e template_osalSoftwareTimerReset(Template_osal_s *const osal,
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalSoftwareTimerHandleGet(Template_osal_s *const osal,
-                                                        const size_t timerSlotInd,
-                                                        Template_osalSoftwareTimerHandle_t *const timerHandle);
+                                                       const size_t timerSlotInd,
+                                                       Template_osalSoftwareTimerHandle_t *const timerHandle);
 // END SOFTWARE_TIMER
 
 // BEGIN TIME

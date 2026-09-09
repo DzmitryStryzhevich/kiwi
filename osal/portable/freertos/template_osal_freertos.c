@@ -615,10 +615,10 @@ Template_osalErr_e template_osalFreertosInit(Template_osalFreertos_s *const osal
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosInit(%p, %s, %p, %p)",
-                                      (void *)osalFreertos,
-                                      (name != NULL) ? name : "(null)",
-                                      parent,
-                                      (const void *)param);
+                                 (void *)osalFreertos,
+                                 (name != NULL) ? name : "(null)",
+                                 parent,
+                                 (const void *)param);
 
     /* Validate args */
     if (osalFreertos == NULL)
@@ -739,7 +739,7 @@ Template_osalErr_e template_osalFreertosDeinit(Template_osalFreertos_s *const os
         if (osalFreertos->base.softwareTimerObj[i].handle != NULL)
         {
             (void)template_osalFreertosSoftwareTimerDelete(osalFreertos,
-                                                            osalFreertos->base.softwareTimerObj[i].handle);
+                                                           osalFreertos->base.softwareTimerObj[i].handle);
         }
     }
 
@@ -752,7 +752,7 @@ Template_osalErr_e template_osalFreertosDeinit(Template_osalFreertos_s *const os
         if (osalFreertos->base.threadObjHandle[i].handle != NULL)
         {
             (void)template_osalFreertosThreadDelete(osalFreertos,
-                                                       osalFreertos->base.threadObjHandle[i].handle);
+                                                    osalFreertos->base.threadObjHandle[i].handle);
         }
     }
 
@@ -765,7 +765,7 @@ Template_osalErr_e template_osalFreertosDeinit(Template_osalFreertos_s *const os
         if (osalFreertos->base.queueObjHandle[i] != NULL)
         {
             (void)template_osalFreertosQueueDelete(osalFreertos,
-                                                      osalFreertos->base.queueObjHandle[i]);
+                                                   osalFreertos->base.queueObjHandle[i]);
         }
     }
 
@@ -778,7 +778,7 @@ Template_osalErr_e template_osalFreertosDeinit(Template_osalFreertos_s *const os
         if (osalFreertos->base.streamBufferObjHandle[i] != NULL)
         {
             (void)template_osalFreertosStreamBufferDelete(osalFreertos,
-                                                           osalFreertos->base.streamBufferObjHandle[i]);
+                                                          osalFreertos->base.streamBufferObjHandle[i]);
         }
     }
 
@@ -791,7 +791,7 @@ Template_osalErr_e template_osalFreertosDeinit(Template_osalFreertos_s *const os
         if (osalFreertos->base.lockObjHandle[i] != NULL)
         {
             (void)template_osalFreertosLockObjDelete(osalFreertos,
-                                                        osalFreertos->base.lockObjHandle[i]);
+                                                     osalFreertos->base.lockObjHandle[i]);
         }
     }
 
@@ -804,7 +804,7 @@ Template_osalErr_e template_osalFreertosDeinit(Template_osalFreertos_s *const os
         if (osalFreertos->base.semaphoreObjHandle[i] != NULL)
         {
             (void)template_osalFreertosSemaphoreDelete(osalFreertos,
-                                                        osalFreertos->base.semaphoreObjHandle[i]);
+                                                       osalFreertos->base.semaphoreObjHandle[i]);
         }
     }
 
@@ -817,7 +817,7 @@ Template_osalErr_e template_osalFreertosDeinit(Template_osalFreertos_s *const os
         if (osalFreertos->base.memObjHandle[i] != NULL)
         {
             (void)template_osalFreertosMemFree(osalFreertos,
-                                                  osalFreertos->base.memObjHandle[i]);
+                                               osalFreertos->base.memObjHandle[i]);
         }
     }
 
@@ -867,7 +867,7 @@ static Template_osalErr_e template_osalFreertosQueueCreate(void *const osal,
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosQueueCreate(%p, %zu, %zu, %p)",
-                                      osal, queueItemSize, queueDepth, (void *)queueHandle);
+                                 osal, queueItemSize, queueDepth, (void *)queueHandle);
 
     /* Validate input args */
     TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
@@ -1374,7 +1374,7 @@ static Template_osalErr_e template_osalFreertosQueueItemPend(void *const osal,
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosQueueItemPend(%p, %p, %p, %u)",
-                                      osal, (void *)queueHandle, queueItemPtr, (unsigned int)timeoutMs);
+                                 osal, (void *)queueHandle, queueItemPtr, (unsigned int)timeoutMs);
 
     /* Validate input args */
     TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
@@ -1894,8 +1894,8 @@ static Template_osalErr_e template_osalFreertosStreamBufferReceive(void *const o
 
         BaseType_t higherPriorityTaskWoken = pdFALSE;
         *bytesReceived = xStreamBufferReceiveFromISR((StreamBufferHandle_t)streamBufferHandle,
-                                                      data,
-                                                      dataLengthBytes,
+                                                     data,
+                                                     dataLengthBytes,
                                                       &higherPriorityTaskWoken);
         portYIELD_FROM_ISR(higherPriorityTaskWoken);
     }
@@ -2018,7 +2018,7 @@ static Template_osalErr_e template_osalFreertosLockObjCreate(void *const osal,
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosLockObjCreate(%p, %p)",
-                                      osal, (void *)lockObjHandle);
+                                 osal, (void *)lockObjHandle);
     /* Validate input args */
     TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
     TEMPLATE_OSAL_FREERTOS_ASSERT(lockObjHandle != NULL);
@@ -2120,7 +2120,7 @@ static Template_osalErr_e template_osalFreertosLockObjDelete(void *const osal,
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosLockObjDelete(%p, %p)",
-                                      osal, (void *)lockObjHandle);
+                                 osal, (void *)lockObjHandle);
     /* Validate input args */
     TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
     TEMPLATE_OSAL_FREERTOS_ASSERT(lockObjHandle != NULL);
@@ -2882,13 +2882,13 @@ static Template_osalErr_e template_osalFreertosThreadCreate(void *const osal,
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadCreate(%p, %p, {%p, %s, %zu, %p, %d})",
-                                      osal,
-                                      (void *)threadHandle,
-                                      (void *)(uintptr_t)threadCfg.worker,
-                                      (threadCfg.name != NULL) ? threadCfg.name : "(null)",
-                                      threadCfg.stackSize,
-                                      threadCfg.args,
-                                      (int)threadCfg.prio);
+                                 osal,
+                                 (void *)threadHandle,
+                                 (void *)(uintptr_t)threadCfg.worker,
+                                 (threadCfg.name != NULL) ? threadCfg.name : "(null)",
+                                 threadCfg.stackSize,
+                                 threadCfg.args,
+                                 (int)threadCfg.prio);
 
     /* Validate input args */
     TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
@@ -3016,7 +3016,7 @@ static Template_osalErr_e template_osalFreertosThreadDelete(void *const osal,
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelete(%p, %p)",
-                                      osal, (void *)threadHandle);
+                                 osal, (void *)threadHandle);
     /* Validate input args */
     TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
     TEMPLATE_OSAL_FREERTOS_ASSERT(threadHandle != NULL);
@@ -3124,7 +3124,7 @@ static Template_osalErr_e template_osalFreertosThreadSuspend(void *const osal,
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadSuspend(%p, %p)",
-                                      osal, (void *)threadHandle);
+                                 osal, (void *)threadHandle);
 
     /* Validate input args */
     TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
@@ -3191,7 +3191,7 @@ static Template_osalErr_e template_osalFreertosThreadResume(void *const osal,
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadResume(%p, %p)",
-                                      osal, (void *)threadHandle);
+                                 osal, (void *)threadHandle);
 
     /* Validate input args */
     TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
@@ -3258,7 +3258,7 @@ static Template_osalErr_e template_osalFreertosThreadDelay(void *const osal,
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelay(%p, %u)",
-                                      osal, (unsigned int)delayMs);
+                                 osal, (unsigned int)delayMs);
     /* Validate input args */
     TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
 
@@ -3346,8 +3346,8 @@ static void template_osalFreertosThreadExit(void *const osal)
         return;  // Exit: Error: resource mutex acquisition failed
     }
 
-    const size_t threadId = port->base.ptable->threadHandleFind(
-        port, (Template_osalThreadHandle_t)currentThread);
+    const size_t threadId =
+        port->base.ptable->threadHandleFind(port, (Template_osalThreadHandle_t)currentThread);
     if ((threadId == 0u) ||
         (threadId > TEMPLATE_OSAL_THREAD_SLOTS_NUM))
     {
@@ -3389,7 +3389,7 @@ static bool template_osalFreertosThreadParamCheck(const Template_osalThreadCfg_s
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadParamCheck(%p)",
-                                      (const void *)threadCfg);
+                                 (const void *)threadCfg);
     /* Validate input args */
     TEMPLATE_OSAL_FREERTOS_ASSERT(threadCfg != NULL);
 
@@ -3446,8 +3446,7 @@ static Template_osalErr_e template_osalFreertosCriticalSectionEnter(void *const 
     TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
 
     /* Validate backend state */
-    TEMPLATE_OSAL_FREERTOS_ASSERT(
-        template_osalFreertosIsValid((const Template_osalFreertos_s *)osal));
+    TEMPLATE_OSAL_FREERTOS_ASSERT(template_osalFreertosIsValid((const Template_osalFreertos_s *)osal));
 
     /* Keep the parameter referenced when tracing/assertions are compiled out */
     (void)osal;
@@ -3495,8 +3494,7 @@ static Template_osalErr_e template_osalFreertosCriticalSectionExit(void *const o
     TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
 
     /* Validate backend state */
-    TEMPLATE_OSAL_FREERTOS_ASSERT(
-        template_osalFreertosIsValid((const Template_osalFreertos_s *)osal));
+    TEMPLATE_OSAL_FREERTOS_ASSERT(template_osalFreertosIsValid((const Template_osalFreertos_s *)osal));
 
     /* Keep the parameter referenced when tracing/assertions are compiled out */
     (void)osal;
@@ -4002,7 +4000,6 @@ static Template_osalErr_e template_osalFreertosSoftwareTimerReset(void *const os
  */
 static void template_osalFreertosSoftwareTimerCallback(TimerHandle_t timerHandle)
 {
-
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosSoftwareTimerCallback(%p)", (void *)timerHandle);
     TEMPLATE_OSAL_FREERTOS_ASSERT(timerHandle != NULL);
@@ -4052,7 +4049,7 @@ static Template_osalErr_e template_osalFreertosTimeMsGet(void *const osal,
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosTimeMsGet(%p, %p)",
-                                      osal, (void *)osTimeMs);
+                                 osal, (void *)osTimeMs);
     /* Validate input args */
     TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
     TEMPLATE_OSAL_FREERTOS_ASSERT(osTimeMs != NULL);
@@ -4084,7 +4081,7 @@ static Template_osalErr_e template_osalFreertosTimeMsGet(void *const osal,
     }
 
     *osTimeMs = (Template_osalTimeMs_t)(((uint64_t)tickCount * 1000u) /
-                                           (uint64_t)configTICK_RATE_HZ);
+                                        (uint64_t)configTICK_RATE_HZ);
 
     /* Trace returned value */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosTimeMsGet -> %d", (int)osalStatus);
@@ -4105,7 +4102,7 @@ static inline TickType_t template_osalFreertosTimeMsToTicksConvert(const Templat
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosTimeMsToTicksConvert(%u)",
-                                      (unsigned int)timeMs);
+                                 (unsigned int)timeMs);
 
     if ((timeMs == TEMPLATE_OSAL_INFINITY_TOUT) ||
         (timeMs == TEMPLATE_OSAL_FREERTOS_INFINITY_TIMEOUT))
@@ -4113,7 +4110,7 @@ static inline TickType_t template_osalFreertosTimeMsToTicksConvert(const Templat
         tickCount = portMAX_DELAY;
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosTimeMsToTicksConvert -> %u",
-                                          (unsigned int)tickCount);
+                                     (unsigned int)tickCount);
 
         return tickCount;  // Exit: Success: infinite timeout converted
     }
@@ -4127,7 +4124,7 @@ static inline TickType_t template_osalFreertosTimeMsToTicksConvert(const Templat
 
     /* Trace returned value */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosTimeMsToTicksConvert -> %u",
-                                      (unsigned int)tickCount);
+                                 (unsigned int)tickCount);
 
     return tickCount;  // Exit: Success: timeout converted
 }
@@ -4150,7 +4147,7 @@ static Template_osalErr_e template_osalFreertosMemAlloc(void *const osal,
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosMemAlloc(%p, %zu, %p)",
-                                      osal, size, (void *)memPtr);
+                                 osal, size, (void *)memPtr);
     /* Validate input args */
     TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
     TEMPLATE_OSAL_FREERTOS_ASSERT(memPtr != NULL);
@@ -4382,7 +4379,7 @@ static inline Template_osalErr_e template_osalFreertosResourceLock(Template_osal
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosResourceLock(%p)",
-                                      (void *)osalFreertos);
+                                 (void *)osalFreertos);
     /* Validate input args */
     TEMPLATE_OSAL_FREERTOS_ASSERT(osalFreertos != NULL);
     TEMPLATE_OSAL_FREERTOS_ASSERT(osalFreertos->resourceMutex != NULL);
@@ -4416,7 +4413,7 @@ static inline Template_osalErr_e template_osalFreertosResourceUnlock(Template_os
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosResourceUnlock(%p)",
-                                      (void *)osalFreertos);
+                                 (void *)osalFreertos);
 
     /* Validate input args */
     TEMPLATE_OSAL_FREERTOS_ASSERT(osalFreertos != NULL);
