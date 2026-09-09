@@ -286,9 +286,9 @@ typedef enum
 typedef struct
 {
     Template_osalThreadWorker_f worker;       /*!< Worker entry function. */
-    const char                  *name;           /*!< Optional thread name.  */
-    size_t                      stackSize;       /*!< Expressed in bytes */
-    void                        *args;           /*!< Worker arg parameter (passed as arg to worker). */
+    const char                  *name;        /*!< Optional thread name.  */
+    size_t                      stackSize;    /*!< Expressed in bytes */
+    void                        *args;        /*!< Worker arg parameter (passed as arg to worker). */
     Template_osalThreadPrio_e   prio;         /*!< Thread priority.*/
 } Template_osalThreadCfg_s;
 
@@ -524,9 +524,9 @@ typedef struct
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
     Template_osalErr_e (*semaphoreCreate)(void * const osal,
-                                           const Template_osalSemaphoreCount_t maxCount,
-                                           const Template_osalSemaphoreCount_t initialCount,
-                                           Template_osalSemaphoreHandle_t * const semaphoreHandle);
+                                          const Template_osalSemaphoreCount_t maxCount,
+                                          const Template_osalSemaphoreCount_t initialCount,
+                                          Template_osalSemaphoreHandle_t * const semaphoreHandle);
 
     /**
      * \brief  Delete a counting semaphore.
@@ -535,7 +535,7 @@ typedef struct
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
     Template_osalErr_e (*semaphoreDelete)(void * const osal,
-                                           const Template_osalSemaphoreHandle_t semaphoreHandle);
+                                          const Template_osalSemaphoreHandle_t semaphoreHandle);
 
     /**
      * \brief  Acquire one semaphore count without waiting.
@@ -544,7 +544,7 @@ typedef struct
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
     Template_osalErr_e (*semaphoreAcquire)(void * const osal,
-                                            const Template_osalSemaphoreHandle_t semaphoreHandle);
+                                           const Template_osalSemaphoreHandle_t semaphoreHandle);
 
     /**
      * \brief  Acquire one semaphore count using an explicit timeout.
@@ -554,8 +554,8 @@ typedef struct
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
     Template_osalErr_e (*semaphoreAcquireWait)(void * const osal,
-                                                const Template_osalSemaphoreHandle_t semaphoreHandle,
-                                                const Template_osalTimeMs_t timeoutMs);
+                                              const Template_osalSemaphoreHandle_t semaphoreHandle,
+                                              const Template_osalTimeMs_t timeoutMs);
 
     /**
      * \brief  Release one count to a semaphore.
@@ -564,7 +564,7 @@ typedef struct
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
     Template_osalErr_e (*semaphoreRelease)(void * const osal,
-                                            const Template_osalSemaphoreHandle_t semaphoreHandle);
+                                          const Template_osalSemaphoreHandle_t semaphoreHandle);
 
     /**
      * \brief  Read the current semaphore count.
@@ -574,8 +574,8 @@ typedef struct
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
     Template_osalErr_e (*semaphoreCountGet)(void * const osal,
-                                             const Template_osalSemaphoreHandle_t semaphoreHandle,
-                                             Template_osalSemaphoreCount_t * const semaphoreCount);
+                                            const Template_osalSemaphoreHandle_t semaphoreHandle,
+                                            Template_osalSemaphoreCount_t * const semaphoreCount);
     // END SEMAPHORE
 
     // BEGIN THREAD
@@ -693,7 +693,7 @@ typedef struct
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
     Template_osalErr_e (*softwareTimerStop)(void * const osal,
-                                             const Template_osalSoftwareTimerHandle_t timerHandle);
+                                            const Template_osalSoftwareTimerHandle_t timerHandle);
 
     /**
      * \brief  Reset and restart a software-timer period.
@@ -702,7 +702,7 @@ typedef struct
      * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
      */
     Template_osalErr_e (*softwareTimerReset)(void * const osal,
-                                              const Template_osalSoftwareTimerHandle_t timerHandle);
+                                            const Template_osalSoftwareTimerHandle_t timerHandle);
     // END SOFTWARE_TIMER
 
     // BEGIN TIME
