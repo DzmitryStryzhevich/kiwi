@@ -1490,7 +1490,7 @@ Template_osalErr_e template_osalLock(Template_osal_s *const osal,
     if ((osal == NULL) ||
         (lockObjHandle == NULL))
     {
-        /* Trace: returned value */
+        /* Trace: returned 1value */
         TEMPLATE_OSAL_TRACE("template_osalLock -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
         return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: Invalid args
