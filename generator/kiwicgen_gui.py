@@ -19,15 +19,16 @@ ROOT = pathlib.Path(__file__).resolve().parent
 PROJECT_ROOT = ROOT.parent
 
 
-def _resolve_app_asset(relative_path: str) -> pathlib.Path:
-    """Resolve a GUI asset for source execution and PyInstaller bundles."""
-    meipass = getattr(sys, "_MEIPASS", None)
-    if meipass:
-        bundled = pathlib.Path(meipass) / relative_path
-        if bundled.exists():
-            return bundled
+def _runtime_root() -> pathlib.Path:
+    """Resolve the external runtime-resource root for source and packaged execution."""
+    if getattr(sys, "frozen", False):
+        return pathlib.Path(sys.executable).resolve().parent
+    return PROJECT_ROOT
 
-    return PROJECT_ROOT / relative_path
+
+def _resolve_app_asset(relative_path: str) -> pathlib.Path:
+    """Resolve a GUI asset from the source tree or standalone distribution."""
+    return _runtime_root() / relative_path
 
 
 # =====================================================================================================================
@@ -55,7 +56,7 @@ class KiwicgenApp(tk.Tk):
         # Milestone 2: mirror shared-core configuration as Tk state. Every
         # value is normalized again by kiwicgen_core before use.
         self.prefix_var = tk.StringVar(value=codegen.DEFAULT_MODULE_PREFIX)
-        self.dest_var = tk.StringVar(value=str(PROJECT_ROOT / "generated"))
+        self.dest_var = tk.StringVar(value=str(_runtime_root() / "generated"))
         self.port_var = tk.StringVar(value=codegen.DEFAULT_PORT)
 
         self.api_vars = {
@@ -286,25 +287,41 @@ class KiwicgenApp(tk.Tk):
             relief="flat",
         )
         self.log.pack(fill="both", expand=True, pady=(18, 0))
-        self._log("Ready. Configure options, load a profile, or click Generate.")
+        self.log.tag_configure("info", foreground="#d9e5ff")
+        self.log.tag_configure("step", foreground="#6fdcff")
+        self.log.tag_configure("ok", foreground="#72e6a0")
+        self.log.tag_configure("warn", foreground="#ffd166")
+        self.log.tag_configure("err", foreground="#ff7b7b")
+        self._log("[INFO] Ready. Configure options, load a profile, or click Generate.")
 
     # -----------------------------------------------------------------------------------------------------------------
     # UI actions and filesystem helpers
     # -----------------------------------------------------------------------------------------------------------------
 
     def _log(self, text: str) -> None:
-        """Append one status line and flush pending GUI redraws."""
-        self.log.insert("end", text + "\n")
+        """Append one structured status line and flush pending GUI redraws."""
+        tag = "info"
+        if text.startswith("[STEP]"):
+            tag = "step"
+        elif text.startswith("[ OK ]"):
+            tag = "ok"
+        elif text.startswith("[WARN]"):
+            tag = "warn"
+        elif text.startswith("[ERR ]"):
+            tag = "err"
+
+        self.log.insert("end", text + "\n", tag)
         self.log.see("end")
 
         # Keep progress messages visible while the synchronous shared-core
-        # generation pipeline is running on the Tk main thread.
+        # generation pipeline is running on the Tk main thread. A worker-based
+        # generation path is intentionally deferred to the GUI performance pass.
         self.update_idletasks()
 
     def _select_destination(self) -> None:
         """Select the output root without changing generation semantics."""
         folder = filedialog.askdirectory(
-            initialdir=self.dest_var.get() or str(PROJECT_ROOT)
+            initialdir=self.dest_var.get() or str(_runtime_root())
         )
         if folder:
             self.dest_var.set(folder)
@@ -365,7 +382,7 @@ class KiwicgenApp(tk.Tk):
         """Load a kiwicgen profile and project it onto the GUI controls."""
         profile = filedialog.askopenfilename(
             title="Load kiwicgen generation profile",
-            initialdir=self.dest_var.get() or str(PROJECT_ROOT),
+            initialdir=self.dest_var.get() or str(_runtime_root()),
             filetypes=(
                 ("YAML profile", "*.yaml *.yml"),
                 ("All files", "*.*"),
@@ -378,7 +395,7 @@ class KiwicgenApp(tk.Tk):
             config = codegen.load_profile(profile)
         except (codegen.CodegenError, OSError) as exc:
             messagebox.showerror("Load profile failed", str(exc))
-            self._log(f"ERROR: {exc}")
+            self._log(f"[ERR ] {exc}")
             return
 
         self.prefix_var.set(config.module_prefix)
@@ -387,7 +404,7 @@ class KiwicgenApp(tk.Tk):
             variable.set(name in config.apis)
         self.split_into_port_dir_var.set(config.split_into_port_dir)
         self.split_src_inc_files_var.set(config.split_src_inc_files)
-        self._log(f"Loaded profile: {profile}")
+        self._log(f"[INFO] Loaded profile: {profile}")
 
     def _save_profile(self) -> None:
         """Persist the current normalized GUI configuration as a profile."""
@@ -401,7 +418,7 @@ class KiwicgenApp(tk.Tk):
         default_name = f"kiwicgen-{forms.snake}-profile.yaml"
         profile = filedialog.asksaveasfilename(
             title="Save kiwicgen generation profile",
-            initialdir=self.dest_var.get() or str(PROJECT_ROOT),
+            initialdir=self.dest_var.get() or str(_runtime_root()),
             initialfile=default_name,
             defaultextension=".yaml",
             filetypes=(
@@ -417,10 +434,10 @@ class KiwicgenApp(tk.Tk):
             saved = codegen.save_profile(profile, config)
         except OSError as exc:
             messagebox.showerror("Save profile failed", str(exc))
-            self._log(f"ERROR: {exc}")
+            self._log(f"[ERR ] {exc}")
             return
 
-        self._log(f"Saved profile: {saved}")
+        self._log(f"[INFO] Saved profile: {saved}")
 
     # -----------------------------------------------------------------------------------------------------------------
     # Generation action
@@ -439,15 +456,14 @@ class KiwicgenApp(tk.Tk):
             codegen.generate(config, output_root, log_callback=self._log)
         except (codegen.CodegenError, OSError) as exc:
             messagebox.showerror("Generation failed", str(exc))
-            self._log(f"ERROR: {exc}")
+            self._log(f"[ERR ] {exc}")
             return
         except Exception as exc:
             messagebox.showerror("Generation failed", str(exc))
-            self._log(f"ERROR: {exc}")
+            self._log(f"[ERR ] {exc}")
             return
 
         messagebox.showinfo("Success", f"Code generated into: {output_root}")
-        self._log("Done.")
 
 
 if __name__ == "__main__":

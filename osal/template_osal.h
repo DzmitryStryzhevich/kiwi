@@ -153,23 +153,23 @@ typedef enum
     // END SEMAPHORE
 
     // BEGIN THREAD
-    TEMPLATE_OSAL_THREAD_CREATE_ERR,              //!< Failed to create a thread.
-    TEMPLATE_OSAL_THREAD_MEM_ALLOCATION_ERR,      //!< Memory allocation failure during thread creation.
+    TEMPLATE_OSAL_THREAD_CREATE_ERR,          //!< Failed to create a thread.
+    TEMPLATE_OSAL_THREAD_MEM_ALLOCATION_ERR,  //!< Memory allocation failure during thread creation.
     // END THREAD
 
     // BEGIN SOFTWARE_TIMER
-    TEMPLATE_OSAL_SOFTWARE_TIMER_CREATE_ERR,         //!< Failed to create a software timer or reserve a registry slot.
-    TEMPLATE_OSAL_SOFTWARE_TIMER_MEM_ALLOCATION_ERR, //!< Backend memory allocation failed during software timer creation.
-    TEMPLATE_OSAL_SOFTWARE_TIMER_START_ERR,          //!< Failed to start a software timer.
-    TEMPLATE_OSAL_SOFTWARE_TIMER_STOP_ERR,           //!< Failed to stop a software timer.
-    TEMPLATE_OSAL_SOFTWARE_TIMER_RESET_ERR,          //!< Failed to reset/restart a software timer period.
+    TEMPLATE_OSAL_SOFTWARE_TIMER_CREATE_ERR,          //!< Failed to create a software timer or reserve a registry slot.
+    TEMPLATE_OSAL_SOFTWARE_TIMER_MEM_ALLOCATION_ERR,  //!< Backend memory allocation failed during software timer creation.
+    TEMPLATE_OSAL_SOFTWARE_TIMER_START_ERR,           //!< Failed to start a software timer.
+    TEMPLATE_OSAL_SOFTWARE_TIMER_STOP_ERR,            //!< Failed to stop a software timer.
+    TEMPLATE_OSAL_SOFTWARE_TIMER_RESET_ERR,           //!< Failed to reset/restart a software timer period.
     // END SOFTWARE_TIMER
 
     // BEGIN MEMORY
-    TEMPLATE_OSAL_MEM_ALLOCATION_ERR,             //!< Backend failed to allocate memory.
+    TEMPLATE_OSAL_MEM_ALLOCATION_ERR,  //!< Backend failed to allocate memory.
     // END MEMORY
 
-    TEMPLATE_OSAL_PORT_SPECIFIC_ERR               //!< Port/RTOS-specific error.
+    TEMPLATE_OSAL_PORT_SPECIFIC_ERR  //!< Port/RTOS-specific error.
 } Template_osalErr_e;
 
 /**
@@ -242,11 +242,11 @@ typedef void (*Template_osalSoftwareTimerExpiredCb_f)(void *const timerParam);
  */
 typedef struct
 {
-    const char                            *name;            /*!< Optional timer name. */
-    void                                  *timerParam;      /*!< User parameter passed to callback; may be NULL. */
+    const char                            *name;           /*!< Optional timer name. */
+    void                                  *timerParam;     /*!< User parameter passed to callback; may be NULL. */
     Template_osalSoftwareTimerExpiredCb_f timerExpiredCb;  /*!< Expiration callback; must not be NULL. */
-    bool                                   autoReload;       /*!< true = periodic, false = one-shot. */
-    Template_osalTimeMs_t                  periodMs;         /*!< Timer period in milliseconds; must be non-zero. */
+    bool                                   autoReload;     /*!< true = periodic, false = one-shot. */
+    Template_osalTimeMs_t                  periodMs;       /*!< Timer period in milliseconds; must be non-zero. */
 } Template_osalSoftwareTimerCfg_s;
 
 /**
@@ -276,11 +276,11 @@ typedef void (*Template_osalThreadWorker_f)(void *const args);
  */
 typedef enum
 {
-    TEMPLATE_OSAL_THREAD_PRIORITY_LOW = 0,        //!< Background tasks.
-    TEMPLATE_OSAL_THREAD_PRIORITY_MIDDLE,         //!< Standard operational tasks.
-    TEMPLATE_OSAL_THREAD_PRIORITY_HIGH,           //!< Time-sensitive tasks.
-    TEMPLATE_OSAL_THREAD_PRIORITY_ULTRA,          //!< Critical real-time tasks.
-    TEMPLATE_OSAL_THREAD_PRIORITY_THE_LAST_ONE    //!< For array sizing only.
+    TEMPLATE_OSAL_THREAD_PRIORITY_LOW = 0,       //!< Background tasks.
+    TEMPLATE_OSAL_THREAD_PRIORITY_MIDDLE,        //!< Standard operational tasks.
+    TEMPLATE_OSAL_THREAD_PRIORITY_HIGH,          //!< Time-sensitive tasks.
+    TEMPLATE_OSAL_THREAD_PRIORITY_ULTRA,         //!< Critical real-time tasks.
+    TEMPLATE_OSAL_THREAD_PRIORITY_THE_LAST_ONE   //!< For array sizing only.
 } Template_osalThreadPrio_e;
 
 /**
@@ -288,11 +288,11 @@ typedef enum
  */
 typedef struct
 {
-    Template_osalThreadWorker_f worker;       /*!< Worker entry function. */
-    const char                  *name;        /*!< Optional thread name. */
-    size_t                      stackSize;    /*!< Expressed in bytes. */
-    void                        *args;        /*!< Worker arg parameter (passed as arg to worker). */
-    Template_osalThreadPrio_e   prio;         /*!< Thread priority. */
+    Template_osalThreadWorker_f worker;     /*!< Worker entry function. */
+    const char                  *name;      /*!< Optional thread name. */
+    size_t                      stackSize;  /*!< Expressed in bytes. */
+    void                        *args;      /*!< Worker arg parameter (passed as arg to worker). */
+    Template_osalThreadPrio_e   prio;       /*!< Thread priority. */
 } Template_osalThreadCfg_s;
 
 /**

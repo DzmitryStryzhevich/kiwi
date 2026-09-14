@@ -54,6 +54,13 @@ IMPLEMENTED_PORTS = frozenset({"FreeRTOS"})
 CLANG_FORMAT_STYLE_FILE = "kiwicgen-clang-format.yaml"
 
 
+def _runtime_root() -> pathlib.Path:
+    """Resolve the external runtime-resource root for source and packaged execution."""
+    if getattr(sys, "frozen", False):
+        return pathlib.Path(sys.executable).resolve().parent
+    return PROJECT_ROOT
+
+
 # =====================================================================================================================
 # Core data model
 # =====================================================================================================================
@@ -89,21 +96,11 @@ class GenerationConfig:
 
 def resolve_templates_dir() -> pathlib.Path:
     """Resolve the OSAL template directory for source and packaged execution."""
-    candidates: list[pathlib.Path] = []
+    path = _runtime_root() / "osal"
+    if path.exists() and path.is_dir():
+        return path
 
-    meipass = getattr(sys, "_MEIPASS", None)
-    if meipass:
-        candidates.append(pathlib.Path(meipass) / "osal")
-
-    candidates.append(PROJECT_ROOT / "osal")
-    candidates.append(pathlib.Path.cwd() / "osal")
-
-    for path in candidates:
-        if path.exists() and path.is_dir():
-            return path
-
-    searched = "\n".join(f" - {path}" for path in candidates)
-    raise CodegenError(f"osal directory not found. Checked:\n{searched}")
+    raise CodegenError(f"osal template directory not found: {path}")
 
 
 # =====================================================================================================================
@@ -519,17 +516,21 @@ def _ensure_final_newline(content: str) -> str:
 
 
 def _resolve_clang_format() -> pathlib.Path:
-    """Resolve clang-format for source execution and packaged applications."""
+    """Resolve clang-format for source execution and standalone distributions."""
     executable_name = "clang-format.exe" if sys.platform == "win32" else "clang-format"
-    candidates: list[pathlib.Path] = []
 
-    # PyInstaller extracts bundled binaries into _MEIPASS at runtime.
-    meipass = getattr(sys, "_MEIPASS", None)
-    if meipass:
-        candidates.append(pathlib.Path(meipass) / executable_name)
+    if getattr(sys, "frozen", False):
+        executable = _runtime_root() / "tools" / executable_name
+        if executable.exists() and executable.is_file():
+            return executable
+        raise CodegenError(f"Bundled clang-format executable not found: {executable}")
 
-    # Keep source-tree and PATH resolution as fallbacks for developer execution.
-    candidates.append(ROOT / executable_name)
+    python_root = pathlib.Path(sys.executable).resolve().parent
+    candidates = [
+        python_root / executable_name,
+        pathlib.Path(sys.prefix) / "Scripts" / executable_name,
+        pathlib.Path(sys.prefix) / "bin" / executable_name,
+    ]
     path_executable = shutil.which("clang-format")
     if path_executable:
         candidates.append(pathlib.Path(path_executable))
@@ -539,31 +540,23 @@ def _resolve_clang_format() -> pathlib.Path:
             return candidate
 
     raise CodegenError(
-        "clang-format was not found. Install generator requirements or use a packaged kiwicgen executable."
+        "clang-format was not found. Install kiwicgen source dependencies before generation."
     )
 
 
 def _resolve_clang_format_style() -> pathlib.Path:
     """Resolve the formatter policy owned and distributed by kiwicgen."""
-    candidates: list[pathlib.Path] = []
-
-    # The packaged application carries the same style resource as source builds.
-    meipass = getattr(sys, "_MEIPASS", None)
-    if meipass:
-        candidates.append(pathlib.Path(meipass) / CLANG_FORMAT_STYLE_FILE)
-
-    candidates.append(ROOT / CLANG_FORMAT_STYLE_FILE)
-
-    for candidate in candidates:
-        if candidate.exists() and candidate.is_file():
-            if not candidate.read_text(encoding="utf-8").strip():
-                raise CodegenError(f"clang-format style file is empty: {candidate}")
-            return candidate.resolve()
-
-    searched = "\n".join(f" - {path}" for path in candidates)
-    raise CodegenError(
-        f"kiwicgen clang-format style file was not found. Checked:\n{searched}"
+    candidate = (
+        _runtime_root() / CLANG_FORMAT_STYLE_FILE
+        if getattr(sys, "frozen", False)
+        else ROOT / CLANG_FORMAT_STYLE_FILE
     )
+
+    if not candidate.exists() or not candidate.is_file():
+        raise CodegenError(f"kiwicgen clang-format style file not found: {candidate}")
+    if not candidate.read_text(encoding="utf-8").strip():
+        raise CodegenError(f"clang-format style file is empty: {candidate}")
+    return candidate.resolve()
 
 
 def _format_generated_sources(
@@ -601,7 +594,7 @@ def _format_generated_sources(
             encoding="utf-8",
             newline="\n",
         )
-        log(f"Formatted: {path}")
+        log(f"[INFO] Formatted: {path}")
 
 
 def _write_text(path: pathlib.Path, content: str, generated: list[pathlib.Path], log: Callable[[str], None]) -> None:
@@ -609,7 +602,7 @@ def _write_text(path: pathlib.Path, content: str, generated: list[pathlib.Path],
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(_ensure_final_newline(content), encoding="utf-8", newline="\n")
     generated.append(path)
-    log(f"Generated: {path}")
+    log(f"[INFO] Generated: {path}")
 
 
 # =====================================================================================================================
@@ -630,6 +623,7 @@ def generate(
 
     # Milestone 1: resolve normalized naming and source resources.
     log = log_callback or (lambda _message: None)
+    log("[STEP] Resolving generation configuration and resources")
     forms = build_prefix_forms(config.module_prefix)
     templates_dir = resolve_templates_dir()
     output_root_path = pathlib.Path(output_root)
@@ -640,6 +634,7 @@ def generate(
     generated: list[pathlib.Path] = []
 
     # Milestone 2: render generic and backend-specific source templates.
+    log("[STEP] Rendering OSAL templates")
     template_outputs = [
         (
             templates_dir / "template_osal.h",
@@ -666,6 +661,7 @@ def generate(
         _write_text(destination, text, generated, log)
 
     # Milestone 3: emit the compile-time profile consumed by generated sources.
+    log("[STEP] Rendering OSAL profile")
     profile_path = _base_header_dir(module_dir, config) / f"{forms.snake}_osal_profile.h"
     _write_text(
         profile_path,
@@ -675,6 +671,7 @@ def generate(
     )
 
     # Milestone 4: materialize the requested CMake/output layout.
+    log("[STEP] Rendering build-system files")
     root_cmake = module_dir / "CMakeLists.txt"
     if config.split_into_port_dir and not config.split_src_inc_files:
         # Preserve the historical default output byte-for-byte by continuing to
@@ -698,12 +695,15 @@ def generate(
         _write_text(root_cmake, _render_combined_cmake(forms, config), generated, log)
 
     # Milestone 5: format final C/H output only after every textual transform.
+    log("[STEP] Formatting generated C sources")
     _format_generated_sources(generated, log)
 
     # Milestone 6: copy generator-facing documentation beside the output root.
-    readme = PROJECT_ROOT / "README.md"
+    log("[STEP] Finalizing generated output")
+    readme = _runtime_root() / "README.md"
     if readme.exists():
         output_root_path.mkdir(parents=True, exist_ok=True)
         shutil.copy2(readme, output_root_path / "kiwicgen-README.md")
 
+    log(f"[ OK ] Generation completed: {module_dir}")
     return generated

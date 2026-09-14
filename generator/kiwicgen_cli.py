@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import sys
 
+from colorama import Fore, Style, just_fix_windows_console
+
 import kiwicgen_core as codegen
+from kiwicgen_version import __version__
 
 
 # =====================================================================================================================
@@ -21,16 +25,16 @@ class KiwicgenHelpFormatter(argparse.RawDescriptionHelpFormatter):
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """Construct the stable command-line interface exposed by kiwicgen-cli."""
+    """Construct the stable command-line interface exposed by kiwicgen."""
     parser = argparse.ArgumentParser(
-        prog="kiwicgen-cli",
+        prog="kiwicgen",
         usage="%(prog)s [options]",
         description="KIWI component-scoped OSAL code generator (kiwicgen).",
         epilog=(
             "Examples:\n"
-            "  kiwicgen-cli --module-prefix=foo_module --port=FreeRTOS --use-thread-api\n"
-            "  kiwicgen-cli --fprof=kiwicgen-foo_module-profile.yaml\n"
-            "  kiwicgen-cli --help"
+            "  kiwicgen --module-prefix=foo_module --port=FreeRTOS --use-thread-api\n"
+            "  kiwicgen --fprof=kiwicgen-foo_module-profile.yaml\n"
+            "  kiwicgen --help"
         ),
         formatter_class=KiwicgenHelpFormatter,
         add_help=False,
@@ -42,6 +46,22 @@ def _build_parser() -> argparse.ArgumentParser:
         "--help",
         action="help",
         help="Show this help message and exit.",
+    )
+    general.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help="Show kiwicgen version and exit.",
+    )
+    general.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress informational generation log messages.",
+    )
+    general.add_argument(
+        "--no-color",
+        action="store_true",
+        help="Disable colored console log output.",
     )
     general.add_argument(
         "--module-prefix",
@@ -88,6 +108,25 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Split generated .c and .h files into src/ and include/ directories.",
     )
     return parser
+
+
+def _console_log(message: str, *, use_color: bool) -> None:
+    """Print one structured kiwicgen status line with optional console color."""
+    if not use_color:
+        print(message)
+        return
+
+    color = Fore.WHITE
+    if message.startswith("[STEP]"):
+        color = Fore.CYAN
+    elif message.startswith("[ OK ]"):
+        color = Fore.GREEN
+    elif message.startswith("[WARN]"):
+        color = Fore.YELLOW
+    elif message.startswith("[ERR ]"):
+        color = Fore.RED
+
+    print(f"{color}{message}{Style.RESET_ALL}")
 
 
 # =====================================================================================================================
@@ -149,6 +188,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     args = parser.parse_args(effective_argv)
+    use_color = not args.no_color and sys.stdout.isatty() and not os.getenv("NO_COLOR")
+    if use_color:
+        just_fix_windows_console()
+
+    log_callback = None
+    if not args.quiet:
+        log_callback = lambda message: _console_log(message, use_color=use_color)
 
     try:
         # Milestone 2: collapse defaults, an optional YAML profile and explicit
@@ -159,14 +205,18 @@ def main(argv: list[str] | None = None) -> int:
             if args.output
             else pathlib.Path.cwd() / "generated"
         )
+
         # Milestone 3: delegate the complete render/write/format pipeline to
         # the shared core. The CLI does not post-process generated artifacts.
-        codegen.generate(config, output_root, log_callback=print)
+        codegen.generate(config, output_root, log_callback=log_callback)
     except (codegen.CodegenError, OSError) as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        message = f"[ERR ] {exc}"
+        if use_color:
+            print(f"{Fore.RED}{message}{Style.RESET_ALL}", file=sys.stderr)
+        else:
+            print(message, file=sys.stderr)
         return 2
 
-    print("Done.")
     return 0
 
 
