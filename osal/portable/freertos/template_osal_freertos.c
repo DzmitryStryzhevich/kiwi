@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: MIT */
 
 /**
- * \file      template_osal_freertos.c
- * \brief FreeRTOS OSAL port for Template.
- * \details   FreeRTOS implementation of the component-scoped Template OSAL contract.
+ * \file     template_osal_freertos.c
+ * \brief    FreeRTOS OSAL port for Template.
+ * \details  FreeRTOS implementation of the component-scoped Template OSAL contract.
  */
 
 //===============================================================================[ INCLUDE ]========================================================================================
@@ -70,17 +70,6 @@
 
 /**
  * \brief Create a FreeRTOS queue.
- *
- * \details Reserves a free registry slot through \c ptable, creates a queue
- *          and registers its handle under the resource mutex.
- *
- * \param osal           Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param queueItemSize  Size of one queue item in bytes.
- * \param queueDepth     Maximum number of queue items.
- * \param queueHandle    Output pointer receiving the queue handle.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error
- *         has occurred.
  */
 static Template_osalErr_e template_osalFreertosQueueCreate(void *const osal,
                                                            const size_t queueItemSize,
@@ -89,23 +78,12 @@ static Template_osalErr_e template_osalFreertosQueueCreate(void *const osal,
 
 /**
  * \brief Delete a FreeRTOS queue.
- *
- * \param osal         Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param queueHandle  Queue handle to delete.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosQueueDelete(void *const osal,
                                                            const Template_osalQueueHandle_t queueHandle);
 
 /**
  * \brief Put an item into a FreeRTOS queue without waiting for capacity.
- *
- * \param osal          Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param queueHandle   Registered queue handle.
- * \param queueItemPtr  Pointer to the item to enqueue.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosQueueItemPut(void *const osal,
                                                             const Template_osalQueueHandle_t queueHandle,
@@ -113,13 +91,6 @@ static Template_osalErr_e template_osalFreertosQueueItemPut(void *const osal,
 
 /**
  * \brief Post an item to a registered queue with the requested timeout.
- *
- * \param osal          Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param queueHandle   Registered queue handle.
- * \param queueItemPtr  Pointer to the item to enqueue.
- * \param timeoutMs     Maximum wait time in milliseconds.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosQueueItemPost(void *const osal,
                                                              const Template_osalQueueHandle_t queueHandle,
@@ -128,12 +99,6 @@ static Template_osalErr_e template_osalFreertosQueueItemPost(void *const osal,
 
 /**
  * \brief Retrieve an already available item from a registered queue without waiting.
- *
- * \param osal          Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param queueHandle   Registered queue handle.
- * \param queueItemPtr  Destination buffer receiving the queue item.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosQueueItemGet(void *const osal,
                                                             const Template_osalQueueHandle_t queueHandle,
@@ -141,12 +106,6 @@ static Template_osalErr_e template_osalFreertosQueueItemGet(void *const osal,
 
 /**
  * \brief Wait indefinitely for an item from a registered queue.
- *
- * \param osal          Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param queueHandle   Registered queue handle.
- * \param queueItemPtr  Destination buffer receiving the queue item.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosQueueItemWait(void *const osal,
                                                              const Template_osalQueueHandle_t queueHandle,
@@ -154,13 +113,6 @@ static Template_osalErr_e template_osalFreertosQueueItemWait(void *const osal,
 
 /**
  * \brief Pend an item from a FreeRTOS queue.
- *
- * \param osal          Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param queueHandle   Queue handle to read from.
- * \param queueItemPtr  Destination buffer receiving the queue item.
- * \param timeoutMs     Maximum wait time in milliseconds.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosQueueItemPend(void *const osal,
                                                              const Template_osalQueueHandle_t queueHandle,
@@ -169,11 +121,6 @@ static Template_osalErr_e template_osalFreertosQueueItemPend(void *const osal,
 
 /**
  * \brief Reset a FreeRTOS queue.
- *
- * \param osal         Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param queueHandle  Queue handle to reset.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosQueueReset(void *const osal,
                                                           const Template_osalQueueHandle_t queueHandle);
@@ -185,13 +132,6 @@ static Template_osalErr_e template_osalFreertosQueueReset(void *const osal,
 
 /**
  * \brief Create a FreeRTOS stream buffer and register it in the OSAL instance.
- *
- * \param osal                Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param bufferSizeBytes     Stream buffer capacity in bytes.
- * \param triggerLevelBytes   Receive trigger level in bytes.
- * \param streamBufferHandle  Output pointer receiving the created handle.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosStreamBufferCreate(void *const osal,
                                                                   const size_t bufferSizeBytes,
@@ -200,25 +140,12 @@ static Template_osalErr_e template_osalFreertosStreamBufferCreate(void *const os
 
 /**
  * \brief Delete a registered FreeRTOS stream buffer.
- *
- * \param osal                Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param streamBufferHandle  Registered stream buffer handle.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosStreamBufferDelete(void *const osal,
                                                                   const Template_osalStreamBufferHandle_t streamBufferHandle);
 
 /**
  * \brief Send bytes to a registered stream buffer without waiting for capacity.
- *
- * \param osal                Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param streamBufferHandle  Registered stream buffer handle.
- * \param data                Pointer to source bytes.
- * \param dataLengthBytes     Number of bytes requested for transfer.
- * \param bytesSent           Output pointer receiving the number of bytes written.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosStreamBufferSend(void *const osal,
                                                                 const Template_osalStreamBufferHandle_t streamBufferHandle,
@@ -228,15 +155,6 @@ static Template_osalErr_e template_osalFreertosStreamBufferSend(void *const osal
 
 /**
  * \brief Receive bytes from a registered stream buffer using the requested timeout.
- *
- * \param osal                Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param streamBufferHandle  Registered stream buffer handle.
- * \param data                Destination byte buffer.
- * \param dataLengthBytes     Maximum number of bytes to receive.
- * \param timeoutMs           Maximum wait time in milliseconds.
- * \param bytesReceived       Output pointer receiving the number of bytes read.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosStreamBufferReceive(void *const osal,
                                                                    const Template_osalStreamBufferHandle_t streamBufferHandle,
@@ -247,11 +165,6 @@ static Template_osalErr_e template_osalFreertosStreamBufferReceive(void *const o
 
 /**
  * \brief Reset a registered FreeRTOS stream buffer to the empty state.
- *
- * \param osal                Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param streamBufferHandle  Registered stream buffer handle.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosStreamBufferReset(void *const osal,
                                                                  const Template_osalStreamBufferHandle_t streamBufferHandle);
@@ -263,44 +176,24 @@ static Template_osalErr_e template_osalFreertosStreamBufferReset(void *const osa
 
 /**
  * \brief Create a recursive FreeRTOS mutex.
- *
- * \param osal           Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param lockObjHandle  Output pointer receiving the lock handle.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosLockObjCreate(void *const osal,
                                                              Template_osalLockObjHandle_t *const lockObjHandle);
 
 /**
  * \brief Delete a recursive FreeRTOS mutex.
- *
- * \param osal           Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param lockObjHandle  Lock handle to delete.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosLockObjDelete(void *const osal,
                                                              const Template_osalLockObjHandle_t lockObjHandle);
 
 /**
  * \brief Acquire a recursive FreeRTOS mutex.
- *
- * \param osal           Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param lockObjHandle  Lock handle to acquire.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosLock(void *const osal,
                                                     const Template_osalLockObjHandle_t lockObjHandle);
 
 /**
  * \brief Release a recursive FreeRTOS mutex.
- *
- * \param osal           Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param lockObjHandle  Lock handle to release.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosUnlock(void *const osal,
                                                       const Template_osalLockObjHandle_t lockObjHandle);
@@ -312,13 +205,6 @@ static Template_osalErr_e template_osalFreertosUnlock(void *const osal,
 
 /**
  * \brief Create a FreeRTOS counting semaphore and register it in the OSAL instance.
- *
- * \param osal             Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param maxCount         Maximum semaphore count.
- * \param initialCount     Initial semaphore count.
- * \param semaphoreHandle  Output pointer receiving the created handle.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosSemaphoreCreate(void *const osal,
                                                                const Template_osalSemaphoreCount_t maxCount,
@@ -327,34 +213,18 @@ static Template_osalErr_e template_osalFreertosSemaphoreCreate(void *const osal,
 
 /**
  * \brief Delete a registered FreeRTOS counting semaphore.
- *
- * \param osal             Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param semaphoreHandle  Registered counting semaphore handle.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosSemaphoreDelete(void *const osal,
                                                                const Template_osalSemaphoreHandle_t semaphoreHandle);
 
 /**
  * \brief Acquire a registered counting semaphore without waiting.
- *
- * \param osal             Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param semaphoreHandle  Registered counting semaphore handle.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosSemaphoreAcquire(void *const osal,
                                                                 const Template_osalSemaphoreHandle_t semaphoreHandle);
 
 /**
  * \brief Acquire a registered counting semaphore using the requested timeout.
- *
- * \param osal             Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param semaphoreHandle  Registered counting semaphore handle.
- * \param timeoutMs        Maximum wait time in milliseconds.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosSemaphoreAcquireWait(void *const osal,
                                                                     const Template_osalSemaphoreHandle_t semaphoreHandle,
@@ -362,23 +232,12 @@ static Template_osalErr_e template_osalFreertosSemaphoreAcquireWait(void *const 
 
 /**
  * \brief Release one count to a registered counting semaphore.
- *
- * \param osal             Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param semaphoreHandle  Registered counting semaphore handle.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosSemaphoreRelease(void *const osal,
                                                                 const Template_osalSemaphoreHandle_t semaphoreHandle);
 
 /**
  * \brief Read the current count of a registered counting semaphore.
- *
- * \param osal             Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param semaphoreHandle  Registered counting semaphore handle.
- * \param semaphoreCount   Output pointer receiving the current count.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosSemaphoreCountGet(void *const osal,
                                                                  const Template_osalSemaphoreHandle_t semaphoreHandle,
@@ -391,12 +250,6 @@ static Template_osalErr_e template_osalFreertosSemaphoreCountGet(void *const osa
 
 /**
  * \brief Create a FreeRTOS task.
- *
- * \param osal          Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param threadHandle  Output pointer receiving the thread handle.
- * \param threadCfg     Thread configuration.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosThreadCreate(void *const osal,
                                                             Template_osalThreadHandle_t *const threadHandle,
@@ -404,62 +257,35 @@ static Template_osalErr_e template_osalFreertosThreadCreate(void *const osal,
 
 /**
  * \brief Delete a FreeRTOS task.
- *
- * \param osal          Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param threadHandle  Thread handle to delete.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosThreadDelete(void *const osal,
                                                             const Template_osalThreadHandle_t threadHandle);
 
 /**
  * \brief Suspend a FreeRTOS task.
- *
- * \param osal          Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param threadHandle  Thread handle to suspend.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosThreadSuspend(void *const osal,
                                                              const Template_osalThreadHandle_t threadHandle);
 
 /**
  * \brief Resume a FreeRTOS task.
- *
- * \param osal          Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param threadHandle  Thread handle to resume.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosThreadResume(void *const osal,
                                                             const Template_osalThreadHandle_t threadHandle);
 
 /**
  * \brief Delay the calling FreeRTOS task.
- *
- * \param osal     Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param delayMs  Delay duration in milliseconds.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosThreadDelay(void *const osal,
                                                            const Template_osalTimeMs_t delayMs);
 
 /**
  * \brief Terminate the calling FreeRTOS task.
- *
- * \param osal  Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \note This function does not return on a valid call.
  */
 static void template_osalFreertosThreadExit(void *const osal);
 
 /**
  * \brief Validate a FreeRTOS task configuration.
- *
- * \param threadCfg  Pointer to the task configuration.
- *
- * \return true if the configuration is valid, otherwise false.
  */
 static bool template_osalFreertosThreadParamCheck(const Template_osalThreadCfg_s *const threadCfg);
 
@@ -470,19 +296,11 @@ static bool template_osalFreertosThreadParamCheck(const Template_osalThreadCfg_s
 
 /**
  * \brief Enter a FreeRTOS task-context critical section.
- *
- * \param osal  Opaque pointer to the initialized FreeRTOS OSAL instance.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosCriticalSectionEnter(void *const osal);
 
 /**
  * \brief Exit a previously entered FreeRTOS task-context critical section.
- *
- * \param osal  Opaque pointer to the initialized FreeRTOS OSAL instance.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosCriticalSectionExit(void *const osal);
 
@@ -493,12 +311,6 @@ static Template_osalErr_e template_osalFreertosCriticalSectionExit(void *const o
 
 /**
  * \brief Create a FreeRTOS software timer and register it in the OSAL instance.
- *
- * \param osal         Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param timerHandle  Output pointer receiving the created timer handle.
- * \param timerCfg     Software timer creation configuration.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosSoftwareTimerCreate(void *const osal,
                                                                    Template_osalSoftwareTimerHandle_t *const timerHandle,
@@ -506,66 +318,41 @@ static Template_osalErr_e template_osalFreertosSoftwareTimerCreate(void *const o
 
 /**
  * \brief Delete a registered FreeRTOS software timer.
- *
- * \param osal         Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param timerHandle  Registered software timer handle.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosSoftwareTimerDelete(void *const osal,
                                                                    const Template_osalSoftwareTimerHandle_t timerHandle);
 
 /**
  * \brief Start a registered FreeRTOS software timer.
- *
- * \param osal         Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param timerHandle  Registered software timer handle.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosSoftwareTimerStart(void *const osal,
                                                                   const Template_osalSoftwareTimerHandle_t timerHandle);
 
 /**
  * \brief Stop a registered FreeRTOS software timer.
- *
- * \param osal         Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param timerHandle  Registered software timer handle.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosSoftwareTimerStop(void *const osal,
                                                                  const Template_osalSoftwareTimerHandle_t timerHandle);
 
 /**
  * \brief Reset and restart the period of a registered FreeRTOS software timer.
- *
- * \param osal         Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param timerHandle  Registered software timer handle.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosSoftwareTimerReset(void *const osal,
                                                                   const Template_osalSoftwareTimerHandle_t timerHandle);
 
 /**
  * \brief Dispatch a native FreeRTOS timer callback to the component callback.
- *
- * \param timerHandle  Native FreeRTOS timer handle passed by the timer service.
  */
 static void template_osalFreertosSoftwareTimerCallback(TimerHandle_t timerHandle);
 
 // END SOFTWARE_TIMER
 
 /*--------------------------------- Time ----------------------------------*/
+
 // BEGIN TIME
+
 /**
  * \brief Retrieve the current FreeRTOS system time in milliseconds.
- *
- * \param osal      Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param osTimeMs  Output pointer receiving the current time in milliseconds.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosTimeMsGet(void *const osal,
                                                          Template_osalTimeMs_t *const osTimeMs);
@@ -573,10 +360,6 @@ static Template_osalErr_e template_osalFreertosTimeMsGet(void *const osal,
 
 /**
  * \brief Convert milliseconds to FreeRTOS ticks for timeout-aware OSAL operations.
- *
- * \param timeMs  Timeout value in milliseconds.
- *
- * \return TickType_t FreeRTOS timeout value in ticks.
  */
 static inline TickType_t template_osalFreertosTimeMsToTicksConvert(const Template_osalTimeMs_t timeMs);
 
@@ -585,12 +368,6 @@ static inline TickType_t template_osalFreertosTimeMsToTicksConvert(const Templat
 
 /**
  * \brief Allocate memory from the FreeRTOS heap.
- *
- * \param osal    Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param size    Allocation size in bytes.
- * \param memPtr  Output pointer receiving the allocated memory address.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosMemAlloc(void *const osal,
                                                         const size_t size,
@@ -598,11 +375,6 @@ static Template_osalErr_e template_osalFreertosMemAlloc(void *const osal,
 
 /**
  * \brief Free memory allocated from the FreeRTOS heap.
- *
- * \param osal  Opaque pointer to the initialized FreeRTOS OSAL instance.
- * \param ptr   Pointer to the memory block to release.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static Template_osalErr_e template_osalFreertosMemFree(void *const osal,
                                                        void *const ptr);
@@ -613,10 +385,6 @@ static Template_osalErr_e template_osalFreertosMemFree(void *const osal,
 
 /**
  * \brief Validate the FreeRTOS OSAL backend.
- *
- * \param osal  Opaque pointer to the FreeRTOS OSAL instance.
- *
- * \return true if the instance is valid and initialized, otherwise false.
  */
 static bool template_osalFreertosIsValid(const void *const osal);
 
@@ -624,19 +392,11 @@ static bool template_osalFreertosIsValid(const void *const osal);
 
 /**
  * \brief Acquire the internal resource mutex.
- *
- * \param osalFreertos  Pointer to the initialized FreeRTOS OSAL instance.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static inline Template_osalErr_e template_osalFreertosResourceLock(Template_osalFreertos_s *const osalFreertos);
 
 /**
  * \brief Release the internal resource mutex.
- *
- * \param osalFreertos  Pointer to the initialized FreeRTOS OSAL instance.
- *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
 static inline Template_osalErr_e template_osalFreertosResourceUnlock(Template_osalFreertos_s *const osalFreertos);
 
@@ -1228,7 +988,7 @@ static Template_osalErr_e template_osalFreertosQueueItemPut(void *const osal,
                                                             const void *const queueItemPtr)
 {
     Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
-    BaseType_t sendStatus = pdFALSE;
+    BaseType_t sendStatus         = pdFALSE;
 
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosQueueItemPut(%p, %p, %p)",
                                  osal, (void *)queueHandle, queueItemPtr);
@@ -1249,6 +1009,7 @@ static Template_osalErr_e template_osalFreertosQueueItemPut(void *const osal,
         TEMPLATE_OSAL_FREERTOS_ASSERT(0);
         osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosQueueItemPut -> %d", (int)osalStatus);
+
         return osalStatus;  // Exit: Error: invalid argument or unregistered handle
     }
 
@@ -1383,7 +1144,7 @@ static Template_osalErr_e template_osalFreertosQueueItemGet(void *const osal,
                                                             void *const queueItemPtr)
 {
     Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
-    BaseType_t receiveStatus = pdFALSE;
+    BaseType_t receiveStatus      = pdFALSE;
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosQueueItemGet(%p, %p, %p)",
@@ -2071,7 +1832,7 @@ static Template_osalErr_e template_osalFreertosStreamBufferReceive(void *const o
         *bytesReceived = xStreamBufferReceiveFromISR((StreamBufferHandle_t)streamBufferHandle,
                                                      data,
                                                      dataLengthBytes,
-                                                      &higherPriorityTaskWoken);
+                                                     &higherPriorityTaskWoken);
         portYIELD_FROM_ISR(higherPriorityTaskWoken);
     }
     else
@@ -2754,7 +2515,7 @@ static Template_osalErr_e template_osalFreertosSemaphoreAcquire(void *const osal
                                                                 const Template_osalSemaphoreHandle_t semaphoreHandle)
 {
     Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
-    BaseType_t acquireStatus = pdFALSE;
+    BaseType_t acquireStatus      = pdFALSE;
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosSemaphoreAcquire(%p, %p)",
@@ -2911,7 +2672,7 @@ static Template_osalErr_e template_osalFreertosSemaphoreRelease(void *const osal
                                                                 const Template_osalSemaphoreHandle_t semaphoreHandle)
 {
     Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
-    BaseType_t releaseStatus = pdFALSE;
+    BaseType_t releaseStatus      = pdFALSE;
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosSemaphoreRelease(%p, %p)",
@@ -3464,6 +3225,7 @@ static Template_osalErr_e template_osalFreertosThreadDelay(void *const osal,
         TEMPLATE_OSAL_FREERTOS_ASSERT(0);
         osalStatus = TEMPLATE_OSAL_NOT_INIT_ERR;
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelay -> %d", (int)osalStatus);
+
         return osalStatus;  // Exit: Error: backend is not initialized
     }
 
@@ -3504,6 +3266,7 @@ static void template_osalFreertosThreadExit(void *const osal)
     {
         TEMPLATE_OSAL_FREERTOS_ASSERT(0);
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadExit -> invalid OSAL");
+
         return;  // Exit: Error: invalid OSAL instance
     }
 
@@ -3511,6 +3274,7 @@ static void template_osalFreertosThreadExit(void *const osal)
     {
         TEMPLATE_OSAL_FREERTOS_ASSERT(0);
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadExit -> ISR context is not supported");
+
         return;  // Exit: Error: ISR context is not supported
     }
 
@@ -3521,6 +3285,7 @@ static void template_osalFreertosThreadExit(void *const osal)
     {
         TEMPLATE_OSAL_FREERTOS_ASSERT(0);
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadExit -> invalid backend state");
+
         return;  // Exit: Error: backend invariant is not satisfied
     }
 
@@ -3529,6 +3294,7 @@ static void template_osalFreertosThreadExit(void *const osal)
     {
         TEMPLATE_OSAL_FREERTOS_ASSERT(0);
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadExit -> current task is unavailable");
+
         return;  // Exit: Error: current task handle is unavailable
     }
 
@@ -3537,6 +3303,7 @@ static void template_osalFreertosThreadExit(void *const osal)
     {
         TEMPLATE_OSAL_FREERTOS_ASSERT(0);
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadExit -> resource lock failed: %d", (int)osalStatus);
+
         return;  // Exit: Error: resource mutex acquisition failed
     }
 
@@ -3548,6 +3315,7 @@ static void template_osalFreertosThreadExit(void *const osal)
         (void)template_osalFreertosResourceUnlock(port);
         TEMPLATE_OSAL_FREERTOS_ASSERT(0);
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadExit -> current task is not registered");
+
         return;  // Exit: Error: current task is not registered
     }
 
@@ -3558,6 +3326,7 @@ static void template_osalFreertosThreadExit(void *const osal)
     {
         TEMPLATE_OSAL_FREERTOS_ASSERT(0);
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadExit -> resource unlock failed: %d", (int)osalStatus);
+
         return;  // Exit: Error: resource mutex release failed
     }
 
@@ -3565,6 +3334,7 @@ static void template_osalFreertosThreadExit(void *const osal)
     vTaskDelete(NULL);
 
     TEMPLATE_OSAL_FREERTOS_ASSERT(0);
+
     while (1)
     {
         (void)0;
@@ -3828,7 +3598,7 @@ static Template_osalErr_e template_osalFreertosSoftwareTimerCreate(void *const o
     }
 
     timerObj->handle = (Template_osalSoftwareTimerHandle_t)nativeHandle;
-    *timerHandle = (Template_osalSoftwareTimerHandle_t)nativeHandle;
+    *timerHandle     = (Template_osalSoftwareTimerHandle_t)nativeHandle;
 
     /* Release the resource mutex */
     osalStatus = template_osalFreertosResourceUnlock(port);
@@ -3969,7 +3739,7 @@ static Template_osalErr_e template_osalFreertosSoftwareTimerStart(void *const os
                                                                   const Template_osalSoftwareTimerHandle_t timerHandle)
 {
     Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
-    BaseType_t timerStatus = pdFAIL;
+    BaseType_t timerStatus        = pdFAIL;
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosSoftwareTimerStart(%p, %p)",
@@ -4046,7 +3816,7 @@ static Template_osalErr_e template_osalFreertosSoftwareTimerStop(void *const osa
                                                                  const Template_osalSoftwareTimerHandle_t timerHandle)
 {
     Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
-    BaseType_t timerStatus = pdFAIL;
+    BaseType_t timerStatus        = pdFAIL;
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosSoftwareTimerStop(%p, %p)",
@@ -4123,7 +3893,7 @@ static Template_osalErr_e template_osalFreertosSoftwareTimerReset(void *const os
                                                                   const Template_osalSoftwareTimerHandle_t timerHandle)
 {
     Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
-    BaseType_t timerStatus = pdFAIL;
+    BaseType_t timerStatus        = pdFAIL;
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosSoftwareTimerReset(%p, %p)",
@@ -4205,6 +3975,7 @@ static void template_osalFreertosSoftwareTimerCallback(TimerHandle_t timerHandle
     if (timerObj == NULL)
     {
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosSoftwareTimerCallback -> invalid timer object");
+
         return;  // Exit: Error: timer callback object is invalid
     }
 
@@ -4215,6 +3986,7 @@ static void template_osalFreertosSoftwareTimerCallback(TimerHandle_t timerHandle
         (timerObj->cfg.timerExpiredCb == NULL))
     {
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosSoftwareTimerCallback -> invalid timer state");
+
         return;  // Exit: Error: timer callback state is invalid
     }
 
@@ -4259,6 +4031,7 @@ static Template_osalErr_e template_osalFreertosTimeMsGet(void *const osal,
         TEMPLATE_OSAL_FREERTOS_ASSERT(0);
         osalStatus = TEMPLATE_OSAL_NOT_INIT_ERR;
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosTimeMsGet -> %d", (int)osalStatus);
+
         return osalStatus;  // Exit: Error: backend is not initialized
     }
 
