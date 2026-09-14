@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import os
 import pathlib
+import queue
 import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 import kiwicgen_core as codegen
+from kiwicgen_logging import AsyncLogDispatcher
 
 
 # =====================================================================================================================
@@ -19,15 +21,16 @@ ROOT = pathlib.Path(__file__).resolve().parent
 PROJECT_ROOT = ROOT.parent
 
 
-def _resolve_app_asset(relative_path: str) -> pathlib.Path:
-    """Resolve a GUI asset for source execution and PyInstaller bundles."""
-    meipass = getattr(sys, "_MEIPASS", None)
-    if meipass:
-        bundled = pathlib.Path(meipass) / relative_path
-        if bundled.exists():
-            return bundled
+def _runtime_root() -> pathlib.Path:
+    """Resolve the external runtime-resource root for source and packaged execution."""
+    if getattr(sys, "frozen", False):
+        return pathlib.Path(sys.executable).resolve().parent
+    return PROJECT_ROOT
 
-    return PROJECT_ROOT / relative_path
+
+def _resolve_app_asset(relative_path: str) -> pathlib.Path:
+    """Resolve a GUI asset from the source tree or standalone distribution."""
+    return _runtime_root() / relative_path
 
 
 # =====================================================================================================================
@@ -52,10 +55,18 @@ class KiwicgenApp(tk.Tk):
         self.style.theme_use("clam")
         self._configure_styles()
 
+        # A dedicated listener thread serializes status messages before they
+        # enter the Tk-owned presentation queue. Tk widgets remain main-thread
+        # only; moving generation itself off the UI thread is a later perf pass.
+        self._gui_log_queue: queue.Queue[str] = queue.Queue()
+        self._log_dispatcher = AsyncLogDispatcher(self._gui_log_queue.put)
+        self._closing = False
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
         # Milestone 2: mirror shared-core configuration as Tk state. Every
         # value is normalized again by kiwicgen_core before use.
         self.prefix_var = tk.StringVar(value=codegen.DEFAULT_MODULE_PREFIX)
-        self.dest_var = tk.StringVar(value=str(PROJECT_ROOT / "generated"))
+        self.dest_var = tk.StringVar(value=str(_runtime_root() / "generated"))
         self.port_var = tk.StringVar(value=codegen.DEFAULT_PORT)
 
         self.api_vars = {
@@ -75,10 +86,14 @@ class KiwicgenApp(tk.Tk):
         self.split_src_inc_files_var = tk.BooleanVar(
             value=codegen.DEFAULT_SPLIT_SRC_INC_FILES
         )
+        self.format_generated_code_var = tk.BooleanVar(
+            value=codegen.DEFAULT_FORMAT_GENERATED_CODE
+        )
 
         # Milestone 3: build controls only after the complete frontend state
         # model is available.
         self._build_ui()
+        self.after(50, self._drain_log_queue)
 
     def _set_window_icon(self) -> None:
         """Apply packaged KIWI artwork when supported by the host window system."""
@@ -212,6 +227,11 @@ class KiwicgenApp(tk.Tk):
             layout_checks,
             text="Split source/include files",
             variable=self.split_src_inc_files_var,
+        ).pack(side="left", padx=(0, 18))
+        ttk.Checkbutton(
+            layout_checks,
+            text="Format generated code",
+            variable=self.format_generated_code_var,
         ).pack(side="left")
 
         api_card = ttk.Frame(outer, style="Card.TFrame", padding=(0, 18, 0, 8))
@@ -286,25 +306,72 @@ class KiwicgenApp(tk.Tk):
             relief="flat",
         )
         self.log.pack(fill="both", expand=True, pady=(18, 0))
-        self._log("Ready. Configure options, load a profile, or click Generate.")
+        self.log.tag_configure("info", foreground="#d9e5ff")
+        self.log.tag_configure("step", foreground="#6fdcff")
+        self.log.tag_configure("ok", foreground="#72e6a0")
+        self.log.tag_configure("warn", foreground="#ffd166")
+        self.log.tag_configure("err", foreground="#ff7b7b")
+        self._log("[INFO] Ready. Configure options, load a profile, or click Generate.")
 
     # -----------------------------------------------------------------------------------------------------------------
     # UI actions and filesystem helpers
     # -----------------------------------------------------------------------------------------------------------------
 
     def _log(self, text: str) -> None:
-        """Append one status line and flush pending GUI redraws."""
-        self.log.insert("end", text + "\n")
+        """Queue one structured status line for asynchronous presentation."""
+        self._log_dispatcher.log(text)
+
+    def _append_log(self, text: str) -> None:
+        """Append one status line to the Tk log widget on the main thread."""
+        tag = "info"
+        if text.startswith("[STEP]"):
+            tag = "step"
+        elif text.startswith("[ OK ]"):
+            tag = "ok"
+        elif text.startswith("[WARN]"):
+            tag = "warn"
+        elif text.startswith("[ERR ]"):
+            tag = "err"
+
+        self.log.insert("end", text + "\n", tag)
         self.log.see("end")
 
-        # Keep progress messages visible while the synchronous shared-core
-        # generation pipeline is running on the Tk main thread.
+    def _drain_log_queue(self) -> None:
+        """Move pending listener-thread messages into Tk-owned widgets."""
+        while True:
+            try:
+                message = self._gui_log_queue.get_nowait()
+            except queue.Empty:
+                break
+
+            self._append_log(message)
+
+        if not self._closing:
+            self.after(50, self._drain_log_queue)
+
+    def _flush_logs_to_ui(self) -> None:
+        """Synchronize queued messages before showing a modal result dialog."""
+        self._log_dispatcher.flush()
+        while True:
+            try:
+                message = self._gui_log_queue.get_nowait()
+            except queue.Empty:
+                break
+
+            self._append_log(message)
+
         self.update_idletasks()
+
+    def _on_close(self) -> None:
+        """Stop the logging listener before destroying the Tk application."""
+        self._closing = True
+        self._log_dispatcher.close()
+        self.destroy()
 
     def _select_destination(self) -> None:
         """Select the output root without changing generation semantics."""
         folder = filedialog.askdirectory(
-            initialdir=self.dest_var.get() or str(PROJECT_ROOT)
+            initialdir=self.dest_var.get() or str(_runtime_root())
         )
         if folder:
             self.dest_var.set(folder)
@@ -359,13 +426,14 @@ class KiwicgenApp(tk.Tk):
             apis=selected,
             split_into_port_dir=self.split_into_port_dir_var.get(),
             split_src_inc_files=self.split_src_inc_files_var.get(),
+            format_generated_code=self.format_generated_code_var.get(),
         )
 
     def _load_profile(self) -> None:
         """Load a kiwicgen profile and project it onto the GUI controls."""
         profile = filedialog.askopenfilename(
             title="Load kiwicgen generation profile",
-            initialdir=self.dest_var.get() or str(PROJECT_ROOT),
+            initialdir=self.dest_var.get() or str(_runtime_root()),
             filetypes=(
                 ("YAML profile", "*.yaml *.yml"),
                 ("All files", "*.*"),
@@ -378,7 +446,7 @@ class KiwicgenApp(tk.Tk):
             config = codegen.load_profile(profile)
         except (codegen.CodegenError, OSError) as exc:
             messagebox.showerror("Load profile failed", str(exc))
-            self._log(f"ERROR: {exc}")
+            self._log(f"[ERR ] {exc}")
             return
 
         self.prefix_var.set(config.module_prefix)
@@ -387,7 +455,8 @@ class KiwicgenApp(tk.Tk):
             variable.set(name in config.apis)
         self.split_into_port_dir_var.set(config.split_into_port_dir)
         self.split_src_inc_files_var.set(config.split_src_inc_files)
-        self._log(f"Loaded profile: {profile}")
+        self.format_generated_code_var.set(config.format_generated_code)
+        self._log(f"[INFO] Loaded profile: {profile}")
 
     def _save_profile(self) -> None:
         """Persist the current normalized GUI configuration as a profile."""
@@ -401,7 +470,7 @@ class KiwicgenApp(tk.Tk):
         default_name = f"kiwicgen-{forms.snake}-profile.yaml"
         profile = filedialog.asksaveasfilename(
             title="Save kiwicgen generation profile",
-            initialdir=self.dest_var.get() or str(PROJECT_ROOT),
+            initialdir=self.dest_var.get() or str(_runtime_root()),
             initialfile=default_name,
             defaultextension=".yaml",
             filetypes=(
@@ -417,10 +486,10 @@ class KiwicgenApp(tk.Tk):
             saved = codegen.save_profile(profile, config)
         except OSError as exc:
             messagebox.showerror("Save profile failed", str(exc))
-            self._log(f"ERROR: {exc}")
+            self._log(f"[ERR ] {exc}")
             return
 
-        self._log(f"Saved profile: {saved}")
+        self._log(f"[INFO] Saved profile: {saved}")
 
     # -----------------------------------------------------------------------------------------------------------------
     # Generation action
@@ -438,16 +507,18 @@ class KiwicgenApp(tk.Tk):
             # post-generation formatting. The GUI only reports its result.
             codegen.generate(config, output_root, log_callback=self._log)
         except (codegen.CodegenError, OSError) as exc:
+            self._log(f"[ERR ] {exc}")
+            self._flush_logs_to_ui()
             messagebox.showerror("Generation failed", str(exc))
-            self._log(f"ERROR: {exc}")
             return
         except Exception as exc:
+            self._log(f"[ERR ] {exc}")
+            self._flush_logs_to_ui()
             messagebox.showerror("Generation failed", str(exc))
-            self._log(f"ERROR: {exc}")
             return
 
+        self._flush_logs_to_ui()
         messagebox.showinfo("Success", f"Code generated into: {output_root}")
-        self._log("Done.")
 
 
 if __name__ == "__main__":
