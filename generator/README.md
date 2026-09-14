@@ -31,6 +31,19 @@ generator/
 │   └── build-exe.sh             Linux/macOS build helper
 ├── build/                       Default intermediate build directory
 └── dist/                        Default standalone distribution directory
+├── kiwicgen_core.py             Shared generation core
+├── kiwicgen_cli.py              CLI frontend
+├── kiwicgen_gui.py              GUI frontend
+├── kiwicgen_logging.py          Shared asynchronous log dispatcher
+├── kiwicgen_version.py          Single source of the tool version
+├── kiwicgen-clang-format.yaml   Fixed generated-C formatting policy
+├── pyproject.toml               Python/runtime/build dependency metadata
+├── scripts/
+│   ├── build-exe.bat            Windows CMD build helper
+│   ├── build-exe.ps1            Windows PowerShell build helper
+│   └── build-exe.sh             Linux/macOS build helper
+├── build/                       Default intermediate build directory
+└── dist/                        Default standalone distribution directory
 ```
 
 ## Requirements
@@ -38,11 +51,18 @@ generator/
 Python 3.10 or newer is required to run kiwicgen from source or to build standalone executables. Runtime and executable-build dependencies are declared in `pyproject.toml`.
 
 For source execution, install the generator project from `generator/`:
+Python 3.10 or newer is required to run kiwicgen from source or to build standalone executables. Runtime and executable-build dependencies are declared in `pyproject.toml`.
+
+For source execution, install the generator project from `generator/`:
 
 ```bash
 python -m pip install .
+python -m pip install .
 ```
 
+`kiwicgen` owns the formatting of generated C sources. The supported formatter baseline is `clang-format` 22.x, declared in `pyproject.toml`, while the formatting policy itself lives in `kiwicgen-clang-format.yaml`. The shared core passes that policy explicitly after rendering, so generated `.c` and `.h` files do not depend on a user or parent-project `.clang-format` configuration.
+
+Standalone distributions carry their own `clang-format` executable, formatter policy and OSAL templates; no separate Python or formatter installation is required on the target machine.
 `kiwicgen` owns the formatting of generated C sources. The supported formatter baseline is `clang-format` 22.x, declared in `pyproject.toml`, while the formatting policy itself lives in `kiwicgen-clang-format.yaml`. The shared core passes that policy explicitly after rendering, so generated `.c` and `.h` files do not depend on a user or parent-project `.clang-format` configuration.
 
 Standalone distributions carry their own `clang-format` executable, formatter policy and OSAL templates; no separate Python or formatter installation is required on the target machine.
@@ -64,10 +84,13 @@ python generator/kiwicgen_gui.py
 ## CLI application
 
 The packaged CLI executable is named `kiwicgen` (`kiwicgen.exe` on Windows).
+The packaged CLI executable is named `kiwicgen` (`kiwicgen.exe` on Windows).
 
 Running it with no arguments does **not** generate anything. It prints the same help text as `--help`:
 
 ```bash
+kiwicgen
+kiwicgen --help
 kiwicgen
 kiwicgen --help
 ```
@@ -77,6 +100,9 @@ kiwicgen --help
 | Option | Purpose |
 | --- | --- |
 | `-h`, `--help` | Print CLI help and exit |
+| `--version` | Print the kiwicgen version and exit |
+| `--quiet` | Suppress informational generation log messages |
+| `--no-color` | Disable colored console log output |
 | `--version` | Print the kiwicgen version and exit |
 | `--quiet` | Suppress informational generation log messages |
 | `--no-color` | Disable colored console log output |
@@ -116,7 +142,10 @@ When a profile is loaded with `--fprof`, positive `--use-*-api` switches can ena
 | `--split-src-inc-files` | Split `.c` files into `src/` and `.h` files into `include/` |
 | `--format-generated-code` | Format generated `.c`/`.h` files with the kiwicgen formatting policy |
 | `--no-format-generated-code` | Skip generated-code formatting |
+| `--format-generated-code` | Format generated `.c`/`.h` files with the kiwicgen formatting policy |
+| `--no-format-generated-code` | Skip generated-code formatting |
 
+Both layout switches are disabled by default. Generated-code formatting is enabled by default.
 Both layout switches are disabled by default. Generated-code formatting is enabled by default.
 
 ### CLI examples
@@ -124,6 +153,7 @@ Both layout switches are disabled by default. Generated-code formatting is enabl
 Generate a FreeRTOS OSAL with thread and queue APIs:
 
 ```bash
+kiwicgen \
 kiwicgen \
   --module-prefix=foo_module \
   --port=FreeRTOS \
@@ -136,6 +166,7 @@ Generate into a custom directory:
 
 ```bash
 kiwicgen \
+kiwicgen \
   --module-prefix=foo_module \
   --port=FreeRTOS \
   --language=C \
@@ -147,11 +178,13 @@ Regenerate from a saved profile:
 
 ```bash
 kiwicgen --fprof=kiwicgen-foo_module-profile.yaml
+kiwicgen --fprof=kiwicgen-foo_module-profile.yaml
 ```
 
 Regenerate from a profile into another directory:
 
 ```bash
+kiwicgen \
 kiwicgen \
   --fprof=kiwicgen-foo_module-profile.yaml \
   --output=./regen
@@ -182,6 +215,7 @@ api:
 layout:
   split_into_port_dir: true
   split_src_inc_files: true
+format_generated_code: true
 format_generated_code: true
 ```
 
@@ -232,6 +266,7 @@ The upper settings group controls the target and generated-directory layout.
 | `Browse` | Select the output folder using the system directory picker |
 | `Split into port directory` | Same behavior as CLI `--split-into-port-dir` |
 | `Split source/include files` | Same behavior as CLI `--split-src-inc-files` |
+| `Format generated code` | Apply the bundled kiwicgen formatting policy after generation; enabled by default |
 | `Format generated code` | Apply the bundled kiwicgen formatting policy after generation; enabled by default |
 
 `FreeRTOS` is selected by default. The GUI uses independent port selectors so additional implemented backends can be generated together later without replacing the target-selection model.
@@ -443,8 +478,91 @@ The default output paths can also be overridden:
 Python packaging input is copied under the selected build directory before `pip install .[executable]` is invoked. This keeps `*.egg-info` and other temporary setuptools metadata out of the source tree.
 
 The default standalone distribution is self-contained and has this shape on Windows:
+## Building standalone executables
+
+The standalone build follows the same isolated build model on Windows and Linux/macOS. Build scripts live in `generator/scripts/`; by default, both output directories are created one level above that directory:
 
 ```text
+generator/
+├── scripts/
+├── build/
+└── dist/
+```
+
+Windows CMD:
+
+```cmd
+generator\scripts\build-exe.bat
+```
+
+Windows PowerShell:
+
+```powershell
+.\generator\scripts\build-exe.ps1
+```
+
+Linux/macOS:
+
+```sh
+./generator/scripts/build-exe.sh
+```
+
+The build performs these stages:
+
+```text
+search/select Python runtime
+        ↓
+create or reuse build/venv
+        ↓
+stage packaging metadata under build/
+        ↓
+install .[executable] dependencies
+        ↓
+read kiwicgen_version.py
+        ↓
+build kiwicgen and kiwicgen-gui
+        ↓
+stage templates, formatter and GUI resources
+        ↓
+verify the final distribution
+```
+
+Python can be selected explicitly for CI/non-interactive builds:
+
+```text
+--python <python executable>
+```
+
+The default output paths can also be overridden:
+
+```text
+--build-dir <path>
+--dist-dir <path>
+```
+
+Python packaging input is copied under the selected build directory before `pip install .[executable]` is invoked. This keeps `*.egg-info` and other temporary setuptools metadata out of the source tree.
+
+The default standalone distribution is self-contained and has this shape on Windows:
+
+```text
+generator/dist/
+├── kiwicgen.exe
+├── kiwicgen-gui.exe
+├── kiwicgen-clang-format.yaml
+├── README.md
+├── kiwicgen-README.md
+├── LICENSE
+├── tools/
+│   └── clang-format.exe
+├── osal/
+│   └── ... templates and CMake files ...
+└── doc/
+    └── ... GUI artwork ...
+```
+
+Linux/macOS use the same layout without the `.exe` suffix. The distribution does not depend on the source repository or current working directory. Runtime resources are resolved relative to the executable directory.
+
+Build logs use the common status vocabulary:
 generator/dist/
 ├── kiwicgen.exe
 ├── kiwicgen-gui.exe
@@ -470,8 +588,24 @@ Build logs use the common status vocabulary:
 [ OK ] successful stage
 [WARN] recoverable problem
 [ERR ] fatal error
+[INFO] informational state
+[STEP] current build stage
+[ OK ] successful stage
+[WARN] recoverable problem
+[ERR ] fatal error
 ```
 
+The final smoke check runs `kiwicgen --version` from the completed `dist/` directory and verifies that required external templates and formatter resources were staged.
+
+### Version
+
+The single source of the kiwicgen version is:
+
+```text
+generator/kiwicgen_version.py
+```
+
+The same version is used by `kiwicgen --version`, Python project metadata and Windows PE version resources for both executables.
 The final smoke check runs `kiwicgen --version` from the completed `dist/` directory and verifies that required external templates and formatter resources were staged.
 
 ### Version

@@ -5,12 +5,14 @@ from __future__ import annotations
 import os
 import pathlib
 import queue
+import queue
 import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 import kiwicgen_core as codegen
+from kiwicgen_logging import AsyncLogDispatcher
 from kiwicgen_logging import AsyncLogDispatcher
 
 
@@ -29,7 +31,16 @@ def _runtime_root() -> pathlib.Path:
     return PROJECT_ROOT
 
 
+def _runtime_root() -> pathlib.Path:
+    """Resolve the external runtime-resource root for source and packaged execution."""
+    if getattr(sys, "frozen", False):
+        return pathlib.Path(sys.executable).resolve().parent
+    return PROJECT_ROOT
+
+
 def _resolve_app_asset(relative_path: str) -> pathlib.Path:
+    """Resolve a GUI asset from the source tree or standalone distribution."""
+    return _runtime_root() / relative_path
     """Resolve a GUI asset from the source tree or standalone distribution."""
     return _runtime_root() / relative_path
 
@@ -93,6 +104,9 @@ class KiwicgenApp(tk.Tk):
         )
         self.split_src_inc_files_var = tk.BooleanVar(
             value=codegen.DEFAULT_SPLIT_SRC_INC_FILES
+        )
+        self.format_generated_code_var = tk.BooleanVar(
+            value=codegen.DEFAULT_FORMAT_GENERATED_CODE
         )
         self.format_generated_code_var = tk.BooleanVar(
             value=codegen.DEFAULT_FORMAT_GENERATED_CODE
@@ -386,6 +400,12 @@ class KiwicgenApp(tk.Tk):
         self.log.tag_configure("warn", foreground="#ffd166")
         self.log.tag_configure("err", foreground="#ff7b7b")
         self._log("[INFO] Ready. Configure options, load a profile, or click Generate.")
+        self.log.tag_configure("info", foreground="#d9e5ff")
+        self.log.tag_configure("step", foreground="#6fdcff")
+        self.log.tag_configure("ok", foreground="#72e6a0")
+        self.log.tag_configure("warn", foreground="#ffd166")
+        self.log.tag_configure("err", foreground="#ff7b7b")
+        self._log("[INFO] Ready. Configure options, load a profile, or click Generate.")
 
     # -----------------------------------------------------------------------------------------------------------------
     # UI actions and asynchronous event presentation
@@ -468,9 +488,16 @@ class KiwicgenApp(tk.Tk):
         self._log_dispatcher.close()
         self.destroy()
 
+    def _on_close(self) -> None:
+        """Stop the logging listener before destroying the Tk application."""
+        self._closing = True
+        self._log_dispatcher.close()
+        self.destroy()
+
     def _select_destination(self) -> None:
         """Select the output root without changing generation semantics."""
         folder = filedialog.askdirectory(
+            initialdir=self.dest_var.get() or str(_runtime_root())
             initialdir=self.dest_var.get() or str(_runtime_root())
         )
         if folder:
@@ -531,12 +558,14 @@ class KiwicgenApp(tk.Tk):
             split_into_port_dir=self.split_into_port_dir_var.get(),
             split_src_inc_files=self.split_src_inc_files_var.get(),
             format_generated_code=self.format_generated_code_var.get(),
+            format_generated_code=self.format_generated_code_var.get(),
         )
 
     def _load_profile(self) -> None:
         """Load a kiwicgen profile and project it onto the GUI controls."""
         profile = filedialog.askopenfilename(
             title="Load kiwicgen generation profile",
+            initialdir=self.dest_var.get() or str(_runtime_root()),
             initialdir=self.dest_var.get() or str(_runtime_root()),
             filetypes=(
                 ("YAML profile", "*.yaml *.yml"),
@@ -550,6 +579,7 @@ class KiwicgenApp(tk.Tk):
             config = codegen.load_profile(profile)
         except (codegen.CodegenError, OSError) as exc:
             messagebox.showerror("Load profile failed", str(exc))
+            self._log(f"[ERR ] {exc}")
             self._log(f"[ERR ] {exc}")
             return
 
@@ -579,6 +609,7 @@ class KiwicgenApp(tk.Tk):
         profile = filedialog.asksaveasfilename(
             title="Save kiwicgen generation profile",
             initialdir=self.dest_var.get() or str(_runtime_root()),
+            initialdir=self.dest_var.get() or str(_runtime_root()),
             initialfile=default_name,
             defaultextension=".yaml",
             filetypes=(
@@ -595,8 +626,10 @@ class KiwicgenApp(tk.Tk):
         except OSError as exc:
             messagebox.showerror("Save profile failed", str(exc))
             self._log(f"[ERR ] {exc}")
+            self._log(f"[ERR ] {exc}")
             return
 
+        self._log(f"[INFO] Saved profile: {saved}")
         self._log(f"[INFO] Saved profile: {saved}")
 
     # -----------------------------------------------------------------------------------------------------------------
