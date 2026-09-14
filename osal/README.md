@@ -4,7 +4,7 @@ This directory contains the generic OSAL templates and portable backend template
 
 ## What problem does an OSAL solve?
 
-Embedded components often begin by calling a concrete operating-system API directly: FreeRTOS queues and semaphores, CMSIS-RTOS2 mutexes and threads, POSIX pthreads, native timers, heap functions, and so on. That is simple while the component has only one target, but the OS dependency quickly spreads through its types, state structures, control flow and error handling.
+Embedded components often begin by calling a concrete operating-system API directly: FreeRTOS queues and semaphores, POSIX pthreads, native timers, heap functions, and so on. That is simple while the component has only one target, but the OS dependency quickly spreads through its types, state structures, control flow and error handling.
 
 The portability problem is broader than replacing one function name with another. Real operating-system APIs differ in several dimensions at once:
 
@@ -50,7 +50,7 @@ The portable backend is responsible for translating the KIWI contract into the t
 
 ## One contract, one meaning
 
-KIWI deliberately treats **semantic consistency** as part of the OSAL contract. A generic operation must have one meaning at the component boundary regardless of whether the backend is FreeRTOS, POSIX, CMSIS-RTOS2 or a future implementation.
+KIWI deliberately treats **semantic consistency** as part of the OSAL contract. A generic operation must have one meaning at the component boundary regardless of whether the backend is FreeRTOS, POSIX or a future implementation.
 
 This is different from building a thin collection of aliases for native APIs. A wrapper such as `osalQueueSend()` is not enough if one backend blocks, another polls, a third uses different timeout units, and each returns unrelated error conventions. The abstraction is only useful when the component can reason about the operation without knowing which backend is active.
 
@@ -82,7 +82,7 @@ Not every term is used by every primitive group, and future APIs should not inve
 
 The queue API makes the distinction explicit: `Put` is an immediate producer operation, `Post` is producer-side submission with a timeout, `Get` is an immediate consumer operation, `Wait` waits indefinitely, and `Pend` waits up to a caller-supplied timeout. A component can therefore infer blocking behavior from the KIWI operation itself instead of memorizing RTOS-specific call names.
 
-The same principle applies to counting semaphores (`Acquire`, `AcquireWait`, `Release`), stream buffers (`Send`, `Receive`), software timers (`Start`, `Stop`, `Reset`) and the other primitive groups. The FreeRTOS backend maps these semantics to native FreeRTOS calls; future POSIX, CMSIS-RTOS2 or C++ backends must reproduce the same observable contract even when their native APIs and terminology differ.
+The same principle applies to counting semaphores (`Acquire`, `AcquireWait`, `Release`), stream buffers (`Send`, `Receive`), software timers (`Start`, `Stop`, `Reset`) and the other primitive groups. The FreeRTOS backend maps these semantics to native FreeRTOS calls; future POSIX or C++ backends must reproduce the same observable contract even when their native APIs and terminology differ.
 
 This semantic normalization solves several practical problems:
 
@@ -139,7 +139,7 @@ Component                                Same component
 Component OSAL API                       Same OSAL API
     |                                         |
     v                                         v
-FreeRTOS / CMSIS / POSIX                 Test / host OSAL
+FreeRTOS / POSIX                         Test / host OSAL
                                               |
                                               v
                                       x86 Linux / Windows /
@@ -297,7 +297,7 @@ All backends must preserve the generic semantics even when their native APIs dif
 
 A port should not copy its native terminology into the generic API simply because that terminology is familiar to users of that OS. The generic contract is defined once; each backend adapts to it.
 
-The source organization, naming, Doxygen style and lifecycle model should remain uniform across FreeRTOS, POSIX, CMSIS-RTOS2 and future ports.
+The source organization, naming, Doxygen style and lifecycle model should remain uniform across FreeRTOS, POSIX and future ports.
 
 ## Current template tree
 
@@ -311,13 +311,11 @@ osal/
     │   ├── CMakeLists.txt
     │   ├── template_osal_freertos.c
     │   └── template_osal_freertos.h
-    ├── posix/
-    │   └── CMakeLists.txt
-    └── cmsis_rtos2/
+    └── posix/
         └── CMakeLists.txt
 ```
 
-FreeRTOS is the current implemented backend. POSIX and CMSIS-RTOS2 remain planned ports and their directories currently provide project structure rather than complete implementations.
+FreeRTOS is the current implemented backend. POSIX remains a planned port and its directory currently provides project structure rather than a complete implementation.
 
 ## Current generated primitive groups
 

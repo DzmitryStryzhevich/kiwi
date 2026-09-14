@@ -7,7 +7,7 @@ Contributions are welcome. KIWI is still evolving, so changes should preserve th
 Good contribution candidates include:
 
 - new portable OSAL backends;
-- completion and maintenance of POSIX and CMSIS-RTOS2 ports;
+- completion and maintenance of the POSIX port;
 - future C++ generation/port support;
 - additional automated tests, host/test OSAL backends and CI coverage;
 - generator-core improvements;
@@ -60,14 +60,14 @@ Backend-internal synchronization objects must remain separate from component-vis
 Generation logic belongs in:
 
 ```text
-generator/kiwi_codegen.py
+generator/kiwicgen_core.py
 ```
 
 The two applications:
 
 ```text
-generator/kiwi_codegen_cli_app.py
-generator/kiwi_codegen_ui_app.py
+generator/kiwicgen_cli.py
+generator/kiwicgen_gui.py
 ```
 
 should remain thin frontends to the same core. Do not implement a generation rule independently in the GUI and CLI.

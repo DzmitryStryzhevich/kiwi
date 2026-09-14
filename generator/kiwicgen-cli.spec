@@ -3,21 +3,24 @@
 import shutil
 
 
+# Resolve the formatter once at build time and package the exact installed
+# executable together with the fixed kiwicgen formatting policy.
 clang_format = shutil.which("clang-format")
 if clang_format is None:
-    raise RuntimeError("clang-format was not found. Install generator requirements first.")
+    raise RuntimeError("clang-format was not found. Install kiwicgen requirements first.")
 
 
 a = Analysis(
-    ['kiwi_codegen_cli_app.py'],
+    ["kiwicgen_cli.py"],
     pathex=[],
-    binaries=[(clang_format, '.')],
+    binaries=[(clang_format, ".")],
     datas=[
-        ('../osal', 'osal'),
-        ('../doc/kiwi.png', 'doc'),
-        ('../doc/kiwi_header.png', 'doc'),
-        ('../doc/kiwi_window.png', 'doc'),
-        ('../doc/kiwi.ico', 'doc'),
+        ("kiwicgen-clang-format.yaml", "."),
+        ("../osal", "osal"),
+        ("../doc/kiwi.png", "doc"),
+        ("../doc/kiwi_header.png", "doc"),
+        ("../doc/kiwi_window.png", "doc"),
+        ("../doc/kiwi.ico", "doc"),
     ],
     hiddenimports=[],
     hookspath=[],
@@ -35,8 +38,8 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='kiwi',
-    icon='../doc/kiwi.ico',
+    name="kiwicgen-cli",
+    icon="../doc/kiwi.ico",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

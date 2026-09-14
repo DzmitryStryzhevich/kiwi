@@ -1,30 +1,31 @@
-# KIWI Code Generator
+# KIWI Code Generator — `kiwicgen`
 
 The `generator/` directory contains the shared KIWI code-generation core and two frontends: a standalone command-line application and a graphical application.
 
-The architectural rule is simple: **generation logic belongs in `kiwi_codegen.py`; CLI and GUI are frontends only.** This prevents the two applications from developing separate generation behavior as KIWI grows.
+The architectural rule is simple: **generation logic belongs in `kiwicgen_core.py`; CLI and GUI are frontends only.** This prevents the two applications from developing separate generation behavior as KIWI grows.
 
 ```text
-kiwi_codegen_cli_app.py ----+
-                            |
-                            v
-                     kiwi_codegen.py
-                            ^
-                            |
-kiwi_codegen_ui_app.py -----+
+kiwicgen_cli.py ----+
+                      |
+                      v
+               kiwicgen_core.py
+                      ^
+                      |
+kiwicgen_gui.py ------+
 ```
 
 ## Files
 
 ```text
 generator/
-├── kiwi_codegen.py           Shared generation core
-├── kiwi_codegen_cli_app.py   CLI frontend
-├── kiwi_codegen_ui_app.py    GUI frontend
-├── kiwi.spec                 PyInstaller spec for CLI executable
-├── kiwi_gui.spec             PyInstaller spec for GUI executable
-├── build_exe.bat             Windows build helper
-└── requirements.txt          Python dependencies
+├── kiwicgen_core.py          Shared generation core
+├── kiwicgen_cli.py           CLI frontend
+├── kiwicgen_gui.py           GUI frontend
+├── kiwicgen-cli.spec         PyInstaller spec for CLI executable
+├── kiwicgen-gui.spec         PyInstaller spec for GUI executable
+├── kiwicgen-build-exe.bat    Windows build helper
+├── kiwicgen-clang-format.yaml  Fixed generated-C formatting policy
+└── kiwicgen-requirements.txt   Python/build dependencies
 ```
 
 ## Requirements
@@ -32,34 +33,34 @@ generator/
 Install the Python dependencies from the repository root or from `generator/`:
 
 ```bash
-python -m pip install -r generator/requirements.txt
+python -m pip install -r generator/kiwicgen-requirements.txt
 ```
 
-KIWI owns the formatting of generated C sources. The pinned `clang-format` version from `requirements.txt` is invoked automatically by the shared code-generation core after rendering. Generated `.c` and `.h` files therefore do not depend on a user or parent-project `.clang-format` configuration. Packaged CLI and GUI executables include the same formatter binary.
+kiwicgen owns the formatting of generated C sources. `kiwicgen-requirements.txt` currently selects the supported `clang-format` 22.x toolchain, while the formatting policy itself lives in `kiwicgen-clang-format.yaml`. The shared core passes that policy explicitly after rendering, so generated `.c` and `.h` files do not depend on a user or parent-project `.clang-format` configuration. Packaged CLI and GUI executables include the formatter binary and the same policy resource.
 
 ## Running from source
 
 CLI:
 
 ```bash
-python generator/kiwi_codegen_cli_app.py --help
+python generator/kiwicgen_cli.py --help
 ```
 
 GUI:
 
 ```bash
-python generator/kiwi_codegen_ui_app.py
+python generator/kiwicgen_gui.py
 ```
 
 ## CLI application
 
-The packaged CLI executable is named `kiwi` (`kiwi.exe` on Windows).
+The packaged CLI executable is named `kiwicgen-cli` (`kiwicgen-cli.exe` on Windows).
 
 Running it with no arguments does **not** generate anything. It prints the same help text as `--help`:
 
 ```bash
-kiwi
-kiwi --help
+kiwicgen-cli
+kiwicgen-cli --help
 ```
 
 ### General options
@@ -70,7 +71,7 @@ kiwi --help
 | `--module-prefix=PREFIX` | Prefix used for generated file names, symbols and include guards |
 | `--port=PORT` | Select target backend, currently `FreeRTOS` is implemented |
 | `--output=DIR` | Output root directory |
-| `--fprof=PROFILE.yaml` | Load a KIWI code-generation profile from YAML |
+| `--fprof=PROFILE.yaml` | Load a kiwicgen generation profile from YAML |
 
 If `--output` is omitted, the CLI writes to `./generated` relative to the **current working directory**. The output directory is a runtime destination and is intentionally not stored in the generation profile.
 
@@ -108,7 +109,7 @@ Both are disabled by default.
 Generate a FreeRTOS OSAL with thread and queue APIs:
 
 ```bash
-kiwi \
+kiwicgen-cli \
   --module-prefix=foo_module \
   --port=FreeRTOS \
   --use-thread-api \
@@ -118,7 +119,7 @@ kiwi \
 Generate into a custom directory:
 
 ```bash
-kiwi \
+kiwicgen-cli \
   --module-prefix=foo_module \
   --port=FreeRTOS \
   --use-thread-api \
@@ -128,25 +129,25 @@ kiwi \
 Regenerate from a saved profile:
 
 ```bash
-kiwi --fprof=foo_module_kiwi_profile.yaml
+kiwicgen-cli --fprof=kiwicgen-foo_module-profile.yaml
 ```
 
 Regenerate from a profile into another directory:
 
 ```bash
-kiwi \
-  --fprof=foo_module_kiwi_profile.yaml \
+kiwicgen-cli \
+  --fprof=kiwicgen-foo_module-profile.yaml \
   --output=./regen
 ```
 
 ## YAML generation profiles
 
-A generation profile captures **what KIWI should generate**, not where the result should be written. It can therefore be committed beside a component and reused later with a newer generator version.
+A generation profile captures **what kiwicgen should generate**, not where the result should be written. It can therefore be committed beside a component and reused later with a newer generator version.
 
 A profile currently has this shape:
 
 ```yaml
-kiwi_profile_version: 2
+kiwicgen-profile-version: 3
 module_prefix: foo_module
 port: FreeRTOS
 api:
@@ -164,18 +165,18 @@ layout:
   split_src_inc_files: true
 ```
 
-`kiwi_profile_version` is the version of the profile schema. Version 2 adds the expanded primitive-selection fields. The current generator also accepts version 1 profiles and treats primitive fields that did not exist in version 1 as disabled, so profiles created before this expansion remain usable. The profile schema version is independent of the OSAL implementation version.
+`kiwicgen-profile-version` is the version of the profile schema. Version 3 introduces the `kiwicgen-` naming for newly saved profiles. Legacy version 1 and 2 profiles that use `kiwi_profile_version` remain accepted on load; the transitional `kiwicgen_profile_version` spelling is also accepted on load. Newly saved profiles always use the version 3 key shown above. The profile schema version is independent of the OSAL implementation version.
 
 The default file name suggested by the GUI is:
 
 ```text
-<module_prefix>_kiwi_profile.yaml
+kiwicgen-<module_prefix>-profile.yaml
 ```
 
 For example:
 
 ```text
-foo_module_kiwi_profile.yaml
+kiwicgen-foo_module-profile.yaml
 ```
 
 ### Configuration precedence in the CLI
@@ -194,7 +195,7 @@ explicit CLI scalar/positive options
 
 ## GUI application
 
-The packaged GUI executable is named `kiwi_gui` (`kiwi_gui.exe` on Windows). The GUI uses `kiwi_codegen.py` directly; it does not maintain a second generator implementation and does not shell out to the CLI executable.
+The packaged GUI executable is named `kiwicgen-gui` (`kiwicgen-gui.exe` on Windows). The GUI imports `kiwicgen_core.py` directly; it does not maintain a second generator implementation and does not shell out to the CLI executable.
 
 ### Paths settings
 
@@ -236,8 +237,8 @@ These correspond directly to the CLI `--use-*-api` switches and to fields in the
 | Button | Behavior |
 | --- | --- |
 | `Generate` | Validate current UI settings and invoke the shared generation core |
-| `Load Profile...` | Read and validate a YAML profile through `kiwi_codegen.load_profile()`, then populate the GUI controls |
-| `Save Profile...` | Normalize current UI settings and save them through `kiwi_codegen.save_profile()` |
+| `Load Profile...` | Read and validate a YAML profile through `kiwicgen_core.load_profile()`, then populate the GUI controls |
+| `Save Profile...` | Normalize current UI settings and save them through `kiwicgen_core.save_profile()` |
 | `Open Output Folder` | Open the currently configured output directory in the platform file manager |
 
 ### Load Profile
@@ -248,7 +249,7 @@ These correspond directly to the CLI `--use-*-api` switches and to fields in the
 existing component
       |
       v
-foo_module_kiwi_profile.yaml
+kiwicgen-foo_module-profile.yaml
       |
       v
 new KIWI version
@@ -270,7 +271,7 @@ Loading a profile updates the module prefix, port, implemented API checkboxes an
 `Save Profile...` can be used independently of generation. The GUI validates and normalizes the current settings, then proposes:
 
 ```text
-<module_prefix>_kiwi_profile.yaml
+kiwicgen-<module_prefix>-profile.yaml
 ```
 
 The saved file can later be passed directly to the CLI with `--fprof` or loaded back into the GUI.
@@ -354,7 +355,7 @@ foo_module/
 Run:
 
 ```text
-generator\build_exe.bat
+generator\kiwicgen-build-exe.bat
 ```
 
 The script installs the required Python dependencies and invokes PyInstaller for both frontends.
@@ -362,8 +363,8 @@ The script installs the required Python dependencies and invokes PyInstaller for
 Expected output:
 
 ```text
-generator\dist\kiwi.exe      CLI application
-generator\dist\kiwi_gui.exe  GUI application
+generator\dist\kiwicgen-cli.exe  CLI application
+generator\dist\kiwicgen-gui.exe  GUI application
 ```
 
 The CLI executable is built with a console. The GUI executable is built without a console window.
@@ -372,7 +373,7 @@ Both bundles include the OSAL template tree required for standalone generation. 
 
 ## Extending the generator
 
-New generation behavior should first be implemented in `kiwi_codegen.py`. CLI and GUI should expose that behavior without duplicating template-processing, validation, profile or output-layout logic.
+New generation behavior should first be implemented in `kiwicgen_core.py`. CLI and GUI should expose that behavior without duplicating template-processing, validation, profile or output-layout logic.
 
 When adding a new option, consider all three interfaces together:
 

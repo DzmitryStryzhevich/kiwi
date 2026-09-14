@@ -1,0 +1,43 @@
+BasedOnStyle: LLVM
+AlignAfterOpenBracket: true
+AlignConsecutiveAssignments:
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: false
+  AlignCompound: false
+  PadOperators: true
+# Do not align declaration names globally: clang-format also treats wrapped
+# function parameters as declarations and otherwise inserts large padding
+# between the parameter type and name.
+AlignConsecutiveDeclarations: None
+AlignConsecutiveMacros:
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: false
+AlignOperands: Align
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+BinPackArguments: true
+BinPackParameters: BinPack
+BreakBeforeBinaryOperators: None
+BreakBeforeBraces: Allman
+ColumnLimit: 128
+ContinuationIndentWidth: 4
+DerivePointerAlignment: false
+IndentPPDirectives: BeforeHash
+IndentWidth: 4
+InsertNewlineAtEOF: true
+MaxEmptyLinesToKeep: 2
+PenaltyBreakBeforeFirstCallParameter: 1000
+PointerAlignment: Right
+PPIndentWidth: 4
+ReflowComments: false
+SortIncludes: Never
+UseTab: Never

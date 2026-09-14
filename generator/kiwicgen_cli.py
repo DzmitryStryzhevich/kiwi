@@ -1,31 +1,38 @@
+"""Command-line frontend for the shared ``kiwicgen_core`` generation pipeline."""
+
 from __future__ import annotations
 
 import argparse
 import pathlib
 import sys
 
-import kiwi_codegen as codegen
+import kiwicgen_core as codegen
 
 
-class KiwiHelpFormatter(argparse.RawDescriptionHelpFormatter):
-    """Compact, stable help layout for the standalone KIWI CLI."""
+# =====================================================================================================================
+# CLI presentation and argument parsing
+# =====================================================================================================================
+
+class KiwicgenHelpFormatter(argparse.RawDescriptionHelpFormatter):
+    """Compact, stable help layout for the standalone kiwicgen CLI."""
 
     def __init__(self, prog: str) -> None:
         super().__init__(prog, max_help_position=36, width=120)
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    """Construct the stable command-line interface exposed by kiwicgen-cli."""
     parser = argparse.ArgumentParser(
-        prog="kiwi",
+        prog="kiwicgen-cli",
         usage="%(prog)s [options]",
-        description="KIWI component-scoped OSAL code generator.",
+        description="KIWI component-scoped OSAL code generator (kiwicgen).",
         epilog=(
             "Examples:\n"
-            "  kiwi --module-prefix=foo_module --port=FreeRTOS --use-thread-api\n"
-            "  kiwi --fprof=foo_module_kiwi_profile.yaml\n"
-            "  kiwi --help"
+            "  kiwicgen-cli --module-prefix=foo_module --port=FreeRTOS --use-thread-api\n"
+            "  kiwicgen-cli --fprof=kiwicgen-foo_module-profile.yaml\n"
+            "  kiwicgen-cli --help"
         ),
-        formatter_class=KiwiHelpFormatter,
+        formatter_class=KiwicgenHelpFormatter,
         add_help=False,
     )
 
@@ -54,7 +61,7 @@ def _build_parser() -> argparse.ArgumentParser:
     general.add_argument(
         "--fprof",
         metavar="PROFILE.yaml",
-        help="Load code-generation parameters from a KIWI YAML profile.",
+        help="Load code-generation parameters from a kiwicgen YAML profile.",
     )
 
     api_group = parser.add_argument_group("API selection")
@@ -82,6 +89,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     return parser
 
+
+# =====================================================================================================================
+# Effective configuration resolution
+# =====================================================================================================================
 
 def _config_from_args(args: argparse.Namespace) -> codegen.GenerationConfig:
     """Apply defaults < YAML profile < explicit CLI arguments precedence."""
@@ -122,8 +133,14 @@ def _config_from_args(args: argparse.Namespace) -> codegen.GenerationConfig:
     )
 
 
+# =====================================================================================================================
+# Application entry point
+# =====================================================================================================================
+
 def main(argv: list[str] | None = None) -> int:
-    """Standalone console frontend for the KIWI code generator."""
+    """Standalone console frontend for the shared kiwicgen core."""
+    # Milestone 1: build the frontend-only command surface. Generation rules
+    # remain entirely inside kiwicgen_core.
     parser = _build_parser()
     effective_argv = list(sys.argv[1:] if argv is None else argv)
 
@@ -134,12 +151,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(effective_argv)
 
     try:
+        # Milestone 2: collapse defaults, an optional YAML profile and explicit
+        # CLI overrides into one normalized shared-core configuration.
         config = _config_from_args(args)
         output_root = (
             pathlib.Path(args.output)
             if args.output
             else pathlib.Path.cwd() / "generated"
         )
+        # Milestone 3: delegate the complete render/write/format pipeline to
+        # the shared core. The CLI does not post-process generated artifacts.
         codegen.generate(config, output_root, log_callback=print)
     except (codegen.CodegenError, OSError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

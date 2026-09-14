@@ -2,7 +2,7 @@
 
 KIWI is a code generator for building **component-scoped Operating System Abstraction Layers (OSALs)** for embedded software. It generates a small OS-facing interface tailored to the needs of a particular component instead of forcing the whole project through one large system-wide abstraction.
 
-The project is intended to make component code easier to port, test and maintain while keeping direct FreeRTOS, POSIX, CMSIS-RTOS2 and other OS-specific dependencies behind generated OSAL boundaries.
+The project is intended to make component code easier to port, test and maintain while keeping direct FreeRTOS, POSIX and other OS-specific dependencies behind generated OSAL boundaries.
 
 ## Why OSAL and why component-scoped?
 
@@ -26,7 +26,6 @@ Usage examples for the generated generic OSAL API are collected in [`examples/`]
 | --- | --- | --- | --- |
 | FreeRTOS | C | Implemented | Queues, stream buffers, locks, counting semaphores, threads, critical sections, software timers, time and memory |
 | POSIX | C | Planned | Host/portable backend scaffold exists |
-| CMSIS-RTOS2 | C | Planned | Portable backend scaffold exists |
 | C++ OSAL variant | C++ | Planned | C++ generation/port support is on the roadmap |
 
 ## Testing

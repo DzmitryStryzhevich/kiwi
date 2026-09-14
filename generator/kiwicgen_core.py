@@ -1,3 +1,9 @@
+"""Shared code-generation core for the KIWI ``kiwicgen`` toolchain.
+
+CLI and GUI frontends delegate all configuration normalization, template
+transformation, output layout and post-generation formatting to this module.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,13 +18,19 @@ from typing import Any
 import yaml
 
 
+# =====================================================================================================================
+# Runtime paths and generator policy
+# =====================================================================================================================
+
 # The generator lives in <project>/generator. Keep both paths explicit because
 # source execution and a PyInstaller bundle resolve resources differently.
 ROOT = pathlib.Path(__file__).resolve().parent
 PROJECT_ROOT = ROOT.parent
 
-PROFILE_SCHEMA_VERSION = 2
-SUPPORTED_PROFILE_SCHEMA_VERSIONS = frozenset({1, PROFILE_SCHEMA_VERSION})
+PROFILE_SCHEMA_VERSION = 3
+SUPPORTED_PROFILE_SCHEMA_VERSIONS = frozenset({1, 2, PROFILE_SCHEMA_VERSION})
+PROFILE_VERSION_KEY = "kiwicgen-profile-version"
+LEGACY_PROFILE_VERSION_KEYS = ("kiwi_profile_version", "kiwicgen_profile_version")
 DEFAULT_MODULE_PREFIX = "foo_module"
 DEFAULT_PORT = "FreeRTOS"
 DEFAULT_SPLIT_INTO_PORT_DIR = False
@@ -36,41 +48,15 @@ SUPPORTED_APIS = (
     "memory",
 )
 DEFAULT_APIS = frozenset()
-SUPPORTED_PORTS = ("FreeRTOS", "POSIX", "CMSIS RTOS v2")
+SUPPORTED_PORTS = ("FreeRTOS", "POSIX")
 IMPLEMENTED_PORTS = frozenset({"FreeRTOS"})
 
-CLANG_FORMAT_VERSION = "18.1.8"
-CLANG_FORMAT_STYLE = (
-    "{BasedOnStyle: LLVM, "
-    "AlignAfterOpenBracket: Align, "
-    "AlignConsecutiveAssignments: {Enabled: true, AcrossEmptyLines: false, AcrossComments: false, AlignCompound: false, PadOperators: true}, "
-    "AlignConsecutiveDeclarations: {Enabled: true, AcrossEmptyLines: false, AcrossComments: false}, "
-    "AlignConsecutiveMacros: {Enabled: true, AcrossEmptyLines: false, AcrossComments: false}, "
-    "AlignOperands: Align, "
-    "AlignTrailingComments: {Kind: Always, OverEmptyLines: 0}, "
-    "AllowAllParametersOfDeclarationOnNextLine: false, "
-    "AllowShortBlocksOnASingleLine: Never, "
-    "AllowShortFunctionsOnASingleLine: None, "
-    "AllowShortIfStatementsOnASingleLine: Never, "
-    "AllowShortLoopsOnASingleLine: false, "
-    "BinPackArguments: true, "
-    "BinPackParameters: true, "
-    "BreakBeforeBinaryOperators: None, "
-    "BreakBeforeBraces: Allman, "
-    "ColumnLimit: 128, "
-    "ContinuationIndentWidth: 4, "
-    "DerivePointerAlignment: false, "
-    "IndentPPDirectives: BeforeHash, "
-    "IndentWidth: 4, "
-    "MaxEmptyLinesToKeep: 2, "
-    "PenaltyBreakBeforeFirstCallParameter: 1000, "
-    "PointerAlignment: Right, "
-    "PPIndentWidth: 4, "
-    "ReflowComments: false, "
-    "SortIncludes: Never, "
-    "UseTab: Never}"
-)
+CLANG_FORMAT_STYLE_FILE = "kiwicgen-clang-format.yaml"
 
+
+# =====================================================================================================================
+# Core data model
+# =====================================================================================================================
 
 class CodegenError(RuntimeError):
     """Raised when the requested code-generation configuration is invalid."""
@@ -88,7 +74,7 @@ class PrefixForms:
 
 @dataclass(frozen=True)
 class GenerationConfig:
-    """Normalized, frontend-independent KIWI code-generation configuration."""
+    """Normalized, frontend-independent kiwicgen generation configuration."""
 
     module_prefix: str
     port: str
@@ -96,6 +82,10 @@ class GenerationConfig:
     split_into_port_dir: bool
     split_src_inc_files: bool
 
+
+# =====================================================================================================================
+# Resource resolution
+# =====================================================================================================================
 
 def resolve_templates_dir() -> pathlib.Path:
     """Resolve the OSAL template directory for source and packaged execution."""
@@ -116,7 +106,12 @@ def resolve_templates_dir() -> pathlib.Path:
     raise CodegenError(f"osal directory not found. Checked:\n{searched}")
 
 
+# =====================================================================================================================
+# Prefix normalization and template transformation
+# =====================================================================================================================
+
 def _to_words(value: str) -> list[str]:
+    """Split a user prefix into normalized identifier words."""
     cleaned = re.sub(r"[^A-Za-z0-9]+", "_", value.strip())
     cleaned = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", cleaned)
     return [word for word in cleaned.split("_") if word]
@@ -207,7 +202,7 @@ def render_profile_header(forms: PrefixForms, selected_apis: frozenset[str], por
         f"#ifndef {guard}",
         f"#define {guard}",
         "",
-        "/* Auto-generated by OSAL Code Generator. */",
+        "/* Auto-generated by kiwicgen. */",
         f"#define {upper}_OSAL_PORT_{port_macro}    1",
         "",
     ]
@@ -226,8 +221,6 @@ def normalize_port(port: str) -> str:
     aliases = {
         "freertos": "FreeRTOS",
         "posix": "POSIX",
-        "cmsisrtosv2": "CMSIS RTOS v2",
-        "cmsisrtos2": "CMSIS RTOS v2",
     }
     try:
         return aliases[normalized]
@@ -264,10 +257,14 @@ def make_generation_config(
     )
 
 
+# =====================================================================================================================
+# YAML generation profiles
+# =====================================================================================================================
+
 def _profile_mapping(config: GenerationConfig) -> dict[str, Any]:
     """Convert a normalized configuration into the stable YAML profile schema."""
     return {
-        "kiwi_profile_version": PROFILE_SCHEMA_VERSION,
+        PROFILE_VERSION_KEY: PROFILE_SCHEMA_VERSION,
         "module_prefix": config.module_prefix,
         "port": config.port,
         "api": {name: name in config.apis for name in SUPPORTED_APIS},
@@ -294,6 +291,7 @@ def save_profile(path: str | pathlib.Path, config: GenerationConfig) -> pathlib.
 
 
 def _require_mapping(value: Any, field_name: str) -> Mapping[str, Any]:
+    """Validate a mapping-valued YAML field while accepting an omitted value."""
     if value is None:
         return {}
     if not isinstance(value, Mapping):
@@ -302,7 +300,9 @@ def _require_mapping(value: Any, field_name: str) -> Mapping[str, Any]:
 
 
 def load_profile(path: str | pathlib.Path) -> GenerationConfig:
-    """Load, validate and normalize a KIWI YAML code-generation profile."""
+    """Load, validate and normalize a kiwicgen YAML generation profile."""
+    # Milestone 1: deserialize only YAML syntax here; semantic normalization is
+    # deliberately deferred to make_generation_config() below.
     profile_path = pathlib.Path(path)
     if not profile_path.exists():
         raise CodegenError(f"Profile file not found: {profile_path}")
@@ -318,16 +318,27 @@ def load_profile(path: str | pathlib.Path) -> GenerationConfig:
     if not isinstance(raw, Mapping):
         raise CodegenError("Profile root must be a mapping.")
 
-    version = raw.get("kiwi_profile_version")
+    # Milestone 2: establish the profile-schema contract before consuming any
+    # generator options. Legacy keys are accepted only for profile migration.
+    version = raw.get(PROFILE_VERSION_KEY)
+    if version is None:
+        # Profiles created before the kiwicgen naming pass used underscore-based
+        # version keys. Accept them only as input compatibility aliases.
+        for legacy_key in LEGACY_PROFILE_VERSION_KEYS:
+            if legacy_key in raw:
+                version = raw[legacy_key]
+                break
     if version not in SUPPORTED_PROFILE_SCHEMA_VERSIONS:
         supported_versions = ", ".join(
             str(item) for item in sorted(SUPPORTED_PROFILE_SCHEMA_VERSIONS)
         )
         raise CodegenError(
-            f"Unsupported KIWI profile version: {version!r}. "
+            f"Unsupported kiwicgen profile version: {version!r}. "
             f"Supported versions: {supported_versions}."
         )
 
+    # Milestone 3: validate the structured option groups independently so an
+    # unknown API cannot silently change the generated contract.
     api_raw = _require_mapping(raw.get("api"), "api")
     layout_raw = _require_mapping(raw.get("layout"), "layout")
 
@@ -342,6 +353,8 @@ def load_profile(path: str | pathlib.Path) -> GenerationConfig:
         if bool(api_raw.get(name, name in DEFAULT_APIS))
     }
 
+    # Milestone 4: route the deserialized values through the same canonical
+    # normalization path used by CLI and GUI configuration.
     return make_generation_config(
         module_prefix=str(raw.get("module_prefix", DEFAULT_MODULE_PREFIX)),
         port=str(raw.get("port", DEFAULT_PORT)),
@@ -355,31 +368,41 @@ def load_profile(path: str | pathlib.Path) -> GenerationConfig:
     )
 
 
+# =====================================================================================================================
+# Output layout and generated build files
+# =====================================================================================================================
+
 def _base_header_dir(module_dir: pathlib.Path, config: GenerationConfig) -> pathlib.Path:
+    """Resolve the generic header destination for the selected layout."""
     return module_dir / "include" if config.split_src_inc_files else module_dir
 
 
 def _base_source_dir(module_dir: pathlib.Path, config: GenerationConfig) -> pathlib.Path:
+    """Resolve the generic source destination for the selected layout."""
     return module_dir / "src" if config.split_src_inc_files else module_dir
 
 
 def _port_root_dir(module_dir: pathlib.Path, config: GenerationConfig) -> pathlib.Path:
+    """Resolve the backend root without duplicating layout rules in frontends."""
     if config.split_into_port_dir:
         return module_dir / "portable" / "freertos"
     return module_dir
 
 
 def _port_header_dir(module_dir: pathlib.Path, config: GenerationConfig) -> pathlib.Path:
+    """Resolve the backend header destination for the selected layout."""
     root = _port_root_dir(module_dir, config)
     return root / "include" if config.split_src_inc_files else root
 
 
 def _port_source_dir(module_dir: pathlib.Path, config: GenerationConfig) -> pathlib.Path:
+    """Resolve the backend source destination for the selected layout."""
     root = _port_root_dir(module_dir, config)
     return root / "src" if config.split_src_inc_files else root
 
 
 def _render_base_cmake(forms: PrefixForms, config: GenerationConfig) -> str:
+    """Render the generic OSAL CMake file when layout rewriting is required."""
     source = f"src/{forms.snake}_osal.c" if config.split_src_inc_files else f"{forms.snake}_osal.c"
     include_dir = "${CMAKE_CURRENT_LIST_DIR}/include" if config.split_src_inc_files else "${CMAKE_CURRENT_LIST_DIR}"
     return "\n".join(
@@ -403,6 +426,7 @@ def _render_base_cmake(forms: PrefixForms, config: GenerationConfig) -> str:
 
 
 def _render_port_cmake(forms: PrefixForms, config: GenerationConfig) -> str:
+    """Render the FreeRTOS backend CMake file for split output layouts."""
     source = (
         f"src/{forms.snake}_osal_freertos.c"
         if config.split_src_inc_files
@@ -442,6 +466,7 @@ def _render_port_cmake(forms: PrefixForms, config: GenerationConfig) -> str:
 
 
 def _render_combined_cmake(forms: PrefixForms, config: GenerationConfig) -> str:
+    """Render one CMake file when generic and backend files share a module root."""
     base_source = f"src/{forms.snake}_osal.c" if config.split_src_inc_files else f"{forms.snake}_osal.c"
     port_source = (
         f"src/{forms.snake}_osal_freertos.c"
@@ -484,22 +509,27 @@ def _render_combined_cmake(forms: PrefixForms, config: GenerationConfig) -> str:
     )
 
 
+# =====================================================================================================================
+# File emission and post-generation formatting
+# =====================================================================================================================
+
 def _ensure_final_newline(content: str) -> str:
     """Normalize generated text to exactly one final newline."""
     return content.rstrip("\r\n") + "\n"
 
 
 def _resolve_clang_format() -> pathlib.Path:
-    """Resolve the pinned clang-format executable for source and packaged execution."""
+    """Resolve clang-format for source execution and packaged applications."""
     executable_name = "clang-format.exe" if sys.platform == "win32" else "clang-format"
     candidates: list[pathlib.Path] = []
 
+    # PyInstaller extracts bundled binaries into _MEIPASS at runtime.
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass:
         candidates.append(pathlib.Path(meipass) / executable_name)
 
+    # Keep source-tree and PATH resolution as fallbacks for developer execution.
     candidates.append(ROOT / executable_name)
-
     path_executable = shutil.which("clang-format")
     if path_executable:
         candidates.append(pathlib.Path(path_executable))
@@ -509,47 +539,51 @@ def _resolve_clang_format() -> pathlib.Path:
             return candidate
 
     raise CodegenError(
-        "clang-format was not found. Install generator requirements or use a packaged KIWI executable."
+        "clang-format was not found. Install generator requirements or use a packaged kiwicgen executable."
     )
 
 
-def _verify_clang_format_version(executable: pathlib.Path) -> None:
-    """Require the formatter version owned by the KIWI code generator."""
-    try:
-        result = subprocess.run(
-            [str(executable), "--version"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except (OSError, subprocess.CalledProcessError) as exc:
-        raise CodegenError(f"Failed to execute clang-format: {exc}") from exc
+def _resolve_clang_format_style() -> pathlib.Path:
+    """Resolve the formatter policy owned and distributed by kiwicgen."""
+    candidates: list[pathlib.Path] = []
 
-    if CLANG_FORMAT_VERSION not in result.stdout:
-        raise CodegenError(
-            f"Unsupported clang-format version. KIWI requires {CLANG_FORMAT_VERSION}; "
-            f"detected: {result.stdout.strip()}"
-        )
+    # The packaged application carries the same style resource as source builds.
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.append(pathlib.Path(meipass) / CLANG_FORMAT_STYLE_FILE)
+
+    candidates.append(ROOT / CLANG_FORMAT_STYLE_FILE)
+
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_file():
+            if not candidate.read_text(encoding="utf-8").strip():
+                raise CodegenError(f"clang-format style file is empty: {candidate}")
+            return candidate.resolve()
+
+    searched = "\n".join(f" - {path}" for path in candidates)
+    raise CodegenError(
+        f"kiwicgen clang-format style file was not found. Checked:\n{searched}"
+    )
 
 
 def _format_generated_sources(
     generated: Iterable[pathlib.Path],
     log: Callable[[str], None],
 ) -> None:
-    """Apply the fixed KIWI formatting policy to generated C source files."""
+    """Apply the fixed kiwicgen formatting policy to generated C source files."""
     source_files = [path for path in generated if path.suffix.lower() in {".c", ".h"}]
     if not source_files:
         return
 
     executable = _resolve_clang_format()
-    _verify_clang_format_version(executable)
+    style_path = _resolve_clang_format_style()
 
     for path in source_files:
         try:
             subprocess.run(
                 [
                     str(executable),
-                    f"--style={CLANG_FORMAT_STYLE}",
+                    f"--style=file:{style_path}",
                     "-i",
                     str(path),
                 ],
@@ -571,11 +605,16 @@ def _format_generated_sources(
 
 
 def _write_text(path: pathlib.Path, content: str, generated: list[pathlib.Path], log: Callable[[str], None]) -> None:
+    """Write one deterministic text artifact and register it for post-processing."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(_ensure_final_newline(content), encoding="utf-8", newline="\n")
     generated.append(path)
     log(f"Generated: {path}")
 
+
+# =====================================================================================================================
+# Main generation pipeline
+# =====================================================================================================================
 
 def generate(
     config: GenerationConfig,
@@ -583,12 +622,13 @@ def generate(
     *,
     log_callback: Callable[[str], None] | None = None,
 ) -> list[pathlib.Path]:
-    """Generate OSAL files from one normalized configuration."""
+    """Run the complete OSAL generation pipeline for one normalized configuration."""
     if config.port not in IMPLEMENTED_PORTS:
         raise CodegenError(
             f"Currently only FreeRTOS port generation is implemented; requested {config.port}."
         )
 
+    # Milestone 1: resolve normalized naming and source resources.
     log = log_callback or (lambda _message: None)
     forms = build_prefix_forms(config.module_prefix)
     templates_dir = resolve_templates_dir()
@@ -599,6 +639,7 @@ def generate(
     selected = frozenset(config.apis)
     generated: list[pathlib.Path] = []
 
+    # Milestone 2: render generic and backend-specific source templates.
     template_outputs = [
         (
             templates_dir / "template_osal.h",
@@ -624,6 +665,7 @@ def generate(
         text = apply_prefix(text, forms)
         _write_text(destination, text, generated, log)
 
+    # Milestone 3: emit the compile-time profile consumed by generated sources.
     profile_path = _base_header_dir(module_dir, config) / f"{forms.snake}_osal_profile.h"
     _write_text(
         profile_path,
@@ -632,6 +674,7 @@ def generate(
         log,
     )
 
+    # Milestone 4: materialize the requested CMake/output layout.
     root_cmake = module_dir / "CMakeLists.txt"
     if config.split_into_port_dir and not config.split_src_inc_files:
         # Preserve the historical default output byte-for-byte by continuing to
@@ -654,11 +697,13 @@ def generate(
     else:
         _write_text(root_cmake, _render_combined_cmake(forms, config), generated, log)
 
+    # Milestone 5: format final C/H output only after every textual transform.
     _format_generated_sources(generated, log)
 
+    # Milestone 6: copy generator-facing documentation beside the output root.
     readme = PROJECT_ROOT / "README.md"
     if readme.exists():
         output_root_path.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(readme, output_root_path / "README_generator.md")
+        shutil.copy2(readme, output_root_path / "kiwicgen-README.md")
 
     return generated

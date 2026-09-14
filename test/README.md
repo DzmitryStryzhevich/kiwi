@@ -49,7 +49,7 @@ The test strategy should eventually include several complementary layers:
 - CLI argument and exit-code tests;
 - output-layout tests for every supported combination;
 - generated C syntax/build checks;
-- backend-specific tests for FreeRTOS, POSIX and CMSIS-RTOS2;
+- backend-specific tests for FreeRTOS and POSIX;
 - host/test OSAL backend tests for component isolation;
 - resource lifecycle/registry tests;
 - timeout and execution-context semantic tests;
@@ -57,7 +57,7 @@ The test strategy should eventually include several complementary layers:
 - assertion, tracing and error-path tests;
 - regression tests for reported bugs.
 
-GUI logic should remain thin enough that most behavior can be tested through the shared `kiwi_codegen.py` core. GUI-specific tests can then focus on frontend state mapping and profile interaction rather than duplicating generator tests.
+GUI logic should remain thin enough that most behavior can be tested through the shared `kiwicgen_core.py` core. GUI-specific tests can then focus on frontend state mapping and profile interaction rather than duplicating generator tests.
 
 ## Host/test backend direction
 
@@ -83,16 +83,16 @@ Check Python syntax:
 
 ```bash
 python -m py_compile \
-  generator/kiwi_codegen.py \
-  generator/kiwi_codegen_cli_app.py \
-  generator/kiwi_codegen_ui_app.py
+  generator/kiwicgen_core.py \
+  generator/kiwicgen_cli.py \
+  generator/kiwicgen_gui.py
 ```
 
 Check CLI help/no-argument behavior:
 
 ```bash
-python generator/kiwi_codegen_cli_app.py
-python generator/kiwi_codegen_cli_app.py --help
+python generator/kiwicgen_cli.py
+python generator/kiwicgen_cli.py --help
 ```
 
 Neither command should generate files.
@@ -100,7 +100,7 @@ Neither command should generate files.
 Perform a sample generation into a temporary output directory:
 
 ```bash
-python generator/kiwi_codegen_cli_app.py \
+python generator/kiwicgen_cli.py \
   --module-prefix=foo_module \
   --port=FreeRTOS \
   --use-thread-api \

@@ -1,3 +1,5 @@
+"""Graphical frontend for the shared ``kiwicgen_core`` generation pipeline."""
+
 from __future__ import annotations
 
 import os
@@ -6,11 +8,16 @@ import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-import kiwi_codegen as codegen
+import kiwicgen_core as codegen
 
+
+# =====================================================================================================================
+# Runtime paths and packaged GUI assets
+# =====================================================================================================================
 
 ROOT = pathlib.Path(__file__).resolve().parent
 PROJECT_ROOT = ROOT.parent
+
 
 def _resolve_app_asset(relative_path: str) -> pathlib.Path:
     """Resolve a GUI asset for source execution and PyInstaller bundles."""
@@ -23,12 +30,19 @@ def _resolve_app_asset(relative_path: str) -> pathlib.Path:
     return PROJECT_ROOT / relative_path
 
 
-class App(tk.Tk):
-    """Tk frontend for the shared KIWI code-generation core."""
+# =====================================================================================================================
+# GUI application
+# =====================================================================================================================
+
+class KiwicgenApp(tk.Tk):
+    """Tk frontend for the shared kiwicgen generation core."""
 
     def __init__(self) -> None:
         super().__init__()
-        self.title("kiwi")
+
+        # Milestone 1: initialize window-level presentation only. No generation
+        # policy is owned by the GUI frontend.
+        self.title("kiwicgen-gui")
         self._set_window_icon()
         self.geometry("820x820")
         self.minsize(780, 720)
@@ -38,6 +52,8 @@ class App(tk.Tk):
         self.style.theme_use("clam")
         self._configure_styles()
 
+        # Milestone 2: mirror shared-core configuration as Tk state. Every
+        # value is normalized again by kiwicgen_core before use.
         self.prefix_var = tk.StringVar(value=codegen.DEFAULT_MODULE_PREFIX)
         self.dest_var = tk.StringVar(value=str(PROJECT_ROOT / "generated"))
         self.port_var = tk.StringVar(value=codegen.DEFAULT_PORT)
@@ -60,9 +76,12 @@ class App(tk.Tk):
             value=codegen.DEFAULT_SPLIT_SRC_INC_FILES
         )
 
+        # Milestone 3: build controls only after the complete frontend state
+        # model is available.
         self._build_ui()
 
     def _set_window_icon(self) -> None:
+        """Apply packaged KIWI artwork when supported by the host window system."""
         try:
             icon_png = _resolve_app_asset("doc/kiwi_window.png")
             if icon_png.exists():
@@ -79,7 +98,12 @@ class App(tk.Tk):
             except tk.TclError:
                 pass
 
+    # -----------------------------------------------------------------------------------------------------------------
+    # Visual style
+    # -----------------------------------------------------------------------------------------------------------------
+
     def _configure_styles(self) -> None:
+        """Configure the application-local Tk visual style."""
         self.style.configure("Card.TFrame", background="#182235")
         self.style.configure(
             "Title.TLabel",
@@ -112,7 +136,12 @@ class App(tk.Tk):
             foreground=[("active", "#ffffff"), ("selected", "#e7eeff")],
         )
 
+    # -----------------------------------------------------------------------------------------------------------------
+    # Widget tree
+    # -----------------------------------------------------------------------------------------------------------------
+
     def _build_ui(self) -> None:
+        """Build the complete generator form from shared-core capabilities."""
         outer = ttk.Frame(self, style="Card.TFrame", padding=20)
         outer.pack(fill="both", expand=True, padx=20, pady=20)
 
@@ -124,12 +153,12 @@ class App(tk.Tk):
         header_text.pack(side="left", fill="x", expand=True, padx=(14, 0))
         ttk.Label(
             header_text,
-            text="KIWI OSAL Generator for Embedded Projects",
+            text="kiwicgen — KIWI OSAL Generator",
             style="Title.TLabel",
         ).pack(anchor="w")
         ttk.Label(
             header_text,
-            text="UI frontend for the shared KIWI code-generation core.",
+            text="GUI frontend for the shared kiwicgen generation core.",
             style="Hint.TLabel",
         ).pack(anchor="w", pady=(4, 0))
 
@@ -216,7 +245,6 @@ class App(tk.Tk):
             state="disabled",
         ).grid(row=2, column=0, columnspan=2, padx=(0, 12), pady=(8, 0), sticky="w")
 
-
         actions = ttk.Frame(outer, style="Card.TFrame")
         actions.pack(fill="x")
         action_buttons = ttk.Frame(actions, style="Card.TFrame")
@@ -260,11 +288,21 @@ class App(tk.Tk):
         self.log.pack(fill="both", expand=True, pady=(18, 0))
         self._log("Ready. Configure options, load a profile, or click Generate.")
 
+    # -----------------------------------------------------------------------------------------------------------------
+    # UI actions and filesystem helpers
+    # -----------------------------------------------------------------------------------------------------------------
+
     def _log(self, text: str) -> None:
+        """Append one status line and flush pending GUI redraws."""
         self.log.insert("end", text + "\n")
         self.log.see("end")
 
+        # Keep progress messages visible while the synchronous shared-core
+        # generation pipeline is running on the Tk main thread.
+        self.update_idletasks()
+
     def _select_destination(self) -> None:
+        """Select the output root without changing generation semantics."""
         folder = filedialog.askdirectory(
             initialdir=self.dest_var.get() or str(PROJECT_ROOT)
         )
@@ -272,6 +310,7 @@ class App(tk.Tk):
             self.dest_var.set(folder)
 
     def _open_output(self) -> None:
+        """Open the current output directory with the host platform shell."""
         output = pathlib.Path(self.dest_var.get())
         if not output.exists():
             messagebox.showinfo("Info", "Output folder does not exist yet.")
@@ -288,6 +327,7 @@ class App(tk.Tk):
             messagebox.showinfo("Info", f"Output: {output}")
 
     def _add_header_logo(self, parent: ttk.Frame) -> None:
+        """Attach the optional packaged header image to the GUI."""
         try:
             icon_png = _resolve_app_asset("doc/kiwi_header.png")
             if not icon_png.exists():
@@ -304,7 +344,12 @@ class App(tk.Tk):
         except tk.TclError:
             pass
 
+    # -----------------------------------------------------------------------------------------------------------------
+    # Profile/configuration bridge to the shared core
+    # -----------------------------------------------------------------------------------------------------------------
+
     def _current_config(self) -> codegen.GenerationConfig:
+        """Normalize the current GUI state through the shared core contract."""
         selected = {
             name for name, variable in self.api_vars.items() if variable.get()
         }
@@ -317,8 +362,9 @@ class App(tk.Tk):
         )
 
     def _load_profile(self) -> None:
+        """Load a kiwicgen profile and project it onto the GUI controls."""
         profile = filedialog.askopenfilename(
-            title="Load KIWI code-generation profile",
+            title="Load kiwicgen generation profile",
             initialdir=self.dest_var.get() or str(PROJECT_ROOT),
             filetypes=(
                 ("YAML profile", "*.yaml *.yml"),
@@ -344,6 +390,7 @@ class App(tk.Tk):
         self._log(f"Loaded profile: {profile}")
 
     def _save_profile(self) -> None:
+        """Persist the current normalized GUI configuration as a profile."""
         try:
             config = self._current_config()
             forms = codegen.build_prefix_forms(config.module_prefix)
@@ -351,9 +398,9 @@ class App(tk.Tk):
             messagebox.showerror("Invalid configuration", str(exc))
             return
 
-        default_name = f"{forms.snake}_kiwi_profile.yaml"
+        default_name = f"kiwicgen-{forms.snake}-profile.yaml"
         profile = filedialog.asksaveasfilename(
-            title="Save KIWI code-generation profile",
+            title="Save kiwicgen generation profile",
             initialdir=self.dest_var.get() or str(PROJECT_ROOT),
             initialfile=default_name,
             defaultextension=".yaml",
@@ -375,10 +422,20 @@ class App(tk.Tk):
 
         self._log(f"Saved profile: {saved}")
 
+    # -----------------------------------------------------------------------------------------------------------------
+    # Generation action
+    # -----------------------------------------------------------------------------------------------------------------
+
     def generate(self) -> None:
+        """Delegate one generation request to the shared core pipeline."""
         try:
+            # Milestone 1: project mutable GUI state into the immutable shared
+            # generation contract before touching the filesystem.
             config = self._current_config()
             output_root = pathlib.Path(self.dest_var.get().strip())
+
+            # Milestone 2: the shared core owns rendering, file emission and
+            # post-generation formatting. The GUI only reports its result.
             codegen.generate(config, output_root, log_callback=self._log)
         except (codegen.CodegenError, OSError) as exc:
             messagebox.showerror("Generation failed", str(exc))
@@ -394,4 +451,4 @@ class App(tk.Tk):
 
 
 if __name__ == "__main__":
-    App().mainloop()
+    KiwicgenApp().mainloop()
