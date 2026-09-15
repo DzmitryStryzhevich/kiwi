@@ -1,0 +1,1 @@
+"""kiwicgen command-line frontend."""

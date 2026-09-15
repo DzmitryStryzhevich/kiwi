@@ -20,16 +20,14 @@ executable = [
 ]
 
 [project.scripts]
-kiwicgen = "kiwicgen_cli:main"
+kiwicgen = "cli.main:main"
 
-[tool.setuptools]
-py-modules = [
-    "kiwicgen_core",
-    "kiwicgen_cli",
-    "kiwicgen_gui",
-    "kiwicgen_logging",
-    "kiwicgen_version",
-]
+[project.gui-scripts]
+kiwicgen-gui = "gui.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*", "formatter*", "cli*", "gui*"]
 
 [tool.setuptools.dynamic]
-version = {attr = "kiwicgen_version.__version__"}
+version = {attr = "core.version.__version__"}

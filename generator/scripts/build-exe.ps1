@@ -336,7 +336,9 @@ if (Test-Path $PackageSourceDir) {
 }
 New-Item -ItemType Directory -Force -Path $PackageSourceDir | Out-Null
 Copy-Item (Join-Path $GeneratorRoot "pyproject.toml") $PackageSourceDir
-Get-ChildItem -Path $GeneratorRoot -Filter "kiwicgen_*.py" -File | Copy-Item -Destination $PackageSourceDir
+foreach ($Package in @("core", "formatter", "cli", "gui")) {
+    Copy-Item -Recurse -Force (Join-Path $GeneratorRoot $Package) (Join-Path $PackageSourceDir $Package)
+}
 Write-Ok "Packaging source staged inside build directory."
 
 # ---------------------------------------------------------------------------
@@ -367,10 +369,10 @@ if (-not (Test-Path $VenvClangFormat)) {
 # Read the release version from the single generator version source.
 # ---------------------------------------------------------------------------
 $ProjectVersion = & $VenvPython -c `
-    "import sys; sys.path.insert(0, r'$GeneratorRoot'); import kiwicgen_version; print(kiwicgen_version.__version__)"
+    "import sys; sys.path.insert(0, r'$GeneratorRoot'); from core.version import __version__; print(__version__)"
 
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($ProjectVersion)) {
-    Write-Err "Unable to read kiwicgen version from kiwicgen_version.py."
+    Write-Err "Unable to read kiwicgen version from core/version.py."
     exit 1
 }
 
@@ -441,7 +443,8 @@ Write-Step "Building kiwicgen console executable"
     --workpath (Join-Path $BuildDir "pyinstaller\kiwicgen") `
     --specpath $SpecDir `
     --distpath $DistDir `
-    (Join-Path $GeneratorRoot "kiwicgen_cli.py")
+    --paths $GeneratorRoot `
+    (Join-Path $GeneratorRoot "cli\main.py")
 if ($LASTEXITCODE -ne 0) {
     Write-Err "kiwicgen PyInstaller build failed."
     exit $LASTEXITCODE
@@ -460,7 +463,8 @@ Write-Step "Building kiwicgen GUI executable"
     --workpath (Join-Path $BuildDir "pyinstaller\kiwicgen-gui") `
     --specpath $SpecDir `
     --distpath $DistDir `
-    (Join-Path $GeneratorRoot "kiwicgen_gui.py")
+    --paths $GeneratorRoot `
+    (Join-Path $GeneratorRoot "gui\main.py")
 if ($LASTEXITCODE -ne 0) {
     Write-Err "kiwicgen-gui PyInstaller build failed."
     exit $LASTEXITCODE
@@ -471,16 +475,16 @@ Write-Ok "kiwicgen-gui executable created."
 # Stage every external runtime resource required by the standalone tools.
 # ---------------------------------------------------------------------------
 Write-Step "Staging standalone distribution resources"
-foreach ($Path in @("osal", "doc", "tools")) {
+foreach ($Path in @("templates", "doc", "tools")) {
     $Target = Join-Path $DistDir $Path
     if (Test-Path $Target) {
         Remove-Item -Recurse -Force $Target
     }
 }
 New-Item -ItemType Directory -Force -Path (Join-Path $DistDir "tools") | Out-Null
-Copy-Item -Recurse -Force (Join-Path $RepositoryRoot "osal") (Join-Path $DistDir "osal")
+Copy-Item -Recurse -Force (Join-Path $GeneratorRoot "resources\templates") (Join-Path $DistDir "templates")
 Copy-Item -Recurse -Force (Join-Path $RepositoryRoot "doc") (Join-Path $DistDir "doc")
-Copy-Item -Force (Join-Path $GeneratorRoot "kiwicgen-clang-format.yaml") (Join-Path $DistDir "kiwicgen-clang-format.yaml")
+Copy-Item -Force (Join-Path $GeneratorRoot "resources\kiwicgen-clang-format.yaml") (Join-Path $DistDir "kiwicgen-clang-format.yaml")
 Copy-Item -Force $VenvClangFormat (Join-Path $DistDir "tools\clang-format.exe")
 Copy-Item -Force (Join-Path $RepositoryRoot "README.md") (Join-Path $DistDir "README.md")
 Copy-Item -Force (Join-Path $GeneratorRoot "README.md") (Join-Path $DistDir "kiwicgen-README.md")
@@ -492,7 +496,7 @@ Write-Ok "Runtime resources staged."
 # ---------------------------------------------------------------------------
 $CliExecutable = Join-Path $DistDir "kiwicgen.exe"
 $GuiExecutable = Join-Path $DistDir "kiwicgen-gui.exe"
-$TemplateProbe = Join-Path $DistDir "osal\template_osal.h"
+$TemplateProbe = Join-Path $DistDir "templates\osal\template_osal.h"
 $FormatterProbe = Join-Path $DistDir "tools\clang-format.exe"
 
 foreach ($Path in @($CliExecutable, $GuiExecutable, $TemplateProbe, $FormatterProbe)) {
@@ -508,5 +512,28 @@ if ($LASTEXITCODE -ne 0) {
     Write-Err "kiwicgen executable verification failed."
     exit $LASTEXITCODE
 }
+
+Write-Step "Running standalone generation smoke test"
+$SmokeDir = Join-Path $BuildDir "smoke-generated"
+if (Test-Path $SmokeDir) {
+    Remove-Item -Recurse -Force $SmokeDir
+}
+& $CliExecutable `
+    --module-prefix=SmokeModule `
+    --port=FreeRTOS `
+    --language=C `
+    --use-thread-api `
+    --output=$SmokeDir `
+    --no-color
+if ($LASTEXITCODE -ne 0) {
+    Write-Err "Standalone generation smoke test failed."
+    exit $LASTEXITCODE
+}
+$SmokeProbe = Join-Path $SmokeDir "smoke_module\smoke_module_osal.h"
+if (-not (Test-Path $SmokeProbe)) {
+    Write-Err "Smoke-test artifact is missing: $SmokeProbe"
+    exit 1
+}
+Write-Ok "Standalone generation smoke test passed."
 
 Write-Ok "Standalone distribution created: $DistDir"

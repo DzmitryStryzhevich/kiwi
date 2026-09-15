@@ -1,4 +1,4 @@
-"""Graphical frontend for the shared ``kiwicgen_core`` generation pipeline."""
+"""Graphical frontend for the shared kiwicgen generation pipeline."""
 
 from __future__ import annotations
 
@@ -10,33 +10,35 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-import kiwicgen_core as codegen
-from kiwicgen_logging import AsyncLogDispatcher
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
+from core.errors import KiwicgenError
+from core.generator import generate
+from core.logging import AsyncLogDispatcher
+from core.model import (
+    DEFAULT_APIS,
+    DEFAULT_FORMAT_GENERATED_CODE,
+    DEFAULT_LANGUAGE,
+    DEFAULT_MODULE_PREFIX,
+    DEFAULT_PORTS,
+    DEFAULT_SPLIT_INTO_PORT_DIR,
+    DEFAULT_SPLIT_SRC_INC_FILES,
+    IMPLEMENTED_LANGUAGES,
+    IMPLEMENTED_PORTS,
+    SUPPORTED_APIS,
+    SUPPORTED_LANGUAGES,
+    SUPPORTED_PORTS,
+    GenerationConfig,
+)
+from core.paths import resolve_app_asset, runtime_root
+from core.profile import load_profile, save_profile
+from core.validation import (
+    build_prefix_forms,
+    make_generation_config,
+    validate_generation_support,
+)
 
-# =====================================================================================================================
-# Runtime paths and packaged GUI assets
-# =====================================================================================================================
-
-ROOT = pathlib.Path(__file__).resolve().parent
-PROJECT_ROOT = ROOT.parent
-
-
-def _runtime_root() -> pathlib.Path:
-    """Resolve the external runtime-resource root for source and packaged execution."""
-    if getattr(sys, "frozen", False):
-        return pathlib.Path(sys.executable).resolve().parent
-    return PROJECT_ROOT
-
-
-def _resolve_app_asset(relative_path: str) -> pathlib.Path:
-    """Resolve a GUI asset from the source tree or standalone distribution."""
-    return _runtime_root() / relative_path
-
-
-# =====================================================================================================================
-# GUI application
-# =====================================================================================================================
 
 class KiwicgenApp(tk.Tk):
     """Tk frontend for the shared kiwicgen generation core."""
@@ -44,62 +46,50 @@ class KiwicgenApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
 
-        # Milestone 1: initialize window-level presentation only. No generation
-        # policy is owned by the GUI frontend.
         self.title("kiwicgen-gui")
         self._set_window_icon()
-        self.geometry("1120x820")
-        self.minsize(1000, 720)
+        self.geometry("1120x780")
+        self.minsize(960, 680)
         self.configure(bg="#101826")
 
         self.style = ttk.Style(self)
         self.style.theme_use("clam")
         self._configure_styles()
 
-        # The GUI uses three execution contexts with strict ownership rules:
-        # Tk/UI work stays on the main thread, generation runs on a dedicated
-        # worker, and log serialization stays on the logging listener thread.
         self._gui_log_queue: queue.Queue[str] = queue.Queue()
-        self._generation_result_queue: queue.Queue[tuple[bool, pathlib.Path, str | None]] = queue.Queue()
+        self._generation_result_queue: queue.Queue[
+            tuple[bool, pathlib.Path, str | None]
+        ] = queue.Queue()
         self._log_dispatcher = AsyncLogDispatcher(self._gui_log_queue.put)
         self._generation_thread: threading.Thread | None = None
         self._generation_active = False
         self._closing = False
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
-        # Milestone 2: mirror shared-core configuration as Tk state. Every
-        # value is normalized again by kiwicgen_core before use.
-        self.prefix_var = tk.StringVar(value=codegen.DEFAULT_MODULE_PREFIX)
-        self.dest_var = tk.StringVar(value=str(_runtime_root() / "generated"))
+        self.prefix_var = tk.StringVar(value=DEFAULT_MODULE_PREFIX)
+        self.dest_var = tk.StringVar(value=str(runtime_root() / "generated"))
         self.port_vars = {
-            port: tk.BooleanVar(value=port in codegen.DEFAULT_PORTS)
-            for port in codegen.SUPPORTED_PORTS
+            port: tk.BooleanVar(value=port in DEFAULT_PORTS)
+            for port in SUPPORTED_PORTS
         }
-        self.language_var = tk.StringVar(value=codegen.DEFAULT_LANGUAGE)
-
+        self.language_var = tk.StringVar(value=DEFAULT_LANGUAGE)
         self.api_vars = {
-            name: tk.BooleanVar(value=name in codegen.DEFAULT_APIS)
-            for name in codegen.SUPPORTED_APIS
+            name: tk.BooleanVar(value=name in DEFAULT_APIS)
+            for name in SUPPORTED_APIS
         }
-
-        # Event Flags / Event Groups remain a roadmap item until their unified
-        # semantics and backend contract are defined.
         self.planned_api_vars = {
             "event_group": tk.BooleanVar(value=False),
         }
-
         self.split_into_port_dir_var = tk.BooleanVar(
-            value=codegen.DEFAULT_SPLIT_INTO_PORT_DIR
+            value=DEFAULT_SPLIT_INTO_PORT_DIR
         )
         self.split_src_inc_files_var = tk.BooleanVar(
-            value=codegen.DEFAULT_SPLIT_SRC_INC_FILES
+            value=DEFAULT_SPLIT_SRC_INC_FILES
         )
         self.format_generated_code_var = tk.BooleanVar(
-            value=codegen.DEFAULT_FORMAT_GENERATED_CODE
+            value=DEFAULT_FORMAT_GENERATED_CODE
         )
 
-        # Milestone 3: build controls only after the complete frontend state
-        # model is available.
         self._build_ui()
         self.after(50, self._drain_log_queue)
         self.after(50, self._drain_generation_results)
@@ -107,7 +97,7 @@ class KiwicgenApp(tk.Tk):
     def _set_window_icon(self) -> None:
         """Apply packaged KIWI artwork when supported by the host window system."""
         try:
-            icon_png = _resolve_app_asset("doc/kiwi_window.png")
+            icon_png = resolve_app_asset("doc/kiwi_window.png")
             if icon_png.exists():
                 self._window_icon = tk.PhotoImage(file=str(icon_png))
                 self.iconphoto(True, self._window_icon)
@@ -116,15 +106,11 @@ class KiwicgenApp(tk.Tk):
 
         if sys.platform == "win32":
             try:
-                icon_ico = _resolve_app_asset("doc/kiwi.ico")
+                icon_ico = resolve_app_asset("doc/kiwi.ico")
                 if icon_ico.exists():
                     self.wm_iconbitmap(str(icon_ico))
             except tk.TclError:
                 pass
-
-    # -----------------------------------------------------------------------------------------------------------------
-    # Visual style
-    # -----------------------------------------------------------------------------------------------------------------
 
     def _configure_styles(self) -> None:
         """Configure the application-local Tk visual style."""
@@ -133,7 +119,7 @@ class KiwicgenApp(tk.Tk):
             "Title.TLabel",
             background="#182235",
             foreground="#f3f6ff",
-            font=("Segoe UI", 19, "bold"),
+            font=("Segoe UI", 18, "bold"),
         )
         self.style.configure(
             "Hint.TLabel",
@@ -171,13 +157,9 @@ class KiwicgenApp(tk.Tk):
             foreground=[("active", "#ffffff"), ("selected", "#e7eeff")],
         )
 
-    # -----------------------------------------------------------------------------------------------------------------
-    # Widget tree
-    # -----------------------------------------------------------------------------------------------------------------
-
     def _build_ui(self) -> None:
         """Build the complete generator form from shared-core capabilities."""
-        outer = ttk.Frame(self, style="Card.TFrame", padding=20)
+        outer = ttk.Frame(self, style="Card.TFrame", padding=16)
         outer.pack(fill="both", expand=True, padx=20, pady=20)
 
         header = ttk.Frame(outer, style="Card.TFrame")
@@ -185,7 +167,7 @@ class KiwicgenApp(tk.Tk):
         self._add_header_logo(header)
 
         header_text = ttk.Frame(header, style="Card.TFrame")
-        header_text.pack(side="left", fill="x", expand=True, padx=(14, 0))
+        header_text.pack(side="left", padx=(12, 0), anchor="n")
         ttk.Label(
             header_text,
             text="kiwicgen — KIWI OSAL Generator",
@@ -195,28 +177,28 @@ class KiwicgenApp(tk.Tk):
             header_text,
             text="GUI frontend for the shared kiwicgen generation core.",
             style="Hint.TLabel",
-        ).pack(anchor="w", pady=(4, 0))
+        ).pack(anchor="w", pady=(3, 0))
 
-        settings_card = ttk.Frame(outer, style="Card.TFrame", padding=(0, 20, 0, 8))
+        settings_card = ttk.Frame(outer, style="Card.TFrame", padding=(0, 10, 0, 6))
         settings_card.pack(fill="x")
-        ttk.Label(settings_card, text="Paths settings", style="Body.TLabel").pack(anchor="w")
+        ttk.Label(settings_card, text="Paths settings", style="Body.TLabel").pack(
+            anchor="w"
+        )
 
         form = ttk.Frame(settings_card, style="Card.TFrame")
-        form.pack(fill="x", pady=(10, 0))
+        form.pack(anchor="w", pady=(8, 0))
 
         ttk.Label(form, text="Ports", style="Body.TLabel").grid(
-            row=0, column=0, sticky="w", pady=(0, 8)
+            row=0, column=0, sticky="w", pady=(0, 7)
         )
         ports_frame = ttk.Frame(form, style="Card.TFrame")
-        ports_frame.grid(row=0, column=1, sticky="w", padx=(10, 0), pady=(0, 8))
-        for port in codegen.SUPPORTED_PORTS:
-            implemented = port in codegen.IMPLEMENTED_PORTS
-            text = port if implemented else f"{port} (planned)"
+        ports_frame.grid(row=0, column=1, sticky="w", padx=(10, 0), pady=(0, 7))
+        for port in SUPPORTED_PORTS:
+            text = port if port in IMPLEMENTED_PORTS else f"{port} (planned)"
             ttk.Checkbutton(
                 ports_frame,
                 text=text,
                 variable=self.port_vars[port],
-                state="normal" if implemented else "disabled",
                 command=lambda selected_port=port: self._log_boolean_option(
                     f"Port {selected_port}",
                     self.port_vars[selected_port],
@@ -224,49 +206,44 @@ class KiwicgenApp(tk.Tk):
             ).pack(side="left", padx=(0, 18))
 
         ttk.Label(form, text="Language", style="Body.TLabel").grid(
-            row=1, column=0, sticky="w", pady=(0, 8)
+            row=1, column=0, sticky="w", pady=(0, 7)
         )
         language_frame = ttk.Frame(form, style="Card.TFrame")
-        language_frame.grid(row=1, column=1, sticky="w", padx=(10, 0), pady=(0, 8))
-        for language in codegen.SUPPORTED_LANGUAGES:
-            implemented = language in codegen.IMPLEMENTED_LANGUAGES
-            text = language if implemented else f"{language} (planned)"
+        language_frame.grid(row=1, column=1, sticky="w", padx=(10, 0), pady=(0, 7))
+        for language in SUPPORTED_LANGUAGES:
+            text = language if language in IMPLEMENTED_LANGUAGES else f"{language} (planned)"
             ttk.Radiobutton(
                 language_frame,
                 text=text,
                 variable=self.language_var,
                 value=language,
-                state="normal" if implemented else "disabled",
                 command=lambda selected_language=language: self._log(
                     f"[INFO] Language selected: {selected_language}"
                 ),
             ).pack(side="left", padx=(0, 18))
 
         ttk.Label(form, text="Module Prefix", style="Body.TLabel").grid(
-            row=2, column=0, sticky="w", pady=(0, 8)
+            row=2, column=0, sticky="w", pady=(0, 7)
         )
-        ttk.Entry(form, textvariable=self.prefix_var, width=40).grid(
-            row=2, column=1, sticky="ew", padx=(10, 0), pady=(0, 8)
+        ttk.Entry(form, textvariable=self.prefix_var, width=64).grid(
+            row=2, column=1, sticky="w", padx=(10, 0), pady=(0, 7)
         )
 
         ttk.Label(form, text="Output Folder", style="Body.TLabel").grid(
-            row=3, column=0, sticky="w", pady=(0, 8)
+            row=3, column=0, sticky="w", pady=(0, 7)
         )
         path_frame = ttk.Frame(form, style="Card.TFrame")
-        path_frame.grid(row=3, column=1, sticky="ew", padx=(10, 0), pady=(0, 8))
-        ttk.Entry(path_frame, textvariable=self.dest_var).pack(
-            side="left", fill="x", expand=True
-        )
+        path_frame.grid(row=3, column=1, sticky="w", padx=(10, 0), pady=(0, 7))
+        ttk.Entry(path_frame, textvariable=self.dest_var, width=54).pack(side="left")
         ttk.Button(
             path_frame,
             text="Browse",
             style="Action.TButton",
             command=self._select_destination,
         ).pack(side="left", padx=(8, 0))
-        form.columnconfigure(1, weight=1)
 
         layout_checks = ttk.Frame(form, style="Card.TFrame")
-        layout_checks.grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        layout_checks.grid(row=4, column=0, columnspan=2, sticky="w", pady=(3, 0))
         ttk.Checkbutton(
             layout_checks,
             text="Split into port directory",
@@ -295,12 +272,12 @@ class KiwicgenApp(tk.Tk):
             ),
         ).pack(side="left")
 
-        api_card = ttk.Frame(outer, style="Card.TFrame", padding=(0, 18, 0, 8))
+        api_card = ttk.Frame(outer, style="Card.TFrame", padding=(0, 12, 0, 6))
         api_card.pack(fill="x")
         ttk.Label(api_card, text="API Set", style="Body.TLabel").pack(anchor="w")
 
         checks = ttk.Frame(api_card, style="Card.TFrame")
-        checks.pack(anchor="w", pady=(8, 0))
+        checks.pack(anchor="w", pady=(7, 0))
         labels = (
             ("queue", "Queues"),
             ("stream_buffer", "Stream Buffers"),
@@ -327,7 +304,7 @@ class KiwicgenApp(tk.Tk):
                 row=row,
                 column=column,
                 padx=(0, 12),
-                pady=(0 if row == 0 else 8, 0),
+                pady=(0 if row == 0 else 7, 0),
                 sticky="w",
             )
 
@@ -335,11 +312,14 @@ class KiwicgenApp(tk.Tk):
             checks,
             text="Event Flags / Groups (planned)",
             variable=self.planned_api_vars["event_group"],
-            state="disabled",
-        ).grid(row=2, column=0, columnspan=2, padx=(0, 12), pady=(8, 0), sticky="w")
+            command=lambda: self._log_boolean_option(
+                "Event Flags / Groups",
+                self.planned_api_vars["event_group"],
+            ),
+        ).grid(row=2, column=0, columnspan=2, padx=(0, 12), pady=(7, 0), sticky="w")
 
         actions = ttk.Frame(outer, style="Card.TFrame")
-        actions.pack(fill="x")
+        actions.pack(fill="x", pady=(2, 0))
         action_buttons = ttk.Frame(actions, style="Card.TFrame")
         action_buttons.pack(side="left")
 
@@ -369,8 +349,9 @@ class KiwicgenApp(tk.Tk):
             command=self._open_output,
         ).pack(side="left", padx=(10, 0))
 
-        ttk.Label(outer, text="Generator log", style="Body.TLabel").pack(anchor="w", pady=(18, 6))
-
+        ttk.Label(outer, text="Generator log", style="Body.TLabel").pack(
+            anchor="w", pady=(12, 6)
+        )
         self.log = tk.Text(
             outer,
             height=10,
@@ -379,17 +360,13 @@ class KiwicgenApp(tk.Tk):
             insertbackground="#d9e5ff",
             relief="flat",
         )
-        self.log.pack(fill="both", expand=True, pady=(18, 0))
+        self.log.pack(fill="both", expand=True)
         self.log.tag_configure("info", foreground="#d9e5ff")
         self.log.tag_configure("step", foreground="#6fdcff")
         self.log.tag_configure("ok", foreground="#72e6a0")
         self.log.tag_configure("warn", foreground="#ffd166")
         self.log.tag_configure("err", foreground="#ff7b7b")
         self._log("[INFO] Ready. Configure options, load a profile, or click Generate.")
-
-    # -----------------------------------------------------------------------------------------------------------------
-    # UI actions and asynchronous event presentation
-    # -----------------------------------------------------------------------------------------------------------------
 
     def _log(self, text: str) -> None:
         """Queue one structured status line for asynchronous presentation."""
@@ -422,7 +399,6 @@ class KiwicgenApp(tk.Tk):
                 message = self._gui_log_queue.get_nowait()
             except queue.Empty:
                 break
-
             self._append_log(message)
 
         if not self._closing:
@@ -436,7 +412,6 @@ class KiwicgenApp(tk.Tk):
                 message = self._gui_log_queue.get_nowait()
             except queue.Empty:
                 break
-
             self._append_log(message)
 
     def _drain_generation_results(self) -> None:
@@ -457,7 +432,10 @@ class KiwicgenApp(tk.Tk):
             if success:
                 messagebox.showinfo("Success", f"Code generated into: {output_root}")
             else:
-                messagebox.showerror("Generation failed", error or "Unknown generation error.")
+                messagebox.showerror(
+                    "Generation failed",
+                    error or "Unknown generation error.",
+                )
 
         if not self._closing:
             self.after(50, self._drain_generation_results)
@@ -471,7 +449,7 @@ class KiwicgenApp(tk.Tk):
     def _select_destination(self) -> None:
         """Select the output root without changing generation semantics."""
         folder = filedialog.askdirectory(
-            initialdir=self.dest_var.get() or str(_runtime_root()),
+            initialdir=self.dest_var.get() or str(runtime_root()),
         )
         if folder:
             self.dest_var.set(folder)
@@ -494,13 +472,14 @@ class KiwicgenApp(tk.Tk):
             messagebox.showinfo("Info", f"Output: {output}")
 
     def _add_header_logo(self, parent: ttk.Frame) -> None:
-        """Attach the optional packaged header image to the GUI."""
+        """Attach a compact packaged header image to the GUI."""
         try:
-            icon_png = _resolve_app_asset("doc/kiwi_header.png")
+            icon_png = resolve_app_asset("doc/kiwi_header.png")
             if not icon_png.exists():
                 return
 
-            self._header_logo = tk.PhotoImage(file=str(icon_png))
+            source_logo = tk.PhotoImage(file=str(icon_png))
+            self._header_logo = source_logo.subsample(2, 2)
             tk.Label(
                 parent,
                 image=self._header_logo,
@@ -511,11 +490,7 @@ class KiwicgenApp(tk.Tk):
         except tk.TclError:
             pass
 
-    # -----------------------------------------------------------------------------------------------------------------
-    # Profile/configuration bridge to the shared core
-    # -----------------------------------------------------------------------------------------------------------------
-
-    def _current_config(self) -> codegen.GenerationConfig:
+    def _current_config(self) -> GenerationConfig:
         """Normalize the current GUI state through the shared core contract."""
         selected_apis = {
             name for name, variable in self.api_vars.items() if variable.get()
@@ -523,7 +498,7 @@ class KiwicgenApp(tk.Tk):
         selected_ports = [
             port for port, variable in self.port_vars.items() if variable.get()
         ]
-        return codegen.make_generation_config(
+        return make_generation_config(
             module_prefix=self.prefix_var.get().strip(),
             ports=selected_ports,
             language=self.language_var.get().strip(),
@@ -537,7 +512,7 @@ class KiwicgenApp(tk.Tk):
         """Load a kiwicgen profile and project it onto the GUI controls."""
         profile = filedialog.askopenfilename(
             title="Load kiwicgen generation profile",
-            initialdir=self.dest_var.get() or str(_runtime_root()),
+            initialdir=self.dest_var.get() or str(runtime_root()),
             filetypes=(
                 ("YAML profile", "*.yaml *.yml"),
                 ("All files", "*.*"),
@@ -547,10 +522,10 @@ class KiwicgenApp(tk.Tk):
             return
 
         try:
-            config = codegen.load_profile(profile)
-        except (codegen.CodegenError, OSError) as exc:
-            messagebox.showerror("Load profile failed", str(exc))
+            config = load_profile(profile)
+        except (KiwicgenError, OSError) as exc:
             self._log(f"[ERR ] {exc}")
+            messagebox.showerror("Load profile failed", str(exc))
             return
 
         self.prefix_var.set(config.module_prefix)
@@ -570,15 +545,16 @@ class KiwicgenApp(tk.Tk):
         """Persist the current normalized GUI configuration as a profile."""
         try:
             config = self._current_config()
-            forms = codegen.build_prefix_forms(config.module_prefix)
-        except codegen.CodegenError as exc:
+            forms = build_prefix_forms(config.module_prefix)
+        except KiwicgenError as exc:
+            self._log(f"[ERR ] {exc}")
             messagebox.showerror("Invalid configuration", str(exc))
             return
 
         default_name = f"kiwicgen-{forms.snake}-profile.yaml"
         profile = filedialog.asksaveasfilename(
             title="Save kiwicgen generation profile",
-            initialdir=self.dest_var.get() or str(_runtime_root()),
+            initialdir=self.dest_var.get() or str(runtime_root()),
             initialfile=default_name,
             defaultextension=".yaml",
             filetypes=(
@@ -591,29 +567,27 @@ class KiwicgenApp(tk.Tk):
             return
 
         try:
-            saved = codegen.save_profile(profile, config)
-        except OSError as exc:
-            messagebox.showerror("Save profile failed", str(exc))
+            saved = save_profile(profile, config)
+        except (KiwicgenError, OSError) as exc:
             self._log(f"[ERR ] {exc}")
+            messagebox.showerror("Save profile failed", str(exc))
             return
 
         self._log(f"[INFO] Saved profile: {saved}")
 
-    # -----------------------------------------------------------------------------------------------------------------
-    # Generation worker
-    # -----------------------------------------------------------------------------------------------------------------
-
     def generate(self) -> None:
-        """Snapshot GUI state and start one asynchronous generation request."""
+        """Validate GUI state and start one asynchronous generation request."""
         if self._generation_active:
             self._log("[WARN] Generation is already in progress.")
             return
 
         try:
             config = self._current_config()
+            validate_generation_support(config)
             output_root = pathlib.Path(self.dest_var.get().strip())
-        except codegen.CodegenError as exc:
+        except KiwicgenError as exc:
             self._log(f"[ERR ] {exc}")
+            self._flush_logs_to_ui()
             messagebox.showerror("Invalid configuration", str(exc))
             return
 
@@ -629,13 +603,13 @@ class KiwicgenApp(tk.Tk):
 
     def _generation_worker(
         self,
-        config: codegen.GenerationConfig,
+        config: GenerationConfig,
         output_root: pathlib.Path,
     ) -> None:
         """Run the shared generation pipeline outside the Tk main thread."""
         try:
-            codegen.generate(config, output_root, log_callback=self._log)
-        except (codegen.CodegenError, OSError) as exc:
+            generate(config, output_root, log_callback=self._log)
+        except (KiwicgenError, OSError) as exc:
             self._log(f"[ERR ] {exc}")
             self._generation_result_queue.put((False, output_root, str(exc)))
             return
@@ -647,5 +621,11 @@ class KiwicgenApp(tk.Tk):
         self._generation_result_queue.put((True, output_root, None))
 
 
-if __name__ == "__main__":
+def main() -> int:
+    """Launch the standalone graphical frontend."""
     KiwicgenApp().mainloop()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

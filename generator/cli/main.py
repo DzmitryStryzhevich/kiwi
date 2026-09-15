@@ -1,4 +1,4 @@
-"""Command-line frontend for the shared ``kiwicgen_core`` generation pipeline."""
+"""Command-line frontend for the shared kiwicgen generation pipeline."""
 
 from __future__ import annotations
 
@@ -7,16 +7,37 @@ import os
 import pathlib
 import sys
 
-from colorama import Fore, Style, just_fix_windows_console
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-import kiwicgen_core as codegen
-from kiwicgen_logging import AsyncLogDispatcher
-from kiwicgen_version import __version__
+try:
+    from colorama import Fore, Style, just_fix_windows_console
+except ImportError:
+    class _AnsiFore:
+        WHITE = "\033[97m"
+        CYAN = "\033[96m"
+        GREEN = "\033[92m"
+        YELLOW = "\033[93m"
+        RED = "\033[91m"
 
+    class _AnsiStyle:
+        RESET_ALL = "\033[0m"
 
-# =====================================================================================================================
-# CLI presentation and argument parsing
-# =====================================================================================================================
+    Fore = _AnsiFore()
+    Style = _AnsiStyle()
+
+    def just_fix_windows_console() -> None:
+        """Fallback when optional console-color support is unavailable."""
+        return
+
+from core.errors import KiwicgenError
+from core.generator import generate
+from core.logging import AsyncLogDispatcher
+from core.model import SUPPORTED_APIS
+from core.profile import load_profile
+from core.validation import make_generation_config
+from core.version import __version__
+
 
 class KiwicgenHelpFormatter(argparse.RawDescriptionHelpFormatter):
     """Compact, stable help layout for the standalone kiwicgen CLI."""
@@ -42,12 +63,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     general = parser.add_argument_group("General options")
-    general.add_argument(
-        "-h",
-        "--help",
-        action="help",
-        help="Show this help message and exit.",
-    )
+    general.add_argument("-h", "--help", action="help", help="Show this help message and exit.")
     general.add_argument(
         "--version",
         action="version",
@@ -92,7 +108,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     api_group = parser.add_argument_group("API selection")
-    for api_name in codegen.SUPPORTED_APIS:
+    for api_name in SUPPORTED_APIS:
         option_name = api_name.replace("_", "-")
         api_group.add_argument(
             f"--use-{option_name}-api",
@@ -150,26 +166,16 @@ def _console_log(message: str, *, use_color: bool) -> None:
     print(f"{color}{message}{Style.RESET_ALL}")
 
 
-# =====================================================================================================================
-# Effective configuration resolution
-# =====================================================================================================================
-
-def _config_from_args(args: argparse.Namespace) -> codegen.GenerationConfig:
+def _config_from_args(args: argparse.Namespace):
     """Apply defaults < YAML profile < explicit CLI arguments precedence."""
-    base = (
-        codegen.load_profile(args.fprof)
-        if args.fprof
-        else codegen.make_generation_config()
-    )
+    base = load_profile(args.fprof) if args.fprof else make_generation_config()
 
-    module_prefix = (
-        args.module_prefix if args.module_prefix is not None else base.module_prefix
-    )
+    module_prefix = args.module_prefix if args.module_prefix is not None else base.module_prefix
     ports = args.port if args.port is not None else base.ports
     language = args.language if args.language is not None else base.language
     selected = set(base.apis)
 
-    for api_name in codegen.SUPPORTED_APIS:
+    for api_name in SUPPORTED_APIS:
         value = getattr(args, f"use_{api_name}_api")
         if value is True:
             selected.add(api_name)
@@ -190,7 +196,7 @@ def _config_from_args(args: argparse.Namespace) -> codegen.GenerationConfig:
         else base.format_generated_code
     )
 
-    return codegen.make_generation_config(
+    return make_generation_config(
         module_prefix=module_prefix,
         ports=ports,
         language=language,
@@ -201,14 +207,8 @@ def _config_from_args(args: argparse.Namespace) -> codegen.GenerationConfig:
     )
 
 
-# =====================================================================================================================
-# Application entry point
-# =====================================================================================================================
-
 def main(argv: list[str] | None = None) -> int:
     """Standalone console frontend for the shared kiwicgen core."""
-    # Milestone 1: build the frontend-only command surface. Generation rules
-    # remain entirely inside kiwicgen_core.
     parser = _build_parser()
     effective_argv = list(sys.argv[1:] if argv is None else argv)
 
@@ -230,19 +230,10 @@ def main(argv: list[str] | None = None) -> int:
         log_callback = dispatcher.log
 
     try:
-        # Milestone 2: collapse defaults, an optional YAML profile and explicit
-        # CLI overrides into one normalized shared-core configuration.
         config = _config_from_args(args)
-        output_root = (
-            pathlib.Path(args.output)
-            if args.output
-            else pathlib.Path.cwd() / "generated"
-        )
-
-        # Milestone 3: delegate the complete render/write/format pipeline to
-        # the shared core. The CLI does not post-process generated artifacts.
-        codegen.generate(config, output_root, log_callback=log_callback)
-    except (codegen.CodegenError, OSError) as exc:
+        output_root = pathlib.Path(args.output) if args.output else pathlib.Path.cwd() / "generated"
+        generate(config, output_root, log_callback=log_callback)
+    except (KiwicgenError, OSError) as exc:
         if dispatcher is not None:
             dispatcher.flush()
 

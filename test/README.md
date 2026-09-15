@@ -36,7 +36,7 @@ A test backend can also deliberately control conditions that are difficult to re
 
 The important property is that the component still uses its normal OSAL API. The test does not need to introduce test-only branches into the component or emulate the entire native RTOS API.
 
-For the architectural rationale, see [`../osal/README.md`](../osal/README.md#testability-is-part-of-the-architecture).
+For the architectural rationale, see [`../generator/resources/templates/osal/README.md`](../generator/resources/templates/osal/README.md#testability-is-part-of-the-architecture).
 
 ## Planned test layers
 
@@ -57,7 +57,7 @@ The test strategy should eventually include several complementary layers:
 - assertion, tracing and error-path tests;
 - regression tests for reported bugs.
 
-GUI logic should remain thin enough that most behavior can be tested through the shared `kiwicgen_core.py` core. GUI-specific tests can then focus on frontend state mapping and profile interaction rather than duplicating generator tests.
+GUI logic should remain thin enough that most behavior can be tested through the shared `generator/core/` pipeline. GUI-specific tests can then focus on frontend state mapping and profile interaction rather than duplicating generator tests.
 
 ## Host/test backend direction
 
@@ -82,17 +82,18 @@ Until the automated suite exists, a basic development check can be performed fro
 Check Python syntax:
 
 ```bash
-python -m py_compile \
-  generator/kiwicgen_core.py \
-  generator/kiwicgen_cli.py \
-  generator/kiwicgen_gui.py
+python -m compileall -q \
+  generator/core \
+  generator/formatter \
+  generator/cli \
+  generator/gui
 ```
 
 Check CLI help/no-argument behavior:
 
 ```bash
-python generator/kiwicgen_cli.py
-python generator/kiwicgen_cli.py --help
+python generator/cli/main.py
+python generator/cli/main.py --help
 ```
 
 Neither command should generate files.
@@ -100,7 +101,7 @@ Neither command should generate files.
 Perform a sample generation into a temporary output directory:
 
 ```bash
-python generator/kiwicgen_cli.py \
+python generator/cli/main.py \
   --module-prefix=foo_module \
   --port=FreeRTOS \
   --use-thread-api \

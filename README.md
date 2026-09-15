@@ -8,7 +8,7 @@ The project is intended to make component code easier to port, test and maintain
 
 A component-scoped OSAL gives a component a small, stable and unambiguous contract for the OS services it actually uses. It also provides a natural test boundary, allowing the same component to run against a production backend or an isolated host/test implementation.
 
-For the architectural model, unified OS primitive semantics, ownership rules and testability rationale, see [`osal/README.md`](osal/README.md).
+For the architectural model, unified OS primitive semantics, ownership rules and testability rationale, see [`generator/resources/templates/osal/README.md`](generator/resources/templates/osal/README.md).
 
 ## Code generator
 

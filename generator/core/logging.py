@@ -7,10 +7,6 @@ import queue
 import threading
 
 
-# =====================================================================================================================
-# Asynchronous log dispatch
-# =====================================================================================================================
-
 _STOP = object()
 
 
@@ -32,7 +28,6 @@ class AsyncLogDispatcher:
         """Queue one already-structured status message for frontend output."""
         if self._closed:
             return
-
         self._queue.put(str(message))
 
     def flush(self) -> None:
@@ -43,7 +38,6 @@ class AsyncLogDispatcher:
         """Flush pending messages and stop the listener thread."""
         if self._closed:
             return
-
         self.flush()
         self._closed = True
         self._queue.put(_STOP)
@@ -60,8 +54,6 @@ class AsyncLogDispatcher:
                 try:
                     self._sink(str(item))
                 except Exception:
-                    # Logging must never stall the generator if a presentation
-                    # sink disappears, for example when a console pipe closes.
                     pass
             finally:
                 self._queue.task_done()

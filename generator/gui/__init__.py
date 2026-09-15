@@ -1,0 +1,1 @@
+"""kiwicgen graphical frontend."""

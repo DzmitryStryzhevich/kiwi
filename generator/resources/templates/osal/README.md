@@ -169,7 +169,7 @@ The goal is therefore not merely “the code can be ported.” The stronger prop
 
 > The same component can execute against different operating environments, including a deterministic test environment, without changing the component's OS-facing contract.
 
-Future KIWI test infrastructure should build on this directly with host/test backends, deterministic fake services and regression tests for both normal and failure paths. See [`../test/README.md`](../test/README.md).
+Future KIWI test infrastructure should build on this directly with host/test backends, deterministic fake services and regression tests for both normal and failure paths. See [`../../../../test/README.md`](../../../../test/README.md).
 
 ## Ownership model
 
@@ -302,7 +302,7 @@ The source organization, naming, Doxygen style and lifecycle model should remain
 ## Current template tree
 
 ```text
-osal/
+generator/resources/templates/osal/
 ├── CMakeLists.txt
 ├── template_osal.c
 ├── template_osal.h

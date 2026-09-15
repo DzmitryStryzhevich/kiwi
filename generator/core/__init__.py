@@ -1,0 +1,1 @@
+"""Shared kiwicgen generation core."""

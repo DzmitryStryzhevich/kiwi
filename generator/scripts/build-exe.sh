@@ -212,8 +212,8 @@ step "Preparing isolated packaging source"
 rm -rf "$PACKAGE_SOURCE_DIR"
 mkdir -p "$PACKAGE_SOURCE_DIR"
 cp "$GENERATOR_ROOT/pyproject.toml" "$PACKAGE_SOURCE_DIR/pyproject.toml"
-for source in "$GENERATOR_ROOT"/kiwicgen_*.py; do
-    cp "$source" "$PACKAGE_SOURCE_DIR/"
+for package in core formatter cli gui; do
+    cp -R "$GENERATOR_ROOT/$package" "$PACKAGE_SOURCE_DIR/$package"
 done
 ok "Packaging source staged inside build directory."
 
@@ -229,9 +229,9 @@ if [ ! -x "$VENV_CLANG_FORMAT" ]; then
     exit 1
 fi
 
-PROJECT_VERSION=$(PYTHONPATH="$GENERATOR_ROOT" "$VENV_PYTHON" -c 'import kiwicgen_version; print(kiwicgen_version.__version__)')
+PROJECT_VERSION=$(PYTHONPATH="$GENERATOR_ROOT" "$VENV_PYTHON" -c 'from core.version import __version__; print(__version__)')
 if [ -z "$PROJECT_VERSION" ]; then
-    err "Unable to read kiwicgen version from kiwicgen_version.py."
+    err "Unable to read kiwicgen version from core/version.py."
     exit 1
 fi
 info "kiwicgen version: $PROJECT_VERSION"
@@ -249,7 +249,8 @@ step "Building kiwicgen console executable"
     --workpath "$BUILD_DIR/pyinstaller/kiwicgen" \
     --specpath "$SPEC_DIR" \
     --distpath "$DIST_DIR" \
-    "$GENERATOR_ROOT/kiwicgen_cli.py"
+    --paths "$GENERATOR_ROOT" \
+    "$GENERATOR_ROOT/cli/main.py"
 ok "kiwicgen executable created."
 
 step "Building kiwicgen GUI executable"
@@ -262,18 +263,19 @@ step "Building kiwicgen GUI executable"
     --workpath "$BUILD_DIR/pyinstaller/kiwicgen-gui" \
     --specpath "$SPEC_DIR" \
     --distpath "$DIST_DIR" \
-    "$GENERATOR_ROOT/kiwicgen_gui.py"
+    --paths "$GENERATOR_ROOT" \
+    "$GENERATOR_ROOT/gui/main.py"
 ok "kiwicgen-gui executable created."
 
 # ---------------------------------------------------------------------------
 # Stage every external runtime resource required by the standalone tools.
 # ---------------------------------------------------------------------------
 step "Staging standalone distribution resources"
-rm -rf "$DIST_DIR/osal" "$DIST_DIR/doc" "$DIST_DIR/tools"
+rm -rf "$DIST_DIR/templates" "$DIST_DIR/doc" "$DIST_DIR/tools"
 mkdir -p "$DIST_DIR/tools"
-cp -R "$REPOSITORY_ROOT/osal" "$DIST_DIR/osal"
+cp -R "$GENERATOR_ROOT/resources/templates" "$DIST_DIR/templates"
 cp -R "$REPOSITORY_ROOT/doc" "$DIST_DIR/doc"
-cp "$GENERATOR_ROOT/kiwicgen-clang-format.yaml" "$DIST_DIR/kiwicgen-clang-format.yaml"
+cp "$GENERATOR_ROOT/resources/kiwicgen-clang-format.yaml" "$DIST_DIR/kiwicgen-clang-format.yaml"
 cp "$VENV_CLANG_FORMAT" "$DIST_DIR/tools/clang-format"
 cp "$REPOSITORY_ROOT/README.md" "$DIST_DIR/README.md"
 cp "$GENERATOR_ROOT/README.md" "$DIST_DIR/kiwicgen-README.md"
@@ -289,7 +291,7 @@ GUI_EXECUTABLE="$DIST_DIR/kiwicgen-gui"
 for path in \
     "$CLI_EXECUTABLE" \
     "$GUI_EXECUTABLE" \
-    "$DIST_DIR/osal/template_osal.h" \
+    "$DIST_DIR/templates/osal/template_osal.h" \
     "$DIST_DIR/tools/clang-format"
 do
     if [ ! -e "$path" ]; then
@@ -300,4 +302,22 @@ done
 
 step "Verifying kiwicgen executable"
 "$CLI_EXECUTABLE" --version
+
+step "Running standalone generation smoke test"
+SMOKE_DIR="$BUILD_DIR/smoke-generated"
+rm -rf "$SMOKE_DIR"
+"$CLI_EXECUTABLE" \
+    --module-prefix=SmokeModule \
+    --port=FreeRTOS \
+    --language=C \
+    --use-thread-api \
+    --output="$SMOKE_DIR" \
+    --no-color
+SMOKE_PROBE="$SMOKE_DIR/smoke_module/smoke_module_osal.h"
+if [ ! -f "$SMOKE_PROBE" ]; then
+    err "Smoke-test artifact is missing: $SMOKE_PROBE"
+    exit 1
+fi
+ok "Standalone generation smoke test passed."
+
 ok "Standalone distribution created: $DIST_DIR"

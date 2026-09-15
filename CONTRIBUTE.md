@@ -21,7 +21,7 @@ Good contribution candidates include:
 
 Avoid adding a primitive only because one backend exposes it. A new generic API group should have clear component-level semantics that can be represented consistently across the intended backends. The generic name and behavior must follow the KIWI vocabulary rather than inheriting whichever `create`/`destroy`, `give`/`take`, `post`/`pend`, or similar terminology happens to be used by the first backend.
 
-Before implementing a new primitive, define its component-visible behavior: blocking versus non-blocking operation, timeout meaning, ISR/thread context, lifecycle/ownership, success and failure semantics, and how those rules map to every intended backend. See [`osal/README.md`](osal/README.md#one-contract-one-meaning).
+Before implementing a new primitive, define its component-visible behavior: blocking versus non-blocking operation, timeout meaning, ISR/thread context, lifecycle/ownership, success and failure semantics, and how those rules map to every intended backend. See [`generator/resources/templates/osal/README.md`](generator/resources/templates/osal/README.md#one-contract-one-meaning).
 
 When introducing a new primitive group, update the whole vertical slice rather than only one file:
 
@@ -57,20 +57,18 @@ Backend-internal synchronization objects must remain separate from component-vis
 
 ## Generator architecture
 
-Generation logic belongs in:
+Generation is split by responsibility under `generator/`:
 
 ```text
-generator/kiwicgen_core.py
+generator/
+├── core/
+├── formatter/
+├── cli/
+├── gui/
+└── resources/templates/osal/
 ```
 
-The two applications:
-
-```text
-generator/kiwicgen_cli.py
-generator/kiwicgen_gui.py
-```
-
-should remain thin frontends to the same core. Do not implement a generation rule independently in the GUI and CLI.
+`cli/` and `gui/` must remain thin frontends over the same `core/` generation pipeline. Formatter discovery/execution belongs in `formatter/`, while OSAL source templates belong in `resources/templates/osal/`. Do not implement a generation rule independently in the GUI and CLI.
 
 When adding a generator option, keep CLI, GUI and YAML profiles aligned wherever the option is intended to be reproducible.
 
@@ -88,7 +86,7 @@ A test backend may provide deterministic controls to the test harness (for examp
 
 Update documentation when behavior, profile format, CLI options, GUI controls, supported ports or generated output layouts change.
 
-Keep the root `README.md` concise. Detailed OSAL architecture belongs in [`osal/README.md`](osal/README.md), while generator usage belongs in [`generator/README.md`](generator/README.md).
+Keep the root `README.md` concise. Detailed OSAL architecture belongs in [`generator/resources/templates/osal/README.md`](generator/resources/templates/osal/README.md), while generator usage belongs in [`generator/README.md`](generator/README.md).
 
 ## Change scope
 
