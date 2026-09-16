@@ -1,0 +1,2 @@
+# GitLab CI/CD entry point.
+# Pipeline definitions will be added under .gitlab/ in a subsequent development step.
