@@ -64,6 +64,10 @@
     #if !defined(portNUM_CONFIGURABLE_REGIONS) || (portNUM_CONFIGURABLE_REGIONS < 1)
         #error "TEMPLATE_OSAL_FREERTOS_USE_MPU requires portNUM_CONFIGURABLE_REGIONS >= 1"
     #endif
+
+    #if !defined(configSUPPORT_DYNAMIC_ALLOCATION) || (configSUPPORT_DYNAMIC_ALLOCATION != 1)
+        #error "TEMPLATE_OSAL_FREERTOS_USE_MPU requires configSUPPORT_DYNAMIC_ALLOCATION == 1"
+    #endif
 #endif
 // END THREAD
 
@@ -116,7 +120,14 @@ typedef struct
     Template_osal_s              base;          /*!< Base OSAL object; must remain first. */
     Template_osalFreertosParam_s param;         /*!< Normalized FreeRTOS-specific instance configuration. */
     SemaphoreHandle_t            resourceMutex; /*!< Backend-owned registry synchronization mutex. */
-    bool                         validFlag;     /*!< Backend validation flag. */
+
+    // BEGIN THREAD
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+    StackType_t *threadStackPtr[TEMPLATE_OSAL_THREAD_SLOTS_NUM]; /*!< MPU task stack buffers owned by the backend. */
+#endif
+    // END THREAD
+
+    bool validFlag; /*!< Backend validation flag. */
 } Template_osalFreertos_s;
 
 /*===========================================================[PUBLIC INTERFACE]=============================================*/

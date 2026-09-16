@@ -68,15 +68,24 @@
 // BEGIN THREAD
 #ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
     /*
-     * Detect MPU models from the selected FreeRTOS port headers. The checks
-     * below intentionally describe MPU capabilities rather than MCU families.
+     * Detect known MPU models from the selected FreeRTOS port headers.
+     * Detection is based on the MPU capabilities exported by the selected
+     * FreeRTOS port rather than MCU-vendor macros.
      */
     #if defined(portARMV8M_MINOR_VERSION)
         #define TEMPLATE_OSAL_FREERTOS_MPU_MODEL_ARMV8M
-        #define TEMPLATE_OSAL_FREERTOS_MPU_ARMV8M_ALIGNMENT    (32u)
-    #elif defined(portMPU_RASR_TEX_S_C_B_LOCATION)
-        #define TEMPLATE_OSAL_FREERTOS_MPU_MODEL_ARMV7M
-        #define TEMPLATE_OSAL_FREERTOS_MPU_ARMV7M_MIN_SIZE     (32u)
+        #define TEMPLATE_OSAL_FREERTOS_MPU_ALIGNMENT    (32u)
+        #define TEMPLATE_OSAL_FREERTOS_MPU_MIN_SIZE     (32u)
+    #elif defined(portMPU_REGION_SIZE_256B) && \
+          !defined(portMPU_REGION_SIZE_32B)
+        #define TEMPLATE_OSAL_FREERTOS_MPU_MODEL_ARMV6M
+        #define TEMPLATE_OSAL_FREERTOS_MPU_MIN_SIZE     (256u)
+    #elif defined(portMPU_RASR_TEX_S_C_B_LOCATION) || \
+          defined(portMPU_REGION_SIZE_32B)
+        #define TEMPLATE_OSAL_FREERTOS_MPU_MODEL_CLASSIC_RASR
+        #define TEMPLATE_OSAL_FREERTOS_MPU_MIN_SIZE     (32u)
+    #elif !defined(TEMPLATE_OSAL_FREERTOS_MPU_REGION_PLATFORM_VALIDATE)
+        #error "Unsupported FreeRTOS MPU model: provide TEMPLATE_OSAL_FREERTOS_MPU_REGION_PLATFORM_VALIDATE(region)"
     #endif
 #endif
 
@@ -752,6 +761,16 @@ Template_osalErr_e template_osalFreertosInit(Template_osalFreertos_s *const osal
     osalFreertos->validFlag     = false;
     osalFreertos->resourceMutex = NULL;
 
+    // BEGIN THREAD
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+    /* Reset backend-owned MPU task stack buffers. */
+    for (size_t i = 0u; i < TEMPLATE_OSAL_THREAD_SLOTS_NUM; ++i)
+    {
+        osalFreertos->threadStackPtr[i] = NULL;
+    }
+#endif
+    // END THREAD
+
     /* Create the internal resource mutex */
     osalFreertos->resourceMutex = xSemaphoreCreateMutex();
     if (osalFreertos->resourceMutex == NULL)
@@ -848,6 +867,18 @@ Template_osalErr_e template_osalFreertosDeinit(Template_osalFreertos_s *const os
                                                     osalFreertos->base.threadObjHandle[i].handle);
         }
     }
+
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+    /* Release any retained stack from a task that deleted itself. */
+    for (size_t i = 0u; i < TEMPLATE_OSAL_THREAD_SLOTS_NUM; ++i)
+    {
+        if (osalFreertos->threadStackPtr[i] != NULL)
+        {
+            vPortFree(osalFreertos->threadStackPtr[i]);
+            osalFreertos->threadStackPtr[i] = NULL;
+        }
+    }
+#endif
 
 // END THREAD
 
@@ -1031,7 +1062,7 @@ static bool template_osalFreertosParamValidate(const Template_osalFreertosParam_
         const UBaseType_t high     = param->prio.policy[TEMPLATE_OSAL_THREAD_PRIO_HIGH];
         const UBaseType_t critical = param->prio.policy[TEMPLATE_OSAL_THREAD_PRIO_CRITICAL];
 
-        if ((low == (UBaseType_t)tskIDLE_PRIORITY) ||
+        if ((low <= (UBaseType_t)tskIDLE_PRIORITY) ||
             (low >= (UBaseType_t)configMAX_PRIORITIES) ||
             (normal >= (UBaseType_t)configMAX_PRIORITIES) ||
             (high >= (UBaseType_t)configMAX_PRIORITIES) ||
@@ -1232,17 +1263,26 @@ static bool template_osalFreertosMpuRegionValidate(const MemoryRegion_t *const r
 #if defined(TEMPLATE_OSAL_FREERTOS_MPU_MODEL_ARMV8M)
     /* ARMv8-M RBAR/RLAR addresses use 32-byte granularity. */
     if (isValid &&
-        (((regionStart % TEMPLATE_OSAL_FREERTOS_MPU_ARMV8M_ALIGNMENT) != 0u) ||
-         ((regionSize % TEMPLATE_OSAL_FREERTOS_MPU_ARMV8M_ALIGNMENT) != 0u)))
+        ((regionSize < TEMPLATE_OSAL_FREERTOS_MPU_MIN_SIZE) ||
+         ((regionStart % TEMPLATE_OSAL_FREERTOS_MPU_ALIGNMENT) != 0u) ||
+         ((regionSize % TEMPLATE_OSAL_FREERTOS_MPU_ALIGNMENT) != 0u)))
     {
         isValid = false;
     }
-#elif defined(TEMPLATE_OSAL_FREERTOS_MPU_MODEL_ARMV7M)
-    /* ARMv7-M MPU regions are power-of-two sized and aligned to their size. */
+#elif defined(TEMPLATE_OSAL_FREERTOS_MPU_MODEL_ARMV6M) || \
+      defined(TEMPLATE_OSAL_FREERTOS_MPU_MODEL_CLASSIC_RASR)
+    /* Classic Arm MPU regions are power-of-two sized and aligned to their size. */
     if (isValid &&
-        ((regionSize < TEMPLATE_OSAL_FREERTOS_MPU_ARMV7M_MIN_SIZE) ||
+        ((regionSize < TEMPLATE_OSAL_FREERTOS_MPU_MIN_SIZE) ||
          ((regionSize & (regionSize - 1u)) != 0u) ||
          ((regionStart & (regionSize - 1u)) != 0u)))
+    {
+        isValid = false;
+    }
+#elif defined(TEMPLATE_OSAL_FREERTOS_MPU_REGION_PLATFORM_VALIDATE)
+    /* Use the application-provided validator for an otherwise unknown MPU model. */
+    if (isValid &&
+        !TEMPLATE_OSAL_FREERTOS_MPU_REGION_PLATFORM_VALIDATE(region))
     {
         isValid = false;
     }
@@ -4413,27 +4453,86 @@ static Template_osalErr_e template_osalFreertosThreadCreate(void *const osal,
     const UBaseType_t priority              = port->param.prio.policy[threadAttr.prio];
 
     TaskHandle_t nativeThread = NULL;
+    BaseType_t rc              = pdFAIL;
 
     /* Create the native FreeRTOS task using the normalized instance policy */
-#ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
-    const BaseType_t rc = xTaskCreateAffinitySet((TaskFunction_t)threadAttr.worker,
-                                                 threadAttr.name,
-                                                 stackWords,
-                                                 threadAttr.args,
-                                                 priority,
-                                                 port->param.smp.coreAffinityMask[threadIdx],
-                                                 &nativeThread);
-#else
-    const BaseType_t rc = xTaskCreate((TaskFunction_t)threadAttr.worker,
-                                      threadAttr.name,
-                                      stackWords,
-                                      threadAttr.args,
-                                      priority,
-                                      &nativeThread);
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+    /* Release a retained stack from a task that previously deleted itself in this slot. */
+    if (port->threadStackPtr[threadIdx] != NULL)
+    {
+        vPortFree(port->threadStackPtr[threadIdx]);
+        port->threadStackPtr[threadIdx] = NULL;
+    }
+
+    const size_t stackSizeBytes = stackWordsRaw * stackWordSize;
+    StackType_t *const stackPtr = (StackType_t *)pvPortMalloc(stackSizeBytes);
+    if (stackPtr == NULL)
+    {
+        /* Release the resource mutex */
+        (void)template_osalFreertosResourceUnlock(port);
+        osalStatus = TEMPLATE_OSAL_THREAD_MEM_ALLOCATION_ERR;
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadCreate -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: task stack allocation failed
+    }
+
+    port->threadStackPtr[threadIdx] = stackPtr;
+
+    TaskParameters_t taskParam =
+    {
+        .pvTaskCode     = (TaskFunction_t)threadAttr.worker,
+        .pcName         = threadAttr.name,
+        .usStackDepth   = stackWords,
+        .pvParameters   = threadAttr.args,
+        .uxPriority     = priority,
+        .puxStackBuffer = stackPtr,
+        .xRegions       = {0}
+#if (configSUPPORT_STATIC_ALLOCATION == 1)
+        , .pxTaskBuffer = NULL
 #endif
+    };
+
+    for (size_t i = 0u; i < portNUM_CONFIGURABLE_REGIONS; ++i)
+    {
+        taskParam.xRegions[i] = port->param.mpu.region[i];
+    }
+
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
+    rc = xTaskCreateRestrictedAffinitySet(&taskParam,
+                                          port->param.smp.coreAffinityMask[threadIdx],
+                                          &nativeThread);
+#else
+    rc = xTaskCreateRestricted(&taskParam, &nativeThread);
+#endif
+#else
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
+    rc = xTaskCreateAffinitySet((TaskFunction_t)threadAttr.worker,
+                                threadAttr.name,
+                                stackWords,
+                                threadAttr.args,
+                                priority,
+                                port->param.smp.coreAffinityMask[threadIdx],
+                                &nativeThread);
+#else
+    rc = xTaskCreate((TaskFunction_t)threadAttr.worker,
+                     threadAttr.name,
+                     stackWords,
+                     threadAttr.args,
+                     priority,
+                     &nativeThread);
+#endif
+#endif
+
     if ((rc != pdPASS) ||
         (nativeThread == NULL))
     {
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+        vPortFree(port->threadStackPtr[threadIdx]);
+        port->threadStackPtr[threadIdx] = NULL;
+#endif
+
         /* Release the resource mutex */
         (void)template_osalFreertosResourceUnlock(port);
         osalStatus = TEMPLATE_OSAL_THREAD_MEM_ALLOCATION_ERR;
@@ -4537,8 +4636,9 @@ static Template_osalErr_e template_osalFreertosThreadDelete(void *const osal,
         return osalStatus;  // Exit: Error: thread handle is not registered
     }
 
-    const bool deleteSelf = ((TaskHandle_t)threadHandle == xTaskGetCurrentTaskHandle());
-    port->base.ptable->threadSlotClear(port, threadId - 1u);
+    const size_t threadIdx = threadId - 1u;
+    const bool deleteSelf   = ((TaskHandle_t)threadHandle == xTaskGetCurrentTaskHandle());
+    port->base.ptable->threadSlotClear(port, threadIdx);
 
     /* Release the resource mutex */
     osalStatus = template_osalFreertosResourceUnlock(port);
@@ -4569,6 +4669,15 @@ static Template_osalErr_e template_osalFreertosThreadDelete(void *const osal,
 
     /* Delete the native FreeRTOS task */
     vTaskDelete((TaskHandle_t)threadHandle);
+
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+    /* Release the backend-owned stack after an externally deleted restricted task. */
+    if (port->threadStackPtr[threadIdx] != NULL)
+    {
+        vPortFree(port->threadStackPtr[threadIdx]);
+        port->threadStackPtr[threadIdx] = NULL;
+    }
+#endif
 
     /* Trace returned value */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelete -> %d", (int)osalStatus);
@@ -4969,18 +5078,26 @@ static bool template_osalFreertosThreadAttrValidate(const Template_osalThreadAtt
         isValid = false;
     }
 
-    if (threadAttr->prio >= TEMPLATE_OSAL_THREAD_PRIO_MAX_COUNT)
+    if ((threadAttr->prio < TEMPLATE_OSAL_THREAD_PRIO_LOW) ||
+        (threadAttr->prio >= TEMPLATE_OSAL_THREAD_PRIO_MAX_COUNT))
     {
         isValid = false;
     }
 
     const size_t stackWordSize = sizeof(StackType_t);
-    const size_t stackWords    = (threadAttr->stackSize + stackWordSize - 1u) / stackWordSize;
-
-    if ((stackWords < (size_t)configMINIMAL_STACK_SIZE) ||
-        (stackWords > (size_t)((configSTACK_DEPTH_TYPE) - 1)))
+    if ((threadAttr->stackSize == 0u) ||
+        (threadAttr->stackSize > (SIZE_MAX - (stackWordSize - 1u))))
     {
         isValid = false;
+    }
+    else
+    {
+        const size_t stackWords = (threadAttr->stackSize + stackWordSize - 1u) / stackWordSize;
+        if ((stackWords < (size_t)configMINIMAL_STACK_SIZE) ||
+            (stackWords > (size_t)((configSTACK_DEPTH_TYPE) - 1)))
+        {
+            isValid = false;
+        }
     }
 
     /* Trace returned value */
