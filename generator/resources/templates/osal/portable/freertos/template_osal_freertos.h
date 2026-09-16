@@ -14,11 +14,11 @@
 
 #include "template_osal.h"
 
-#include <stdint.h>
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
-/* FreeRTOS core and native semaphore handle used by the backend. */
+/* FreeRTOS types required by the public port structures. */
 #include "FreeRTOS.h"
 #include "semphr.h"
 // BEGIN THREAD
@@ -55,6 +55,16 @@
 #ifndef TEMPLATE_OSAL_FREERTOS_THREAD_PRIO_CRITICAL
     #define TEMPLATE_OSAL_FREERTOS_THREAD_PRIO_CRITICAL    (tskIDLE_PRIORITY + 4)
 #endif
+
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+    #if !defined(portUSING_MPU_WRAPPERS) || (portUSING_MPU_WRAPPERS != 1)
+        #error "TEMPLATE_OSAL_FREERTOS_USE_MPU requires a FreeRTOS MPU port"
+    #endif
+
+    #if !defined(portNUM_CONFIGURABLE_REGIONS) || (portNUM_CONFIGURABLE_REGIONS < 1)
+        #error "TEMPLATE_OSAL_FREERTOS_USE_MPU requires portNUM_CONFIGURABLE_REGIONS >= 1"
+    #endif
+#endif
 // END THREAD
 
 /*========================================================[DATA TYPES DEFINITIONS]==========================================*/
@@ -77,21 +87,22 @@ typedef struct
         UBaseType_t policy[TEMPLATE_OSAL_THREAD_PRIO_MAX_COUNT]; /*!< OSAL priority to FreeRTOS priority mapping. */
     } prio;
 
-#ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
-    struct
-    {
-        bool        hasParam;                                           /*!< true when a custom core-affinity policy is supplied. */
-        UBaseType_t coreAffinityMask[TEMPLATE_OSAL_THREAD_SLOTS_NUM];  /*!< Thread-slot to FreeRTOS core-affinity mapping. */
-    } smp;
-#endif
-    // END THREAD
-
 #ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
     struct
     {
-        bool hasParam; /*!< Reserved for FreeRTOS MPU-specific instance parameters. */
+        bool           hasParam;                                  /*!< true when a custom MPU policy is supplied. */
+        MemoryRegion_t region[portNUM_CONFIGURABLE_REGIONS];      /*!< Instance-wide configurable MPU memory regions. */
     } mpu;
 #endif
+
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
+    struct
+    {
+        bool        hasParam;                                          /*!< true when a custom core-affinity policy is supplied. */
+        UBaseType_t coreAffinityMask[TEMPLATE_OSAL_THREAD_SLOTS_NUM]; /*!< Thread-slot to FreeRTOS core-affinity mapping. */
+    } smp;
+#endif
+    // END THREAD
 } Template_osalFreertosParam_s;
 
 /**
@@ -118,7 +129,8 @@ typedef struct
  * \param parent        Optional parent object pointer; may be NULL.
  * \param param         Optional instance parameters. NULL selects the default port behavior.
  *
- * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
+ * \return Template_osalErr_e, zero value means success, otherwise an error
+ *         has occurred.
  */
 Template_osalErr_e template_osalFreertosInit(Template_osalFreertos_s *const osalFreertos,
                                              const char *const name,
@@ -130,7 +142,8 @@ Template_osalErr_e template_osalFreertosInit(Template_osalFreertos_s *const osal
  *
  * \param osalFreertos  Pointer to the FreeRTOS-specific OSAL instance.
  *
- * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
+ * \return Template_osalErr_e, zero value means success, otherwise an error
+ *         has occurred.
  */
 Template_osalErr_e template_osalFreertosDeinit(Template_osalFreertos_s *const osalFreertos);
 

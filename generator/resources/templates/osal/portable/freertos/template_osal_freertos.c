@@ -66,6 +66,20 @@
 #endif
 
 // BEGIN THREAD
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+    /*
+     * Detect MPU models from the selected FreeRTOS port headers. The checks
+     * below intentionally describe MPU capabilities rather than MCU families.
+     */
+    #if defined(portARMV8M_MINOR_VERSION)
+        #define TEMPLATE_OSAL_FREERTOS_MPU_MODEL_ARMV8M
+        #define TEMPLATE_OSAL_FREERTOS_MPU_ARMV8M_ALIGNMENT    (32u)
+    #elif defined(portMPU_RASR_TEX_S_C_B_LOCATION)
+        #define TEMPLATE_OSAL_FREERTOS_MPU_MODEL_ARMV7M
+        #define TEMPLATE_OSAL_FREERTOS_MPU_ARMV7M_MIN_SIZE     (32u)
+    #endif
+#endif
+
 #ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
     #if !defined(configNUMBER_OF_CORES) || (configNUMBER_OF_CORES <= 1)
         #error "TEMPLATE_OSAL_FREERTOS_USE_SMP requires FreeRTOS SMP with configNUMBER_OF_CORES > 1"
@@ -93,10 +107,19 @@ static void template_osalFreertosParamDefaultSet(Template_osalFreertosParam_s *c
 static bool template_osalFreertosParamValidate(const Template_osalFreertosParam_s *const param);
 
 /**
- * \brief Apply validated FreeRTOS-specific instance parameters over the default policy.
+ * \brief Validate and apply FreeRTOS-specific instance parameters over the default policy.
  */
-static void template_osalFreertosParamApply(Template_osalFreertosParam_s *const dst,
+static bool template_osalFreertosParamApply(Template_osalFreertosParam_s *const dst,
                                             const Template_osalFreertosParam_s *const src);
+
+// BEGIN THREAD
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+/**
+ * \brief Validate one FreeRTOS MPU memory region.
+ */
+static bool template_osalFreertosMpuRegionValidate(const MemoryRegion_t *const region);
+#endif
+// END THREAD
 
 // BEGIN QUEUE
 /*-------------------------------- Queues ---------------------------------*/
@@ -411,9 +434,9 @@ static Template_osalErr_e template_osalFreertosThreadDelayUntil(void *const osal
 static void template_osalFreertosThreadExit(void *const osal);
 
 /**
- * \brief Validate a FreeRTOS task configuration.
+ * \brief Validate FreeRTOS thread attributes.
  */
-static bool template_osalFreertosThreadParamCheck(const Template_osalThreadAttr_s *const threadAttr);
+static bool template_osalFreertosThreadAttrValidate(const Template_osalThreadAttr_s *const threadAttr);
 
 // END THREAD
 
@@ -703,9 +726,12 @@ Template_osalErr_e template_osalFreertosInit(Template_osalFreertos_s *const osal
         return osalStatus;  // Exit: Error: ISR context is not supported
     }
 
-    /* Validate explicitly supplied instance parameters */
+    /* Initialize the default instance policy */
+    template_osalFreertosParamDefaultSet(&osalFreertos->param);
+
+    /* Validate and apply explicitly supplied instance parameters */
     if ((param != NULL) &&
-        !template_osalFreertosParamValidate(param))
+        !template_osalFreertosParamApply(&osalFreertos->param, param))
     {
         osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosInit -> %d", (int)osalStatus);
@@ -725,13 +751,6 @@ Template_osalErr_e template_osalFreertosInit(Template_osalFreertos_s *const osal
     /* Reset the FreeRTOS-specific state */
     osalFreertos->validFlag     = false;
     osalFreertos->resourceMutex = NULL;
-
-    /* Initialize the default instance policy and apply explicit overrides */
-    template_osalFreertosParamDefaultSet(&osalFreertos->param);
-    if (param != NULL)
-    {
-        template_osalFreertosParamApply(&osalFreertos->param, param);
-    }
 
     /* Create the internal resource mutex */
     osalFreertos->resourceMutex = xSemaphoreCreateMutex();
@@ -952,6 +971,15 @@ static void template_osalFreertosParamDefaultSet(Template_osalFreertosParam_s *c
         param->prio.policy[i] = template_osalFreertosThreadPriority[i];
     }
 
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+    /* Disable the custom MPU policy and clear all configurable regions. */
+    param->mpu.hasParam = false;
+    for (size_t i = 0u; i < portNUM_CONFIGURABLE_REGIONS; ++i)
+    {
+        param->mpu.region[i] = (MemoryRegion_t){0};
+    }
+#endif
+
 #ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
     /* Preserve the FreeRTOS default core-affinity policy when no override is supplied. */
     param->smp.hasParam = false;
@@ -965,11 +993,6 @@ static void template_osalFreertosParamDefaultSet(Template_osalFreertosParam_s *c
     }
 #endif
     // END THREAD
-
-#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
-    /* MPU instance options are disabled unless explicitly supplied. */
-    param->mpu.hasParam = false;
-#endif
 
     /* Trace returned value */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosParamDefaultSet -> ok");
@@ -991,28 +1014,78 @@ static bool template_osalFreertosParamValidate(const Template_osalFreertosParam_
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosParamValidate(%p)", (const void *)param);
 
     /* Validate input args */
-    TEMPLATE_OSAL_FREERTOS_ASSERT(param != NULL);
+    if (param == NULL)
+    {
+        isValid = false;
+        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosParamValidate -> %d", (int)isValid);
+
+        return isValid;  // Exit: Error: invalid args
+    }
 
     // BEGIN THREAD
     /* Validate an explicitly supplied priority mapping */
     if (param->prio.hasParam)
     {
-        for (size_t i = 0u; i < TEMPLATE_OSAL_THREAD_PRIO_MAX_COUNT; ++i)
+        const UBaseType_t low      = param->prio.policy[TEMPLATE_OSAL_THREAD_PRIO_LOW];
+        const UBaseType_t normal   = param->prio.policy[TEMPLATE_OSAL_THREAD_PRIO_NORMAL];
+        const UBaseType_t high     = param->prio.policy[TEMPLATE_OSAL_THREAD_PRIO_HIGH];
+        const UBaseType_t critical = param->prio.policy[TEMPLATE_OSAL_THREAD_PRIO_CRITICAL];
+
+        if ((low == (UBaseType_t)tskIDLE_PRIORITY) ||
+            (low >= (UBaseType_t)configMAX_PRIORITIES) ||
+            (normal >= (UBaseType_t)configMAX_PRIORITIES) ||
+            (high >= (UBaseType_t)configMAX_PRIORITIES) ||
+            (critical >= (UBaseType_t)configMAX_PRIORITIES) ||
+            (low >= normal) ||
+            (normal >= high) ||
+            (high >= critical))
         {
-            if (param->prio.policy[i] >= (UBaseType_t)configMAX_PRIORITIES)
+            isValid = false;
+        }
+    }
+
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+    /* Validate explicitly supplied memory regions */
+    if (isValid && param->mpu.hasParam)
+    {
+        for (size_t i = 0u; i < portNUM_CONFIGURABLE_REGIONS; ++i)
+        {
+            if (!template_osalFreertosMpuRegionValidate(&param->mpu.region[i]))
             {
                 isValid = false;
                 break;
             }
         }
+
+        /* Reject overlapping memory regions. */
+        for (size_t i = 0u; isValid && (i < portNUM_CONFIGURABLE_REGIONS); ++i)
+        {
+            const uintptr_t startA = (uintptr_t)param->mpu.region[i].pvBaseAddress;
+            const uintptr_t endA   = startA + (uintptr_t)param->mpu.region[i].ulLengthInBytes;
+
+            for (size_t j = i + 1u; j < portNUM_CONFIGURABLE_REGIONS; ++j)
+            {
+                const uintptr_t startB = (uintptr_t)param->mpu.region[j].pvBaseAddress;
+                const uintptr_t endB   = startB + (uintptr_t)param->mpu.region[j].ulLengthInBytes;
+
+                if ((startA < endB) &&
+                    (startB < endA))
+                {
+                    isValid = false;
+                    break;
+                }
+            }
+        }
     }
+#endif
 
 #ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
     /* Validate an explicitly supplied thread-slot affinity policy */
-    if (param->smp.hasParam)
+    if (isValid && param->smp.hasParam)
     {
         const size_t affinityBits = sizeof(UBaseType_t) * 8u;
         UBaseType_t validCoreMask = 0u;
+
         for (size_t core = 0u; core < (size_t)configNUMBER_OF_CORES; ++core)
         {
             if (core >= affinityBits)
@@ -1047,35 +1120,60 @@ static bool template_osalFreertosParamValidate(const Template_osalFreertosParam_
 
 
 /**
- * \brief Apply validated FreeRTOS-specific instance parameters over the default port policy.
+ * \brief Validate and apply FreeRTOS-specific instance parameters over the default port policy.
  *
- * \param dst  Destination normalized parameter structure.
- * \param src  Validated parameter structure supplied by the caller.
+ * \param dst  Destination parameter structure initialized with the default port policy.
+ * \param src  Parameter structure supplied by the caller.
+ *
+ * \return true if the parameters are valid and were applied; false otherwise.
  */
-static void template_osalFreertosParamApply(Template_osalFreertosParam_s *const dst,
+static bool template_osalFreertosParamApply(Template_osalFreertosParam_s *const dst,
                                             const Template_osalFreertosParam_s *const src)
 {
+    bool isApplied = false;
+
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosParamApply(%p, %p)",
                                  (void *)dst,
                                  (const void *)src);
 
     /* Validate input args */
-    TEMPLATE_OSAL_FREERTOS_ASSERT(dst != NULL);
-    TEMPLATE_OSAL_FREERTOS_ASSERT(src != NULL);
+    if ((dst == NULL) ||
+        (src == NULL))
+    {
+        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosParamApply -> %d", (int)isApplied);
 
-    /* Copy common integration context */
+        return isApplied;  // Exit: Error: invalid args
+    }
+
+    /* Validate explicitly supplied instance parameters */
+    if (!template_osalFreertosParamValidate(src))
+    {
+        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosParamApply -> %d", (int)isApplied);
+
+        return isApplied;  // Exit: Error: invalid instance parameters
+    }
+
+    /* Apply common integration context */
     dst->handle = src->handle;
 
     // BEGIN THREAD
-    /* Apply an optional instance-specific priority mapping */
+    /* Apply an optional instance-specific priority policy */
     if (src->prio.hasParam)
     {
         dst->prio = src->prio;
     }
 
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+    /* Apply an optional instance-specific MPU policy */
+    if (src->mpu.hasParam)
+    {
+        dst->mpu = src->mpu;
+    }
+#endif
+
 #ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
-    /* Apply an optional instance-specific thread-slot affinity policy */
+    /* Apply an optional instance-specific core-affinity policy */
     if (src->smp.hasParam)
     {
         dst->smp = src->smp;
@@ -1083,14 +1181,80 @@ static void template_osalFreertosParamApply(Template_osalFreertosParam_s *const 
 #endif
     // END THREAD
 
+    isApplied = true;
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosParamApply -> %d", (int)isApplied);
+
+    return isApplied;  // Exit: Success: instance parameters were applied
+}
+
+
+// BEGIN THREAD
 #ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
-    /* Preserve the optional MPU parameter-group state for port integration. */
-    dst->mpu = src->mpu;
+/**
+ * \brief Validate one FreeRTOS MPU memory region.
+ *
+ * \details Performs common range validation and, for known FreeRTOS MPU ports,
+ *          validates architecture-specific alignment and region-size rules.
+ *
+ * \param region  Memory region to validate.
+ *
+ * \return true if the memory region is valid; false otherwise.
+ */
+static bool template_osalFreertosMpuRegionValidate(const MemoryRegion_t *const region)
+{
+    bool isValid = true;
+
+    /* Trace input args */
+    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosMpuRegionValidate(%p)",
+                                 (const void *)region);
+
+    /* Validate input args */
+    if (region == NULL)
+    {
+        isValid = false;
+        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosMpuRegionValidate -> %d", (int)isValid);
+
+        return isValid;  // Exit: Error: invalid args
+    }
+
+    const uintptr_t regionStart = (uintptr_t)region->pvBaseAddress;
+    const uintptr_t regionSize  = (uintptr_t)region->ulLengthInBytes;
+
+    /* Validate the generic region range */
+    if ((regionSize == 0u) ||
+        (regionSize > (UINTPTR_MAX - regionStart)))
+    {
+        isValid = false;
+    }
+
+#if defined(TEMPLATE_OSAL_FREERTOS_MPU_MODEL_ARMV8M)
+    /* ARMv8-M RBAR/RLAR addresses use 32-byte granularity. */
+    if (isValid &&
+        (((regionStart % TEMPLATE_OSAL_FREERTOS_MPU_ARMV8M_ALIGNMENT) != 0u) ||
+         ((regionSize % TEMPLATE_OSAL_FREERTOS_MPU_ARMV8M_ALIGNMENT) != 0u)))
+    {
+        isValid = false;
+    }
+#elif defined(TEMPLATE_OSAL_FREERTOS_MPU_MODEL_ARMV7M)
+    /* ARMv7-M MPU regions are power-of-two sized and aligned to their size. */
+    if (isValid &&
+        ((regionSize < TEMPLATE_OSAL_FREERTOS_MPU_ARMV7M_MIN_SIZE) ||
+         ((regionSize & (regionSize - 1u)) != 0u) ||
+         ((regionStart & (regionSize - 1u)) != 0u)))
+    {
+        isValid = false;
+    }
 #endif
 
     /* Trace returned value */
-    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosParamApply -> ok");
+    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosMpuRegionValidate -> %d", (int)isValid);
+
+    return isValid;  // Exit: Success: validation result returned
 }
+#endif
+// END THREAD
 
 
 // BEGIN QUEUE
@@ -4204,14 +4368,14 @@ static Template_osalErr_e template_osalFreertosThreadCreate(void *const osal,
         return osalStatus;  // Exit: Error: ISR context is not supported
     }
 
-    if (!template_osalFreertosThreadParamCheck(&threadAttr))
+    if (!template_osalFreertosThreadAttrValidate(&threadAttr))
     {
         osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadCreate -> %d", (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: invalid thread configuration
+        return osalStatus;  // Exit: Error: invalid thread attributes
     }
 
     /* Clear the output value */
@@ -4251,22 +4415,22 @@ static Template_osalErr_e template_osalFreertosThreadCreate(void *const osal,
     TaskHandle_t nativeThread = NULL;
 
     /* Create the native FreeRTOS task using the normalized instance policy */
-    #ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
-        const BaseType_t rc = xTaskCreateAffinitySet((TaskFunction_t)threadAttr.worker,
-                                                    threadAttr.name,
-                                                    stackWords,
-                                                    threadAttr.args,
-                                                    priority,
-                                                    port->param.smp.coreAffinityMask[threadIdx],
-                                                    &nativeThread);
-    #else
-        const BaseType_t rc = xTaskCreate((TaskFunction_t)threadAttr.worker,
-                                         threadAttr.name,
-                                         stackWords,
-                                         threadAttr.args,
-                                         priority,
-                                         &nativeThread);
-    #endif
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
+    const BaseType_t rc = xTaskCreateAffinitySet((TaskFunction_t)threadAttr.worker,
+                                                 threadAttr.name,
+                                                 stackWords,
+                                                 threadAttr.args,
+                                                 priority,
+                                                 port->param.smp.coreAffinityMask[threadIdx],
+                                                 &nativeThread);
+#else
+    const BaseType_t rc = xTaskCreate((TaskFunction_t)threadAttr.worker,
+                                      threadAttr.name,
+                                      stackWords,
+                                      threadAttr.args,
+                                      priority,
+                                      &nativeThread);
+#endif
     if ((rc != pdPASS) ||
         (nativeThread == NULL))
     {
@@ -4784,18 +4948,18 @@ static void template_osalFreertosThreadExit(void *const osal)
 
 
 /**
- * \brief Validate a FreeRTOS task configuration.
+ * \brief Validate FreeRTOS thread attributes.
  *
- * \param threadAttr  Pointer to the task configuration.
+ * \param threadAttr  Pointer to the thread attributes.
  *
- * \return true if the configuration is valid, otherwise false.
+ * \return true if the thread attributes are valid; false otherwise.
  */
-static bool template_osalFreertosThreadParamCheck(const Template_osalThreadAttr_s *const threadAttr)
+static bool template_osalFreertosThreadAttrValidate(const Template_osalThreadAttr_s *const threadAttr)
 {
     bool isValid = true;
 
     /* Trace input args */
-    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadParamCheck(%p)",
+    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadAttrValidate(%p)",
                                  (const void *)threadAttr);
     /* Validate input args */
     TEMPLATE_OSAL_FREERTOS_ASSERT(threadAttr != NULL);
@@ -4820,7 +4984,7 @@ static bool template_osalFreertosThreadParamCheck(const Template_osalThreadAttr_
     }
 
     /* Trace returned value */
-    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadParamCheck -> %d", (int)isValid);
+    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadAttrValidate -> %d", (int)isValid);
 
     return isValid;  // Exit: Success: validation result returned
 }
