@@ -33,8 +33,9 @@ def apply_api_profile_markers(
     marker_to_api = {
         "QUEUE": "queue",
         "STREAM_BUFFER": "stream_buffer",
-        "LOCK": "lock",
+        "MUTEX": "mutex",
         "SEMAPHORE": "semaphore",
+        "EVENT_FLAGS": "event_flags",
         "THREAD": "thread",
         "CRITICAL_SECTION": "critical_section",
         "SOFTWARE_TIMER": "software_timer",
@@ -68,8 +69,9 @@ def render_profile_header(
     flags = {
         "queue": "QUEUE",
         "stream_buffer": "STREAM_BUFFER",
-        "lock": "LOCK",
+        "mutex": "MUTEX",
         "semaphore": "SEMAPHORE",
+        "event_flags": "EVENT_FLAGS",
         "thread": "THREAD",
         "critical_section": "CRITICAL_SECTION",
         "software_timer": "SOFTWARE_TIMER",

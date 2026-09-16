@@ -77,9 +77,6 @@ class KiwicgenApp(tk.Tk):
             name: tk.BooleanVar(value=name in DEFAULT_APIS)
             for name in SUPPORTED_APIS
         }
-        self.planned_api_vars = {
-            "event_group": tk.BooleanVar(value=False),
-        }
         self.split_into_port_dir_var = tk.BooleanVar(
             value=DEFAULT_SPLIT_INTO_PORT_DIR
         )
@@ -281,8 +278,9 @@ class KiwicgenApp(tk.Tk):
         labels = (
             ("queue", "Queues"),
             ("stream_buffer", "Stream Buffers"),
-            ("lock", "Locks"),
+            ("mutex", "Mutexes"),
             ("semaphore", "Counting Semaphores"),
+            ("event_flags", "Event Flags"),
             ("thread", "Threads"),
             ("critical_section", "Critical Sections"),
             ("software_timer", "Software Timers"),
@@ -307,16 +305,6 @@ class KiwicgenApp(tk.Tk):
                 pady=(0 if row == 0 else 7, 0),
                 sticky="w",
             )
-
-        ttk.Checkbutton(
-            checks,
-            text="Event Flags / Groups (planned)",
-            variable=self.planned_api_vars["event_group"],
-            command=lambda: self._log_boolean_option(
-                "Event Flags / Groups",
-                self.planned_api_vars["event_group"],
-            ),
-        ).grid(row=2, column=0, columnspan=2, padx=(0, 12), pady=(7, 0), sticky="w")
 
         actions = ttk.Frame(outer, style="Card.TFrame")
         actions.pack(fill="x", pady=(2, 0))

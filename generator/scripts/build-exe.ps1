@@ -5,8 +5,8 @@ $ErrorActionPreference = "Stop"
 # ---------------------------------------------------------------------------
 $GeneratorRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $RepositoryRoot = (Resolve-Path (Join-Path $GeneratorRoot "..")).Path
-$BuildDir = Join-Path $GeneratorRoot "build"
-$DistDir = Join-Path $GeneratorRoot "dist"
+$BuildDir = Join-Path $RepositoryRoot "build"
+$DistDir = Join-Path $RepositoryRoot "dist"
 $RequestedPython = $null
 
 for ($i = 0; $i -lt $args.Count; $i++) {

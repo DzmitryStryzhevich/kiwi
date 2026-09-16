@@ -16,8 +16,9 @@ DEFAULT_FORMAT_GENERATED_CODE = True
 SUPPORTED_APIS = (
     "queue",
     "stream_buffer",
-    "lock",
+    "mutex",
     "semaphore",
+    "event_flags",
     "thread",
     "critical_section",
     "software_timer",

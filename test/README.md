@@ -30,7 +30,7 @@ A test backend can also deliberately control conditions that are difficult to re
 - allocation failures;
 - thread-creation failures;
 - deterministic or accelerated time;
-- controlled lock behavior;
+- controlled mutex behavior;
 - backend error injection;
 - resource leak and lifecycle violations.
 

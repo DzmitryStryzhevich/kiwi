@@ -126,7 +126,12 @@ def load_profile(path: str | pathlib.Path) -> GenerationConfig:
         raise ProfileError(f"Profile field '{PROFILE_VERSION_KEY}' is required.")
     _validate_profile_version_constraint(raw[PROFILE_VERSION_KEY])
 
-    api_raw = _require_mapping(raw.get("api"), "api")
+    api_raw = dict(_require_mapping(raw.get("api"), "api"))
+    if "lock" in api_raw:
+        if "mutex" not in api_raw:
+            api_raw["mutex"] = api_raw["lock"]
+        del api_raw["lock"]
+
     layout_raw = _require_mapping(raw.get("layout"), "layout")
     ports_raw = _require_sequence(raw.get("ports"), "ports")
 

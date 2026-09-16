@@ -65,16 +65,16 @@ The current API follows a constrained vocabulary. The important terms are intend
 | `Get` | Immediate consumer-side retrieval of already available data. The call does not wait for data to arrive. |
 | `Wait` | Consumer-side retrieval with an unbounded wait for data/resource availability. It is intentionally distinct from `Get` and from a finite `Pend`. |
 | `Pend` | Consumer-side retrieval with an explicit timeout. `0` means an immediate attempt; `TEMPLATE_OSAL_INFINITY_TOUT` requests an unbounded wait where supported. |
-| `Acquire` | Immediate attempt to consume one unit of a synchronization resource such as a counting semaphore. |
-| `AcquireWait` | Acquire a synchronization resource while waiting up to an explicit timeout. |
-| `Release` | Return one unit to a synchronization resource. It is not a synonym for deleting that resource. |
-| `Send` / `Receive` | Transfer a byte stream. `Send` reports the number of bytes accepted; `Receive` reports the number of bytes obtained and may use an explicit receive timeout. |
-| `Lock` / `Unlock` | Acquire and release component-visible mutual exclusion using the contract defined by the generic layer, not the native mutex vocabulary. |
-| `CriticalSectionEnter` / `CriticalSectionExit` | Enter and leave a critical section. These operations protect a short execution region; they are not lifecycle operations and do not create a lock object. |
+| `Send` / `Receive` | Immediate byte-stream transfer operations. They do not wait for capacity/data. |
+| `Lock` / `Unlock` | Lock a mutex indefinitely and unlock a previously locked mutex. |
+| `TryLock` | Attempt to lock a mutex without waiting. |
+| `PendLock` | Lock a mutex while waiting up to an explicit timeout. |
+| `CriticalSectionEnter` / `CriticalSectionExit` | Enter and leave a critical section. These operations protect a short execution region; they are not lifecycle operations and do not create a mutex. |
 | `Start` / `Stop` | Start or stop an existing software timer without changing its ownership. |
 | `Reset` | Return a reusable resource to its defined empty/initial operational state, or restart the period of a software timer, without deleting and recreating the resource. |
 | `Suspend` / `Resume` | Stop and restore execution eligibility of an existing thread without changing its ownership. |
 | `Delay` | Block the calling thread for the requested OSAL time interval. |
+| `DelayUntil` | Delay periodically relative to a scheduled wake reference so repeated execution does not accumulate drift. |
 | `ThreadExit` | Terminate the calling thread according to the OSAL lifecycle contract. |
 | `MemAlloc` / `MemFree` | Allocate and release memory through the OSAL backend while keeping the allocation under OSAL ownership/bookkeeping. |
 
@@ -82,7 +82,9 @@ Not every term is used by every primitive group, and future APIs should not inve
 
 The queue API makes the distinction explicit: `Put` is an immediate producer operation, `Post` is producer-side submission with a timeout, `Get` is an immediate consumer operation, `Wait` waits indefinitely, and `Pend` waits up to a caller-supplied timeout. A component can therefore infer blocking behavior from the KIWI operation itself instead of memorizing RTOS-specific call names.
 
-The same principle applies to counting semaphores (`Acquire`, `AcquireWait`, `Release`), stream buffers (`Send`, `Receive`), software timers (`Start`, `Stop`, `Reset`) and the other primitive groups. The FreeRTOS backend maps these semantics to native FreeRTOS calls; future POSIX or C++ backends must reproduce the same observable contract even when their native APIs and terminology differ.
+Event Flags use an opaque OSAL handle and expose `Create`, `Delete`, `Set`, `Clear`, `Get` and `Wait`. `Wait` supports any/all matching and optional no-clear behavior; the FreeRTOS port maps this contract to Event Groups.
+
+The same principle applies to counting semaphores (`Post`, `Wait`, `Pend`), stream buffers (`Send`, `Post`, `Receive`, `Wait`, `Pend`), mutexes (`Lock`, `TryLock`, `PendLock`, `Unlock`), event flags, software timers (`Start`, `Stop`, `Reset`) and the other primitive groups. The FreeRTOS backend maps these semantics to native FreeRTOS calls; future POSIX or C++ backends must reproduce the same observable contract even when their native APIs and terminology differ.
 
 This semantic normalization solves several practical problems:
 
@@ -158,7 +160,7 @@ Queue Pend      -> timeout / empty queue
 Memory Malloc   -> allocation failure
 Thread Create   -> creation failure
 Time Get        -> deterministic synthetic time
-Lock            -> controlled acquisition behavior
+Mutex Lock      -> controlled acquisition behavior
 ```
 
 This is especially valuable for error paths that are difficult, slow or unsafe to reproduce on real hardware. Instead of manipulating the whole target system until a rare failure occurs, the test controls the OSAL boundary directly.
@@ -255,7 +257,7 @@ Typical trace points include:
 
 - resource creation/deletion;
 - queue and stream-buffer operations;
-- lock, semaphore and critical-section operations;
+- mutex, semaphore, event-flags and critical-section operations;
 - thread and software-timer lifecycle;
 - time and memory operations;
 - backend failures;
@@ -269,7 +271,7 @@ The same instrumentation also benefits tests: a host/test backend can validate c
 
 ## Internal resource synchronization
 
-Resource-registry manipulation must be synchronized independently from client-visible lock objects. Each portable backend is expected to provide an internal resource-management mutex owned by the OSAL backend instance.
+Resource-registry manipulation must be synchronized independently from client-visible mutexs. Each portable backend is expected to provide an internal resource-management mutex owned by the OSAL backend instance.
 
 That internal mutex:
 
@@ -277,8 +279,8 @@ That internal mutex:
 - protects registration and release bookkeeping;
 - protects registry lookups where synchronization is required;
 - protects best-effort cleanup during deinitialization;
-- is not placed in the component-visible lock registry;
-- is created directly by the backend, not through the public OSAL lock API.
+- is not placed in the component-visible mutex registry;
+- is created directly by the backend, not through the public OSAL mutex API.
 
 This avoids recursive dependency on the same registry that the internal mutex is intended to protect.
 
@@ -323,14 +325,15 @@ The FreeRTOS backend and generator currently support these API groups:
 
 - queues (`Put`, `Post`, `Get`, `Wait`, `Pend`, reset and lifecycle operations);
 - stream buffers;
-- locks;
+- mutexes;
 - counting semaphores;
-- threads;
+- event flags (`Set`, `Clear`, `Get`, and `Wait` with any/all and optional no-clear semantics);
+- threads, including drift-free periodic `DelayUntil`;
 - critical sections;
 - software timers, including one-shot/auto-reload mode and user callbacks;
 - time;
 - memory.
 
-Event Flags / Event Groups are not implemented yet, but they are planned. Their generic semantics and ownership/context rules will be defined before the first backend implementation instead of being copied directly from one RTOS API.
+Event Flags are implemented as a generic OSAL primitive and are mapped to FreeRTOS Event Groups by the current backend. Their component-visible semantics are defined by the generic OSAL contract rather than by exposing native FreeRTOS handles or API vocabulary.
 
 Future primitive groups should be added only after their generic behavior and naming can be defined consistently across the intended backends. That semantic definition is part of the feature, not documentation added after the implementation.

@@ -1,7 +1,6 @@
-/generator/build/
-/generator/dist/
+/build/
+/dist/
 __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
-/.vscode

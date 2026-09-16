@@ -7,8 +7,8 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 GENERATOR_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 REPOSITORY_ROOT=$(CDPATH= cd -- "$GENERATOR_ROOT/.." && pwd)
-BUILD_DIR="$GENERATOR_ROOT/build"
-DIST_DIR="$GENERATOR_ROOT/dist"
+BUILD_DIR="$REPOSITORY_ROOT/build"
+DIST_DIR="$REPOSITORY_ROOT/dist"
 REQUESTED_PYTHON=""
 
 while [ "$#" -gt 0 ]; do

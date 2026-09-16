@@ -67,7 +67,7 @@ typedef struct
  * \struct  Template_osalFreertos_s
  * \brief Template FreeRTOS OSAL structure.
  * \details FreeRTOS-specific extension of the Template OSAL. The base must be the first field.
- *          resourceMutex protects internal resource registries and is never exposed as a client lock.
+ *          resourceMutex protects internal resource registries and is never exposed as a client mutex.
  */
 typedef struct
 {
@@ -81,13 +81,6 @@ typedef struct
 
 /**
  * \brief Initialize the Template FreeRTOS OSAL instance.
- *
- * \param osalFreertos  Pointer to the FreeRTOS-specific OSAL instance (must not be NULL).
- * \param name          Optional name string (may be NULL).
- * \param parent        Optional parent object pointer (may be NULL).
- * \param param         Optional FreeRTOS parameter structure (may be NULL).
- *
- * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalFreertosInit(Template_osalFreertos_s *const osalFreertos,
                                              const char *name,
@@ -96,10 +89,6 @@ Template_osalErr_e template_osalFreertosInit(Template_osalFreertos_s *const osal
 
 /**
  * \brief Deinitialize the Template FreeRTOS OSAL instance.
- *
- * \param osalFreertos  Pointer to the FreeRTOS-specific OSAL instance.
- *
- * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalFreertosDeinit(Template_osalFreertos_s *const osalFreertos);
 

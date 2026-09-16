@@ -86,6 +86,8 @@ generator/resources/kiwicgen-clang-format.yaml
 
 Standalone distributions carry their own formatter executable, style policy and OSAL templates, so target machines do not need a separate Python or clang-format installation.
 
+By default, executable build artifacts are written to repository-root `build/` and `dist/`, one level above `generator/`. `--build-dir` and `--dist-dir` override these locations.
+
 ## Running from source
 
 From the repository root:
@@ -136,8 +138,9 @@ The current CLI supports these positive switches:
 | --- | --- |
 | `--use-queue-api` | Queues |
 | `--use-stream-buffer-api` | Stream buffers |
-| `--use-lock-api` | Locks |
+| `--use-mutex-api` | Mutexes |
 | `--use-semaphore-api` | Counting semaphores |
+| `--use-event-flags-api` | Event flags |
 | `--use-thread-api` | Threads |
 | `--use-critical-section-api` | Critical sections |
 | `--use-software-timer-api` | Software timers |
@@ -182,10 +185,10 @@ kiwicgen \
 
 A generation profile captures what kiwicgen should generate, not where output is written.
 
-Profiles saved by kiwicgen 0.3.x use this shape:
+Profiles saved by kiwicgen 0.4.x use this shape:
 
 ```yaml
-kiwicgen-version: ">=0.3.0,<1.0.0"
+kiwicgen-version: ">=0.4.0,<1.0.0"
 module_prefix: foo_module
 ports:
   - FreeRTOS
@@ -193,8 +196,9 @@ language: C
 api:
   queue: true
   stream_buffer: false
-  lock: false
+  mutex: false
   semaphore: false
+  event_flags: false
   thread: true
   critical_section: false
   software_timer: true
@@ -206,7 +210,7 @@ layout:
 format_generated_code: true
 ```
 
-`kiwicgen-version` is a standard version constraint. The running generator validates it before consuming generation options. Existing compatible 0.x profiles, for example `>=0.2.0,<1.0.0`, remain valid with kiwicgen 0.3.0.
+`kiwicgen-version` is a standard version constraint. The running generator validates it before consuming generation options. Existing compatible 0.x profiles, for example `>=0.2.0,<1.0.0`, remain valid with kiwicgen 0.4.0.
 
 Starting with kiwicgen 1.0.0, profile evolution is intended to preserve backward compatibility within a major release.
 
@@ -256,7 +260,6 @@ Languages:
 - C — implemented.
 - C++ — planned, selectable in the GUI, but generation is not implemented yet.
 
-`Event Flags / Groups (planned)` is also selectable for UI planning purposes, but it is not part of the generated API yet.
 
 Before starting a generation worker, the GUI validates configuration. At least one port and a language must be selected. Selecting an unimplemented port/language produces both a generator-log error and a GUI error message; generation is not started.
 

@@ -1,10 +1,11 @@
 /*
  * SPDX-License-Identifier: MIT
+ * Copyright (c) 2026 Kiwi contributors
  */
 
 /**
  * \file     template_osal.c
- * \brief OSAL layer interface implementation for Template.
+ * \brief    OSAL layer interface implementation for Template.
  * \details  The concrete OSAL port is supplied via the vtable in the RTOS layer.
  */
 
@@ -53,9 +54,9 @@
 /*===============================================================[ INTERNAL FUNCTIONS AND OBJECTS DECLARATION ]======================================================*/
 
 /**
- * \brief Reset OSAL objects such as queues, lock objects, threads and memory slots.
+ * \brief Reset (clear) OSAL internal object registry
  */
-static void template_osalResetObjects(Template_osal_s *const osal);
+static void template_osalRegReset(Template_osal_s *const osal);
 
 // BEGIN QUEUE
 
@@ -85,19 +86,19 @@ static size_t template_osalRegStreamBufferHandleFind(void *const osalPort,
                                                      const Template_osalStreamBufferHandle_t streamBufferHandle);
 // END STREAM_BUFFER
 
-// BEGIN LOCK
+// BEGIN MUTEX
 
 /**
- * \brief Find a free lock object slot.
+ * \brief Find a free mutex slot.
  */
-static size_t template_osalRegLockFreeSlotFind(void *const osalPort);
+static size_t template_osalRegMutexFreeSlotFind(void *const osalPort);
 
 /**
- * \brief Find lock object handle.
+ * \brief Find mutex handle.
  */
-static size_t template_osalRegLockHandleFind(void *const osalPort,
-                                             const Template_osalLockObjHandle_t lockObjHandle);
-// END LOCK
+static size_t template_osalRegMutexHandleFind(void *const osalPort,
+                                             const Template_osalMutexHandle_t mutexHandle);
+// END MUTEX
 
 // BEGIN SEMAPHORE
 
@@ -112,6 +113,20 @@ static size_t template_osalRegSemaphoreFreeSlotFind(void *const osalPort);
 static size_t template_osalRegSemaphoreHandleFind(void *const osalPort,
                                                   const Template_osalSemaphoreHandle_t semaphoreHandle);
 // END SEMAPHORE
+
+// BEGIN EVENT_FLAGS
+
+/**
+ * \brief Find a free event-flags slot.
+ */
+static size_t template_osalRegEventFlagsFreeSlotFind(void *const osalPort);
+
+/**
+ * \brief Find an event-flags handle.
+ */
+static size_t template_osalRegEventFlagsHandleFind(void *const osalPort,
+                                                   const Template_osalEventFlagsHandle_t eventFlagsHandle);
+// END EVENT_FLAGS
 
 // BEGIN THREAD
 
@@ -155,15 +170,15 @@ static size_t template_osalRegSoftwareTimerHandleFind(void *const osalPort,
 static size_t template_osalRegMemFreeSlotFind(void *const osalPort);
 
 /**
- * \brief Find pointer in memory registry.
+ * \brief Find a registered memory pointer in the internal registry.
  */
-static size_t template_osalRegMemHandleFind(void *const osalPort,
-                                            const void *const ptr);
+static size_t template_osalRegMemPtrFind(void *const osalPort,
+                                         const void *const memPtr);
 // END MEMORY
 
 /**
  * \brief Protected registry helpers vtable (for backend ports).
- * \details Provides unified helpers for slot search and handle lookup for all registry-backed primitive groups.
+ * \details Provides unified helpers for slot search and resource lookup for all registry-backed primitive groups.
  *          IDs are 1-based (index + 1). Zero value indicates "not found"/"no free slot".
  */
 static const Template_osalPtable_s template_osalPtable =
@@ -180,17 +195,23 @@ static const Template_osalPtable_s template_osalPtable =
     .streamBufferHandleFind   = template_osalRegStreamBufferHandleFind,
     // END STREAM_BUFFER
 
-    // BEGIN LOCK
-    /*-------------------------------- Locks --------------------------------*/
-    .lockObjFreeSlotFind = template_osalRegLockFreeSlotFind,
-    .lockObjHandleFind   = template_osalRegLockHandleFind,
-    // END LOCK
+    // BEGIN MUTEX
+    /*-------------------------------- Mutexes --------------------------------*/
+    .mutexFreeSlotFind = template_osalRegMutexFreeSlotFind,
+    .mutexHandleFind   = template_osalRegMutexHandleFind,
+    // END MUTEX
 
     // BEGIN SEMAPHORE
     /*--------------------------- Counting semaphores --------------------------*/
     .semaphoreFreeSlotFind = template_osalRegSemaphoreFreeSlotFind,
     .semaphoreHandleFind   = template_osalRegSemaphoreHandleFind,
     // END SEMAPHORE
+
+    // BEGIN EVENT_FLAGS
+    /*------------------------------- Event flags -------------------------------*/
+    .eventFlagsFreeSlotFind = template_osalRegEventFlagsFreeSlotFind,
+    .eventFlagsHandleFind   = template_osalRegEventFlagsHandleFind,
+    // END EVENT_FLAGS
 
     // BEGIN THREAD
     /*------------------------------- Threads -------------------------------*/
@@ -208,7 +229,7 @@ static const Template_osalPtable_s template_osalPtable =
     // BEGIN MEMORY
     /*-------------------------------- Memory -------------------------------*/
     .memFreeSlotFind = template_osalRegMemFreeSlotFind,
-    .memHandleFind   = template_osalRegMemHandleFind,
+    .memPtrFind      = template_osalRegMemPtrFind,
     // END MEMORY
 
     .reserved = 0u
@@ -242,7 +263,7 @@ Template_osalErr_e template_osalInit(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalInit -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: Invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Init instance */
@@ -251,7 +272,7 @@ Template_osalErr_e template_osalInit(Template_osal_s *const osal,
     osal->parent    = parent;
 
     /* Reset internals */
-    template_osalResetObjects(osal);
+    template_osalRegReset(osal);
 
     /* Reset methods table before use */
     osal->vtable = NULL;
@@ -265,7 +286,7 @@ Template_osalErr_e template_osalInit(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalInit -> %d", TEMPLATE_OSAL_NO_ERR);
 
-    return TEMPLATE_OSAL_NO_ERR;  // Exit: Error: Error: Success
+    return TEMPLATE_OSAL_NO_ERR;  // Exit: Success: operation completed
 }
 
 
@@ -287,7 +308,7 @@ Template_osalErr_e template_osalDeinit(Template_osal_s *const osal)
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalDeinit -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: Invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -296,7 +317,7 @@ Template_osalErr_e template_osalDeinit(Template_osal_s *const osal)
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalDeinit -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: Not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Clear instance */
@@ -306,12 +327,12 @@ Template_osalErr_e template_osalDeinit(Template_osal_s *const osal)
     osal->vtable    = NULL;
 
     /* Reset internals */
-    template_osalResetObjects(osal);
+    template_osalRegReset(osal);
 
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalDeinit -> %d", TEMPLATE_OSAL_NO_ERR);
 
-    return TEMPLATE_OSAL_NO_ERR;  // Exit: Error: success
+    return TEMPLATE_OSAL_NO_ERR;  // Exit: Success: operation completed
 }
 
 
@@ -342,7 +363,7 @@ bool template_osalIsValid(const Template_osal_s *const osal)
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalIsValid -> %d", 0);
 
-        return false;  // Exit: Error: Error: not initialized
+        return false;  // Exit: Error: not initialized
     }
 
     /* Check vtable table presence */
@@ -351,7 +372,7 @@ bool template_osalIsValid(const Template_osal_s *const osal)
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalIsValid -> %d", 0);
 
-        return false;  // Exit: Error: Error: No vtable table
+        return false;  // Exit: Error: vtable is unavailable
     }
 
     /* Check vtable predicate presence */
@@ -360,7 +381,7 @@ bool template_osalIsValid(const Template_osal_s *const osal)
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalIsValid -> %d", 0);
 
-        return false;  // Exit: Error: Error: missing backend predicate
+        return false;  // Exit: Error: backend predicate is unavailable
     }
 
     /* Delegate to backend */
@@ -369,7 +390,7 @@ bool template_osalIsValid(const Template_osal_s *const osal)
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalIsValid -> %d", (int)ok);
 
-    return ok;  // Exit:  return the summary validation status
+    return ok;  // Exit: Success: summary validation status returned
 }
 
 
@@ -396,7 +417,7 @@ Template_osalErr_e template_osalParentGet(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalParentGet -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: Invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -405,7 +426,7 @@ Template_osalErr_e template_osalParentGet(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalParentGet -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: Not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Get parent */
@@ -414,7 +435,7 @@ Template_osalErr_e template_osalParentGet(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalParentGet -> %d", TEMPLATE_OSAL_NO_ERR);
 
-    return TEMPLATE_OSAL_NO_ERR;  // Exit: success
+    return TEMPLATE_OSAL_NO_ERR;  // Exit: Success: operation completed
 }
 
 
@@ -456,7 +477,7 @@ Template_osalErr_e template_osalParentSet(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalParentSet -> %d", TEMPLATE_OSAL_NO_ERR);
 
-    return TEMPLATE_OSAL_NO_ERR;  // Exit: success
+    return TEMPLATE_OSAL_NO_ERR;  // Exit: Success: operation completed
 }
 
 
@@ -498,7 +519,7 @@ Template_osalErr_e template_osalNameGet(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalNameGet -> %d", TEMPLATE_OSAL_NO_ERR);
 
-    return TEMPLATE_OSAL_NO_ERR;  // Exit: success
+    return TEMPLATE_OSAL_NO_ERR;  // Exit: Success: operation completed
 }
 
 
@@ -539,7 +560,7 @@ Template_osalErr_e template_osalNameSet(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalNameSet -> %d", TEMPLATE_OSAL_NO_ERR);
 
-    return TEMPLATE_OSAL_NO_ERR;  // Exit: success
+    return TEMPLATE_OSAL_NO_ERR;  // Exit: Success: operation completed
 }
 
 
@@ -562,8 +583,8 @@ Template_osalErr_e template_osalQueueCreate(Template_osal_s *const osal,
                                             Template_osalQueueHandle_t *const queueHandle)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalQueueCreate(%p, %zu, %zu, %p)",
-                        (void *)osal, queueItemSize, queueDepth, (void *)queueHandle);
+    TEMPLATE_OSAL_TRACE("template_osalQueueCreate(%p, %lu, %lu, %p)",
+                        (void *)osal, (unsigned long)queueItemSize, (unsigned long)queueDepth, (void *)queueHandle);
 
     /* Validate args */
     if ((osal == NULL) ||
@@ -592,7 +613,7 @@ Template_osalErr_e template_osalQueueCreate(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalQueueCreate -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: port-specific error
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend-specific operation failed
     }
 
     /* Delegate to underlying OS backend */
@@ -602,7 +623,7 @@ Template_osalErr_e template_osalQueueCreate(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalQueueCreate -> %d", retStatus);
 
-    return retStatus;  // Exit: Error: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -646,7 +667,7 @@ Template_osalErr_e template_osalQueueDelete(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalQueueDelete -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: port-specific error
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend-specific operation failed
     }
 
     /* Delegate to underlying OS backend */
@@ -656,7 +677,7 @@ Template_osalErr_e template_osalQueueDelete(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalQueueDelete -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -704,7 +725,7 @@ Template_osalErr_e template_osalQueueItemPut(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalQueueItemPut -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: port-specific error
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend-specific operation failed
     }
 
     /* Delegate to underlying OS backend */
@@ -714,7 +735,7 @@ Template_osalErr_e template_osalQueueItemPut(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalQueueItemPut -> %d", retStatus);
 
-    return retStatus;  // Exit: Error: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -746,7 +767,7 @@ Template_osalErr_e template_osalQueueItemPost(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalQueueItemPost -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -756,7 +777,7 @@ Template_osalErr_e template_osalQueueItemPost(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalQueueItemPost -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
@@ -765,7 +786,7 @@ Template_osalErr_e template_osalQueueItemPost(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalQueueItemPost -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
@@ -775,7 +796,7 @@ Template_osalErr_e template_osalQueueItemPost(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalQueueItemPost -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -804,7 +825,7 @@ Template_osalErr_e template_osalQueueItemGet(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalQueueItemGet -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -814,7 +835,7 @@ Template_osalErr_e template_osalQueueItemGet(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalQueueItemGet -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
@@ -823,7 +844,7 @@ Template_osalErr_e template_osalQueueItemGet(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalQueueItemGet -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
@@ -833,7 +854,7 @@ Template_osalErr_e template_osalQueueItemGet(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalQueueItemGet -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -862,7 +883,7 @@ Template_osalErr_e template_osalQueueItemWait(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalQueueItemWait -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -872,7 +893,7 @@ Template_osalErr_e template_osalQueueItemWait(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalQueueItemWait -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
@@ -881,7 +902,7 @@ Template_osalErr_e template_osalQueueItemWait(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalQueueItemWait -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
@@ -891,7 +912,7 @@ Template_osalErr_e template_osalQueueItemWait(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalQueueItemWait -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -942,7 +963,7 @@ Template_osalErr_e template_osalQueueItemPend(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalQueueItemPend -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: port-specific error
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend-specific operation failed
     }
 
     /* Delegate to underlying OS backend */
@@ -952,7 +973,7 @@ Template_osalErr_e template_osalQueueItemPend(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalQueueItemPend -> %d", retStatus);
 
-    return retStatus;  // Exit: Error: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -996,7 +1017,7 @@ Template_osalErr_e template_osalQueueReset(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalQueueReset -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: port-specific error
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend-specific operation failed
     }
 
     /* Delegate to underlying OS backend */
@@ -1006,7 +1027,7 @@ Template_osalErr_e template_osalQueueReset(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalQueueReset -> %d", retStatus);
 
-    return retStatus;  // Exit: Error: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -1024,8 +1045,8 @@ Template_osalErr_e template_osalQueueHandleGet(Template_osal_s *const osal,
                                                Template_osalQueueHandle_t *const queueHandle)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalQueueHandleGet(%p, %zu, %p)",
-                        (void *)osal, queueSlotInd, (void *)queueHandle);
+    TEMPLATE_OSAL_TRACE("template_osalQueueHandleGet(%p, %lu, %p)",
+                        (void *)osal, (unsigned long)queueSlotInd, (void *)queueHandle);
 
     /* Validate input parameters */
     if ((osal == NULL) ||
@@ -1035,7 +1056,7 @@ Template_osalErr_e template_osalQueueHandleGet(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalQueueHandleGet -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     if ((osal->validFlag != true) ||
@@ -1044,7 +1065,7 @@ Template_osalErr_e template_osalQueueHandleGet(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalQueueHandleGet -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Retrieve the queue handle from the specified slot */
@@ -1053,7 +1074,7 @@ Template_osalErr_e template_osalQueueHandleGet(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalQueueHandleGet -> %d", TEMPLATE_OSAL_NO_ERR);
 
-    return TEMPLATE_OSAL_NO_ERR;
+    return TEMPLATE_OSAL_NO_ERR;  // Exit: Success: operation completed
 }
 // END QUEUE
 
@@ -1064,9 +1085,9 @@ Template_osalErr_e template_osalQueueHandleGet(Template_osal_s *const osal,
  * \brief Create a byte stream buffer.
  *
  * \param osal                OSAL instance pointer.
- * \param bufferSizeBytes     Stream buffer capacity in bytes.
- * \param triggerLevelBytes   Receive trigger level in bytes.
- * \param streamBufferHandle  Output pointer receiving the created stream buffer handle.
+ * \param bufferSizeBytes     Stream-buffer capacity in bytes.
+ * \param triggerLevelBytes   Trigger level in bytes used by the backend read operation.
+ * \param streamBufferHandle  Output pointer receiving the created stream-buffer handle.
  *
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
@@ -1076,8 +1097,11 @@ Template_osalErr_e template_osalStreamBufferCreate(Template_osal_s *const osal,
                                                    Template_osalStreamBufferHandle_t *const streamBufferHandle)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalStreamBufferCreate(%p, %zu, %zu, %p)",
-                        (void *)osal, bufferSizeBytes, triggerLevelBytes, (void *)streamBufferHandle);
+    TEMPLATE_OSAL_TRACE("template_osalStreamBufferCreate(%p, %lu, %lu, %p)",
+                        (void *)osal,
+                        (unsigned long)bufferSizeBytes,
+                        (unsigned long)triggerLevelBytes,
+                        (void *)streamBufferHandle);
 
     /* Validate args */
     if ((osal == NULL) ||
@@ -1089,7 +1113,7 @@ Template_osalErr_e template_osalStreamBufferCreate(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalStreamBufferCreate -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -1099,7 +1123,7 @@ Template_osalErr_e template_osalStreamBufferCreate(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalStreamBufferCreate -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
@@ -1108,7 +1132,7 @@ Template_osalErr_e template_osalStreamBufferCreate(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalStreamBufferCreate -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
@@ -1121,15 +1145,15 @@ Template_osalErr_e template_osalStreamBufferCreate(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalStreamBufferCreate -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
 /**
- * \brief Delete a stream buffer.
+ * \brief Delete a byte stream buffer.
  *
  * \param osal                OSAL instance pointer.
- * \param streamBufferHandle  Stream buffer handle to delete.
+ * \param streamBufferHandle  Stream-buffer handle to delete.
  *
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
@@ -1138,7 +1162,7 @@ Template_osalErr_e template_osalStreamBufferDelete(Template_osal_s *const osal,
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalStreamBufferDelete(%p, %p)",
-                        (void *)osal, streamBufferHandle);
+                        (void *)osal, (void *)streamBufferHandle);
 
     /* Validate args */
     if ((osal == NULL) ||
@@ -1147,7 +1171,7 @@ Template_osalErr_e template_osalStreamBufferDelete(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalStreamBufferDelete -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -1157,7 +1181,7 @@ Template_osalErr_e template_osalStreamBufferDelete(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalStreamBufferDelete -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
@@ -1166,7 +1190,7 @@ Template_osalErr_e template_osalStreamBufferDelete(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalStreamBufferDelete -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
@@ -1176,43 +1200,121 @@ Template_osalErr_e template_osalStreamBufferDelete(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalStreamBufferDelete -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
 /**
- * \brief Send bytes to a stream buffer without waiting for capacity.
+ * \brief Put bytes into a stream buffer without waiting for free capacity.
  *
  * \param osal                OSAL instance pointer.
- * \param streamBufferHandle  Target stream buffer handle.
- * \param data                Pointer to source bytes.
- * \param dataLengthBytes     Number of bytes requested for transfer.
- * \param bytesSent           Output pointer receiving the number of bytes written.
+ * \param streamBufferHandle  Target stream-buffer handle.
+ * \param data                Pointer to the source byte buffer.
+ * \param dataLengthBytes     Number of bytes requested for transfer; must be non-zero.
+ * \param bytesPut            Output pointer receiving the number of bytes actually written.
  *
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
-Template_osalErr_e template_osalStreamBufferSend(Template_osal_s *const osal,
+Template_osalErr_e template_osalStreamBufferPut(Template_osal_s *const osal,
+                                                const Template_osalStreamBufferHandle_t streamBufferHandle,
+                                                const void *const data,
+                                                const size_t dataLengthBytes,
+                                                size_t *const bytesPut)
+{
+    /* Trace input args */
+    TEMPLATE_OSAL_TRACE("template_osalStreamBufferPut(%p, %p, %p, %lu, %p)",
+                        (void *)osal,
+                        (void *)streamBufferHandle,
+                        data,
+                        (unsigned long)dataLengthBytes,
+                        (void *)bytesPut);
+
+    /* Validate args */
+    if ((osal == NULL) ||
+        (streamBufferHandle == NULL) ||
+        (data == NULL) ||
+        (dataLengthBytes == 0u) ||
+        (bytesPut == NULL))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalStreamBufferPut -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
+    }
+
+    /* Validate instance state */
+    if ((osal->validFlag != true) ||
+        (osal->vtable == NULL))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalStreamBufferPut -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
+    }
+
+    /* Check vtable methods table */
+    if (osal->vtable->streamBufferPut == NULL)
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalStreamBufferPut -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
+    }
+
+    /* Delegate to underlying OS backend */
+    const Template_osalErr_e retStatus =
+        osal->vtable->streamBufferPut(osal,
+                                      streamBufferHandle,
+                                      data,
+                                      dataLengthBytes,
+                                      bytesPut);
+
+    /* Trace: returned value */
+    TEMPLATE_OSAL_TRACE("template_osalStreamBufferPut -> %d", retStatus);
+
+    return retStatus;  // Exit: Success: backend status returned
+}
+
+
+/**
+ * \brief Put bytes into a stream buffer, waiting up to the requested timeout for free capacity.
+ *
+ * \param osal                OSAL instance pointer.
+ * \param streamBufferHandle  Target stream-buffer handle.
+ * \param data                Pointer to the source byte buffer.
+ * \param dataLengthBytes     Number of bytes requested for transfer; must be non-zero.
+ * \param timeoutMs           Maximum wait time in milliseconds.
+ * \param bytesPut            Output pointer receiving the number of bytes actually written.
+ *
+ * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
+ */
+Template_osalErr_e template_osalStreamBufferPost(Template_osal_s *const osal,
                                                  const Template_osalStreamBufferHandle_t streamBufferHandle,
                                                  const void *const data,
                                                  const size_t dataLengthBytes,
-                                                 size_t *const bytesSent)
+                                                 const Template_osalTimeMs_t timeoutMs,
+                                                 size_t *const bytesPut)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalStreamBufferSend(%p, %p, %p, %zu, %p)",
-                        (void *)osal, streamBufferHandle, data, dataLengthBytes,
-                        (void *)bytesSent);
+    TEMPLATE_OSAL_TRACE("template_osalStreamBufferPost(%p, %p, %p, %lu, %u, %p)",
+                        (void *)osal,
+                        (void *)streamBufferHandle,
+                        data,
+                        (unsigned long)dataLengthBytes,
+                        (unsigned int)timeoutMs,
+                        (void *)bytesPut);
 
     /* Validate args */
     if ((osal == NULL) ||
         (streamBufferHandle == NULL) ||
         (data == NULL) ||
         (dataLengthBytes == 0u) ||
-        (bytesSent == NULL))
+        (bytesPut == NULL))
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalStreamBufferSend -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalStreamBufferPost -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -1220,70 +1322,72 @@ Template_osalErr_e template_osalStreamBufferSend(Template_osal_s *const osal,
         (osal->vtable == NULL))
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalStreamBufferSend -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalStreamBufferPost -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
-    if (osal->vtable->streamBufferSend == NULL)
+    if (osal->vtable->streamBufferPost == NULL)
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalStreamBufferSend -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalStreamBufferPost -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
     const Template_osalErr_e retStatus =
-        osal->vtable->streamBufferSend(osal,
+        osal->vtable->streamBufferPost(osal,
                                        streamBufferHandle,
                                        data,
                                        dataLengthBytes,
-                                       bytesSent);
+                                       timeoutMs,
+                                       bytesPut);
 
     /* Trace: returned value */
-    TEMPLATE_OSAL_TRACE("template_osalStreamBufferSend -> %d", retStatus);
+    TEMPLATE_OSAL_TRACE("template_osalStreamBufferPost -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
 /**
- * \brief Receive bytes from a stream buffer with an explicit timeout.
+ * \brief Get already available bytes from a stream buffer without waiting.
  *
  * \param osal                OSAL instance pointer.
- * \param streamBufferHandle  Source stream buffer handle.
- * \param data                Destination buffer.
- * \param dataLengthBytes     Maximum number of bytes to receive.
- * \param timeoutMs           Maximum wait time in milliseconds.
- * \param bytesReceived       Output pointer receiving the number of bytes read.
+ * \param streamBufferHandle  Source stream-buffer handle.
+ * \param data                Destination byte buffer.
+ * \param dataLengthBytes     Maximum number of bytes to transfer; must be non-zero.
+ * \param bytesGet            Output pointer receiving the number of bytes actually read.
  *
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
-Template_osalErr_e template_osalStreamBufferReceive(Template_osal_s *const osal,
-                                                    const Template_osalStreamBufferHandle_t streamBufferHandle,
-                                                    void *const data,
-                                                    const size_t dataLengthBytes,
-                                                    const Template_osalTimeMs_t timeoutMs,
-                                                    size_t *const bytesReceived)
+Template_osalErr_e template_osalStreamBufferGet(Template_osal_s *const osal,
+                                                const Template_osalStreamBufferHandle_t streamBufferHandle,
+                                                void *const data,
+                                                const size_t dataLengthBytes,
+                                                size_t *const bytesGet)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalStreamBufferReceive(%p, %p, %p, %zu, %u, %p)",
-                        (void *)osal, streamBufferHandle, data, dataLengthBytes,
-                        (unsigned int)timeoutMs, (void *)bytesReceived);
+    TEMPLATE_OSAL_TRACE("template_osalStreamBufferGet(%p, %p, %p, %lu, %p)",
+                        (void *)osal,
+                        (void *)streamBufferHandle,
+                        data,
+                        (unsigned long)dataLengthBytes,
+                        (void *)bytesGet);
 
     /* Validate args */
     if ((osal == NULL) ||
         (streamBufferHandle == NULL) ||
         (data == NULL) ||
         (dataLengthBytes == 0u) ||
-        (bytesReceived == NULL))
+        (bytesGet == NULL))
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalStreamBufferReceive -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalStreamBufferGet -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -1291,33 +1395,180 @@ Template_osalErr_e template_osalStreamBufferReceive(Template_osal_s *const osal,
         (osal->vtable == NULL))
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalStreamBufferReceive -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalStreamBufferGet -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
-    if (osal->vtable->streamBufferReceive == NULL)
+    if (osal->vtable->streamBufferGet == NULL)
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalStreamBufferReceive -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalStreamBufferGet -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
     const Template_osalErr_e retStatus =
-        osal->vtable->streamBufferReceive(osal,
-                                          streamBufferHandle,
-                                          data,
-                                          dataLengthBytes,
-                                          timeoutMs,
-                                          bytesReceived);
+        osal->vtable->streamBufferGet(osal,
+                                      streamBufferHandle,
+                                      data,
+                                      dataLengthBytes,
+                                      bytesGet);
 
     /* Trace: returned value */
-    TEMPLATE_OSAL_TRACE("template_osalStreamBufferReceive -> %d", retStatus);
+    TEMPLATE_OSAL_TRACE("template_osalStreamBufferGet -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
+}
+
+
+/**
+ * \brief Wait indefinitely for bytes and get them from a stream buffer.
+ *
+ * \param osal                OSAL instance pointer.
+ * \param streamBufferHandle  Source stream-buffer handle.
+ * \param data                Destination byte buffer.
+ * \param dataLengthBytes     Maximum number of bytes to transfer; must be non-zero.
+ * \param bytesGet            Output pointer receiving the number of bytes actually read.
+ *
+ * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
+ */
+Template_osalErr_e template_osalStreamBufferWait(Template_osal_s *const osal,
+                                                 const Template_osalStreamBufferHandle_t streamBufferHandle,
+                                                 void *const data,
+                                                 const size_t dataLengthBytes,
+                                                 size_t *const bytesGet)
+{
+    /* Trace input args */
+    TEMPLATE_OSAL_TRACE("template_osalStreamBufferWait(%p, %p, %p, %lu, %p)",
+                        (void *)osal,
+                        (void *)streamBufferHandle,
+                        data,
+                        (unsigned long)dataLengthBytes,
+                        (void *)bytesGet);
+
+    /* Validate args */
+    if ((osal == NULL) ||
+        (streamBufferHandle == NULL) ||
+        (data == NULL) ||
+        (dataLengthBytes == 0u) ||
+        (bytesGet == NULL))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalStreamBufferWait -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
+    }
+
+    /* Validate instance state */
+    if ((osal->validFlag != true) ||
+        (osal->vtable == NULL))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalStreamBufferWait -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
+    }
+
+    /* Check vtable methods table */
+    if (osal->vtable->streamBufferWait == NULL)
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalStreamBufferWait -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
+    }
+
+    /* Delegate to underlying OS backend */
+    const Template_osalErr_e retStatus =
+        osal->vtable->streamBufferWait(osal,
+                                       streamBufferHandle,
+                                       data,
+                                       dataLengthBytes,
+                                       bytesGet);
+
+    /* Trace: returned value */
+    TEMPLATE_OSAL_TRACE("template_osalStreamBufferWait -> %d", retStatus);
+
+    return retStatus;  // Exit: Success: backend status returned
+}
+
+
+/**
+ * \brief Get bytes from a stream buffer, waiting up to the requested timeout for data.
+ *
+ * \param osal                OSAL instance pointer.
+ * \param streamBufferHandle  Source stream-buffer handle.
+ * \param data                Destination byte buffer.
+ * \param dataLengthBytes     Maximum number of bytes to transfer; must be non-zero.
+ * \param timeoutMs           Maximum wait time in milliseconds.
+ * \param bytesGet            Output pointer receiving the number of bytes actually read.
+ *
+ * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
+ */
+Template_osalErr_e template_osalStreamBufferPend(Template_osal_s *const osal,
+                                                 const Template_osalStreamBufferHandle_t streamBufferHandle,
+                                                 void *const data,
+                                                 const size_t dataLengthBytes,
+                                                 const Template_osalTimeMs_t timeoutMs,
+                                                 size_t *const bytesGet)
+{
+    /* Trace input args */
+    TEMPLATE_OSAL_TRACE("template_osalStreamBufferPend(%p, %p, %p, %lu, %u, %p)",
+                        (void *)osal,
+                        (void *)streamBufferHandle,
+                        data,
+                        (unsigned long)dataLengthBytes,
+                        (unsigned int)timeoutMs,
+                        (void *)bytesGet);
+
+    /* Validate args */
+    if ((osal == NULL) ||
+        (streamBufferHandle == NULL) ||
+        (data == NULL) ||
+        (dataLengthBytes == 0u) ||
+        (bytesGet == NULL))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalStreamBufferPend -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
+    }
+
+    /* Validate instance state */
+    if ((osal->validFlag != true) ||
+        (osal->vtable == NULL))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalStreamBufferPend -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
+    }
+
+    /* Check vtable methods table */
+    if (osal->vtable->streamBufferPend == NULL)
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalStreamBufferPend -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
+    }
+
+    /* Delegate to underlying OS backend */
+    const Template_osalErr_e retStatus =
+        osal->vtable->streamBufferPend(osal,
+                                       streamBufferHandle,
+                                       data,
+                                       dataLengthBytes,
+                                       timeoutMs,
+                                       bytesGet);
+
+    /* Trace: returned value */
+    TEMPLATE_OSAL_TRACE("template_osalStreamBufferPend -> %d", retStatus);
+
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -1325,7 +1576,7 @@ Template_osalErr_e template_osalStreamBufferReceive(Template_osal_s *const osal,
  * \brief Reset a stream buffer to its initial empty state.
  *
  * \param osal                OSAL instance pointer.
- * \param streamBufferHandle  Stream buffer handle to reset.
+ * \param streamBufferHandle  Stream-buffer handle to reset.
  *
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
@@ -1334,7 +1585,7 @@ Template_osalErr_e template_osalStreamBufferReset(Template_osal_s *const osal,
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalStreamBufferReset(%p, %p)",
-                        (void *)osal, streamBufferHandle);
+                        (void *)osal, (void *)streamBufferHandle);
 
     /* Validate args */
     if ((osal == NULL) ||
@@ -1343,7 +1594,7 @@ Template_osalErr_e template_osalStreamBufferReset(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalStreamBufferReset -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -1353,7 +1604,7 @@ Template_osalErr_e template_osalStreamBufferReset(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalStreamBufferReset -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
@@ -1362,7 +1613,7 @@ Template_osalErr_e template_osalStreamBufferReset(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalStreamBufferReset -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
@@ -1372,15 +1623,15 @@ Template_osalErr_e template_osalStreamBufferReset(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalStreamBufferReset -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
 /**
- * \brief Get a stream buffer handle from a stable registry slot.
+ * \brief Get a stream-buffer handle from a stable registry slot.
  *
  * \param osal                 OSAL instance pointer.
- * \param streamBufferSlotInd  Zero-based stream buffer registry slot index.
+ * \param streamBufferSlotInd  Zero-based stream-buffer registry slot index.
  * \param streamBufferHandle   Output pointer receiving the current slot handle.
  *
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
@@ -1390,8 +1641,10 @@ Template_osalErr_e template_osalStreamBufferHandleGet(Template_osal_s *const osa
                                                       Template_osalStreamBufferHandle_t *const streamBufferHandle)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalStreamBufferHandleGet(%p, %zu, %p)",
-                        (void *)osal, streamBufferSlotInd, (void *)streamBufferHandle);
+    TEMPLATE_OSAL_TRACE("template_osalStreamBufferHandleGet(%p, %lu, %p)",
+                        (void *)osal,
+                        (unsigned long)streamBufferSlotInd,
+                        (void *)streamBufferHandle);
 
     /* Validate args */
     if ((osal == NULL) ||
@@ -1401,7 +1654,7 @@ Template_osalErr_e template_osalStreamBufferHandleGet(Template_osal_s *const osa
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalStreamBufferHandleGet -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -1410,271 +1663,395 @@ Template_osalErr_e template_osalStreamBufferHandleGet(Template_osal_s *const osa
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalStreamBufferHandleGet -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
-    /* Retrieve the resource handle from the specified slot */
+    /* Retrieve the stream-buffer handle from the specified slot */
     *streamBufferHandle = osal->streamBufferObjHandle[streamBufferSlotInd];
 
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalStreamBufferHandleGet -> %d", TEMPLATE_OSAL_NO_ERR);
 
-    return TEMPLATE_OSAL_NO_ERR;  // Exit: success
+    return TEMPLATE_OSAL_NO_ERR;  // Exit: Success: operation completed
 }
-
-
 // END STREAM_BUFFER
 
-// BEGIN LOCK
-/*------------------------------------- Locks --------------------------------*/
+// BEGIN MUTEX
+/*------------------------------------- Mutexes --------------------------------*/
 
 /**
- * \brief Create a lock object.
+ * \brief Create a mutex.
  *
- * \param osal           Pointer to the OSAL instance.
- * \param lockObjHandle  Pointer to the location where the lock object handle will be created.
+ * \param osal         OSAL instance pointer.
+ * \param mutexHandle  Output pointer receiving the created mutex handle.
  *
- * \return Template_osalErr_e error code, non-zero indicates error.
+ * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
-Template_osalErr_e template_osalLockObjCreate(Template_osal_s *const osal,
-                                              Template_osalLockObjHandle_t *const lockObjHandle)
+Template_osalErr_e template_osalMutexCreate(Template_osal_s *const osal,
+                                            Template_osalMutexHandle_t *const mutexHandle)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalLockObjCreate(%p, %p)", (void *)osal, (void *)lockObjHandle);
+    TEMPLATE_OSAL_TRACE("template_osalMutexCreate(%p, %p)",
+                        (void *)osal, (void *)mutexHandle);
 
-    /* Validate input parameters */
+    /* Validate args */
     if ((osal == NULL) ||
-        (lockObjHandle == NULL))
+        (mutexHandle == NULL))
     {
-        TEMPLATE_OSAL_TRACE("template_osalLockObjCreate -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalMutexCreate -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: Invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
+    /* Validate instance state */
     if ((osal->validFlag != true) ||
         (osal->vtable == NULL))
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalLockObjCreate -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
-
-        return TEMPLATE_OSAL_NOT_INIT_ERR;
-    }
-
-    if (osal->vtable->lockObjCreate == NULL)
-    {
-        /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalLockObjCreate -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
-
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
-    }
-
-    /* Create the lock object */
-    const Template_osalErr_e retStatus = osal->vtable->lockObjCreate(osal, lockObjHandle);
-
-    TEMPLATE_OSAL_TRACE("template_osalLockObjCreate -> %d", retStatus);
-
-    return retStatus;
-}
-
-
-/**
- * \brief Delete a lock object.
- *
- * \param osal           Pointer to the OSAL instance.
- * \param lockObjHandle  Handle of the lock object to delete.
- *
- * \return Template_osalErr_e error code, non-zero indicates error.
- */
-Template_osalErr_e template_osalLockObjDelete(Template_osal_s *const osal,
-                                              const Template_osalLockObjHandle_t lockObjHandle)
-{
-    /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalLockObjDelete(%p, %p)", (void *)osal, (void *)lockObjHandle);
-
-    /* Validate  parameters */
-    if ((osal == NULL) ||
-        (lockObjHandle == NULL))
-    {
-        /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalLockObjDelete -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
-
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: Invalid args
-    }
-
-    if ((osal->validFlag != true) ||
-        (osal->vtable == NULL))
-    {
-        /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalLockObjDelete -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalMutexCreate -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
         return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
-    if (osal->vtable->lockObjDelete == NULL)
+    /* Check vtable methods table */
+    if (osal->vtable->mutexCreate == NULL)
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalLockObjDelete -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalMutexCreate -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
-    /* Delete the lock object */
-    const Template_osalErr_e retStatus = osal->vtable->lockObjDelete(osal, lockObjHandle);
+    /* Delegate to underlying OS backend */
+    const Template_osalErr_e retStatus = osal->vtable->mutexCreate(osal, mutexHandle);
 
     /* Trace: returned value */
-    TEMPLATE_OSAL_TRACE("template_osalLockObjDelete -> %d", retStatus);
+    TEMPLATE_OSAL_TRACE("template_osalMutexCreate -> %d", retStatus);
 
-    return retStatus;
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
 /**
- * \brief Lock access to the resource.
+ * \brief Delete a mutex.
  *
- * \param osal           Pointer to the OSAL instance.
- * \param lockObjHandle  Handle of the lock object.
+ * \param osal         OSAL instance pointer.
+ * \param mutexHandle  Mutex handle to delete.
  *
- * \return Template_osalErr_e error code, non-zero indicates error.
+ * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
-Template_osalErr_e template_osalLock(Template_osal_s *const osal,
-                                     const Template_osalLockObjHandle_t lockObjHandle)
+Template_osalErr_e template_osalMutexDelete(Template_osal_s *const osal,
+                                            const Template_osalMutexHandle_t mutexHandle)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalLock(%p, %p)", (void *)osal, (void *)lockObjHandle);
+    TEMPLATE_OSAL_TRACE("template_osalMutexDelete(%p, %p)",
+                        (void *)osal, (void *)mutexHandle);
 
-    /* Validate input parameters */
+    /* Validate args */
     if ((osal == NULL) ||
-        (lockObjHandle == NULL))
+        (mutexHandle == NULL))
     {
-        /* Trace: returned 1value */
-        TEMPLATE_OSAL_TRACE("template_osalLock -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalMutexDelete -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: Invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
+    /* Validate instance state */
     if ((osal->validFlag != true) ||
         (osal->vtable == NULL))
     {
-        TEMPLATE_OSAL_TRACE("template_osalLock -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalMutexDelete -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
         return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
-    if (osal->vtable->lock == NULL)
+    /* Check vtable methods table */
+    if (osal->vtable->mutexDelete == NULL)
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalLock -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalMutexDelete -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
-    /* Lock access to the resource */
-    const Template_osalErr_e retStatus = osal->vtable->lock(osal, lockObjHandle);
+    /* Delegate to underlying OS backend */
+    const Template_osalErr_e retStatus = osal->vtable->mutexDelete(osal, mutexHandle);
 
     /* Trace: returned value */
-    TEMPLATE_OSAL_TRACE("template_osalLock -> %d", retStatus);
+    TEMPLATE_OSAL_TRACE("template_osalMutexDelete -> %d", retStatus);
 
-    return retStatus;
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
 /**
- * \brief Unlock access to the resource.
+ * \brief Lock a mutex and wait indefinitely until it becomes available.
  *
- * \param osal           Pointer to the OSAL instance.
- * \param lockObjHandle  Handle of the lock object.
+ * \param osal         OSAL instance pointer.
+ * \param mutexHandle  Mutex handle to lock.
  *
- * \return Template_osalErr_e error code, non-zero indicates error.
+ * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
-Template_osalErr_e template_osalUnlock(Template_osal_s *const osal,
-                                       const Template_osalLockObjHandle_t lockObjHandle)
+Template_osalErr_e template_osalMutexLock(Template_osal_s *const osal,
+                                          const Template_osalMutexHandle_t mutexHandle)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalUnlock(%p, %p)", (void *)osal, (void *)lockObjHandle);
+    TEMPLATE_OSAL_TRACE("template_osalMutexLock(%p, %p)",
+                        (void *)osal, (void *)mutexHandle);
 
-    /* Validate input parameters */
+    /* Validate args */
     if ((osal == NULL) ||
-        (lockObjHandle == NULL))
+        (mutexHandle == NULL))
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalUnlock -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalMutexLock -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: Invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
+    /* Validate instance state */
     if ((osal->validFlag != true) ||
         (osal->vtable == NULL))
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalUnlock -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalMutexLock -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
         return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
-    if (osal->vtable->unlock == NULL)
+    /* Check vtable methods table */
+    if (osal->vtable->mutexLock == NULL)
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalUnlock -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalMutexLock -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
-    /* Unlock access to the resource */
-    const Template_osalErr_e retStatus = osal->vtable->unlock(osal, lockObjHandle);
+    /* Delegate to underlying OS backend */
+    const Template_osalErr_e retStatus = osal->vtable->mutexLock(osal, mutexHandle);
 
     /* Trace: returned value */
-    TEMPLATE_OSAL_TRACE("template_osalUnlock -> %d", retStatus);
+    TEMPLATE_OSAL_TRACE("template_osalMutexLock -> %d", retStatus);
 
-    return retStatus;
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
 /**
- * \brief Get a lock object handle of the given OSAL object.
+ * \brief Try to lock a mutex without waiting.
  *
- * \param osal            Pointer to the OSAL instance.
- * \param lockObjSlotInd  Index of the lock object slots.
- * \param lockObjHandle   Pointer where the lock object handle will be copied.
+ * \param osal         OSAL instance pointer.
+ * \param mutexHandle  Mutex handle to lock.
  *
- * \return Template_osalErr_e error code, non-zero indicates error.
+ * \return Template_osalErr_e, zero value = success; otherwise the mutex was not acquired or an error occurred.
  */
-Template_osalErr_e template_osalLockObjHandleGet(Template_osal_s *const osal,
-                                                 const size_t lockObjSlotInd,
-                                                 Template_osalLockObjHandle_t *const lockObjHandle)
+Template_osalErr_e template_osalMutexTryLock(Template_osal_s *const osal,
+                                             const Template_osalMutexHandle_t mutexHandle)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalLockObjHandleGet(%p, %zu, %p)",
-                        (void *)osal, lockObjSlotInd, (void *)lockObjHandle);
+    TEMPLATE_OSAL_TRACE("template_osalMutexTryLock(%p, %p)",
+                        (void *)osal, (void *)mutexHandle);
 
-    /* Validate parameters */
+    /* Validate args */
     if ((osal == NULL) ||
-        (lockObjHandle == NULL) ||
-        (TEMPLATE_OSAL_LOCK_OBJ_SLOTS_NUM <= lockObjSlotInd))
+        (mutexHandle == NULL))
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalLockObjHandleGet -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalMutexTryLock -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: Invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
+    /* Validate instance state */
     if ((osal->validFlag != true) ||
         (osal->vtable == NULL))
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalLockObjHandleGet -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalMutexTryLock -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
         return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
-    /* Retrieve the lock object handle */
-    *lockObjHandle = osal->lockObjHandle[lockObjSlotInd];
+    /* Check vtable methods table */
+    if (osal->vtable->mutexTryLock == NULL)
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalMutexTryLock -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
+    }
+
+    /* Delegate to underlying OS backend */
+    const Template_osalErr_e retStatus = osal->vtable->mutexTryLock(osal, mutexHandle);
 
     /* Trace: returned value */
-    TEMPLATE_OSAL_TRACE("template_osalLockObjHandleGet -> %d", TEMPLATE_OSAL_NO_ERR);
+    TEMPLATE_OSAL_TRACE("template_osalMutexTryLock -> %d", retStatus);
 
-    return TEMPLATE_OSAL_NO_ERR;
+    return retStatus;  // Exit: Success: backend status returned
 }
-// END LOCK
+
+
+/**
+ * \brief Lock a mutex, waiting up to the requested timeout for it to become available.
+ *
+ * \param osal         OSAL instance pointer.
+ * \param mutexHandle  Mutex handle to lock.
+ * \param timeoutMs    Maximum wait time in milliseconds.
+ *
+ * \return Template_osalErr_e, zero value = success; otherwise the mutex was not acquired or an error occurred.
+ */
+Template_osalErr_e template_osalMutexPendLock(Template_osal_s *const osal,
+                                              const Template_osalMutexHandle_t mutexHandle,
+                                              const Template_osalTimeMs_t timeoutMs)
+{
+    /* Trace input args */
+    TEMPLATE_OSAL_TRACE("template_osalMutexPendLock(%p, %p, %u)",
+                        (void *)osal, (void *)mutexHandle, (unsigned int)timeoutMs);
+
+    /* Validate args */
+    if ((osal == NULL) ||
+        (mutexHandle == NULL))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalMutexPendLock -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
+    }
+
+    /* Validate instance state */
+    if ((osal->validFlag != true) ||
+        (osal->vtable == NULL))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalMutexPendLock -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
+    }
+
+    /* Check vtable methods table */
+    if (osal->vtable->mutexPendLock == NULL)
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalMutexPendLock -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
+    }
+
+    /* Delegate to underlying OS backend */
+    const Template_osalErr_e retStatus =
+        osal->vtable->mutexPendLock(osal, mutexHandle, timeoutMs);
+
+    /* Trace: returned value */
+    TEMPLATE_OSAL_TRACE("template_osalMutexPendLock -> %d", retStatus);
+
+    return retStatus;  // Exit: Success: backend status returned
+}
+
+
+/**
+ * \brief Unlock a previously locked mutex.
+ *
+ * \param osal         OSAL instance pointer.
+ * \param mutexHandle  Mutex handle to unlock.
+ *
+ * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
+ */
+Template_osalErr_e template_osalMutexUnlock(Template_osal_s *const osal,
+                                            const Template_osalMutexHandle_t mutexHandle)
+{
+    /* Trace input args */
+    TEMPLATE_OSAL_TRACE("template_osalMutexUnlock(%p, %p)",
+                        (void *)osal, (void *)mutexHandle);
+
+    /* Validate args */
+    if ((osal == NULL) ||
+        (mutexHandle == NULL))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalMutexUnlock -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
+    }
+
+    /* Validate instance state */
+    if ((osal->validFlag != true) ||
+        (osal->vtable == NULL))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalMutexUnlock -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
+    }
+
+    /* Check vtable methods table */
+    if (osal->vtable->mutexUnlock == NULL)
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalMutexUnlock -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
+    }
+
+    /* Delegate to underlying OS backend */
+    const Template_osalErr_e retStatus = osal->vtable->mutexUnlock(osal, mutexHandle);
+
+    /* Trace: returned value */
+    TEMPLATE_OSAL_TRACE("template_osalMutexUnlock -> %d", retStatus);
+
+    return retStatus;  // Exit: Success: backend status returned
+}
+
+
+/**
+ * \brief Get a mutex handle from a stable registry slot.
+ *
+ * \param osal          OSAL instance pointer.
+ * \param mutexSlotInd  Zero-based mutex registry slot index.
+ * \param mutexHandle   Output pointer receiving the current slot handle.
+ *
+ * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
+ */
+Template_osalErr_e template_osalMutexHandleGet(Template_osal_s *const osal,
+                                               const size_t mutexSlotInd,
+                                               Template_osalMutexHandle_t *const mutexHandle)
+{
+    /* Trace input args */
+    TEMPLATE_OSAL_TRACE("template_osalMutexHandleGet(%p, %lu, %p)",
+                        (void *)osal, (unsigned long)mutexSlotInd, (void *)mutexHandle);
+
+    /* Validate args */
+    if ((osal == NULL) ||
+        (mutexHandle == NULL) ||
+        (mutexSlotInd >= TEMPLATE_OSAL_MUTEX_SLOTS_NUM))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalMutexHandleGet -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
+    }
+
+    /* Validate instance state */
+    if (osal->validFlag != true)
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalMutexHandleGet -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
+    }
+
+    /* Retrieve the mutex handle from the specified slot */
+    *mutexHandle = osal->mutexHandle[mutexSlotInd];
+
+    /* Trace: returned value */
+    TEMPLATE_OSAL_TRACE("template_osalMutexHandleGet -> %d", TEMPLATE_OSAL_NO_ERR);
+
+    return TEMPLATE_OSAL_NO_ERR;  // Exit: Success: operation completed
+}
+// END MUTEX
 
 // BEGIN SEMAPHORE
 /*------------------------------ Counting semaphores ------------------------------*/
@@ -1696,7 +2073,9 @@ Template_osalErr_e template_osalSemaphoreCreate(Template_osal_s *const osal,
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalSemaphoreCreate(%p, %u, %u, %p)",
-                        (void *)osal, (unsigned int)maxCount, (unsigned int)initialCount,
+                        (void *)osal,
+                        (unsigned int)maxCount,
+                        (unsigned int)initialCount,
                         (void *)semaphoreHandle);
 
     /* Validate args */
@@ -1708,7 +2087,7 @@ Template_osalErr_e template_osalSemaphoreCreate(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSemaphoreCreate -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -1718,7 +2097,7 @@ Template_osalErr_e template_osalSemaphoreCreate(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSemaphoreCreate -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
@@ -1727,7 +2106,7 @@ Template_osalErr_e template_osalSemaphoreCreate(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSemaphoreCreate -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
@@ -1737,7 +2116,7 @@ Template_osalErr_e template_osalSemaphoreCreate(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalSemaphoreCreate -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -1745,7 +2124,7 @@ Template_osalErr_e template_osalSemaphoreCreate(Template_osal_s *const osal,
  * \brief Delete a counting semaphore.
  *
  * \param osal             OSAL instance pointer.
- * \param semaphoreHandle  Counting semaphore handle.
+ * \param semaphoreHandle  Counting-semaphore handle to delete.
  *
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
@@ -1763,7 +2142,7 @@ Template_osalErr_e template_osalSemaphoreDelete(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSemaphoreDelete -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -1773,7 +2152,7 @@ Template_osalErr_e template_osalSemaphoreDelete(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSemaphoreDelete -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
@@ -1782,7 +2161,7 @@ Template_osalErr_e template_osalSemaphoreDelete(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSemaphoreDelete -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
@@ -1792,23 +2171,23 @@ Template_osalErr_e template_osalSemaphoreDelete(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalSemaphoreDelete -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
 /**
- * \brief Acquire a counting semaphore without waiting.
+ * \brief Wait indefinitely for one counting-semaphore count.
  *
  * \param osal             OSAL instance pointer.
- * \param semaphoreHandle  Counting semaphore handle.
+ * \param semaphoreHandle  Counting-semaphore handle.
  *
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
-Template_osalErr_e template_osalSemaphoreAcquire(Template_osal_s *const osal,
-                                                 const Template_osalSemaphoreHandle_t semaphoreHandle)
+Template_osalErr_e template_osalSemaphoreWait(Template_osal_s *const osal,
+                                              const Template_osalSemaphoreHandle_t semaphoreHandle)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalSemaphoreAcquire(%p, %p)",
+    TEMPLATE_OSAL_TRACE("template_osalSemaphoreWait(%p, %p)",
                         (void *)osal, (void *)semaphoreHandle);
 
     /* Validate args */
@@ -1816,9 +2195,9 @@ Template_osalErr_e template_osalSemaphoreAcquire(Template_osal_s *const osal,
         (semaphoreHandle == NULL))
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalSemaphoreAcquire -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalSemaphoreWait -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -1826,46 +2205,46 @@ Template_osalErr_e template_osalSemaphoreAcquire(Template_osal_s *const osal,
         (osal->vtable == NULL))
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalSemaphoreAcquire -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalSemaphoreWait -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
-    if (osal->vtable->semaphoreAcquire == NULL)
+    if (osal->vtable->semaphoreWait == NULL)
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalSemaphoreAcquire -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalSemaphoreWait -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
     const Template_osalErr_e retStatus =
-        osal->vtable->semaphoreAcquire(osal, semaphoreHandle);
+        osal->vtable->semaphoreWait(osal, semaphoreHandle);
 
     /* Trace: returned value */
-    TEMPLATE_OSAL_TRACE("template_osalSemaphoreAcquire -> %d", retStatus);
+    TEMPLATE_OSAL_TRACE("template_osalSemaphoreWait -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
 /**
- * \brief Acquire a counting semaphore, waiting up to the requested timeout.
+ * \brief Wait for one counting-semaphore count up to an explicit timeout.
  *
  * \param osal             OSAL instance pointer.
- * \param semaphoreHandle  Counting semaphore handle.
+ * \param semaphoreHandle  Counting-semaphore handle.
  * \param timeoutMs        Maximum wait time in milliseconds.
  *
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
-Template_osalErr_e template_osalSemaphoreAcquireWait(Template_osal_s *const osal,
-                                                     const Template_osalSemaphoreHandle_t semaphoreHandle,
-                                                     const Template_osalTimeMs_t timeoutMs)
+Template_osalErr_e template_osalSemaphorePend(Template_osal_s *const osal,
+                                              const Template_osalSemaphoreHandle_t semaphoreHandle,
+                                              const Template_osalTimeMs_t timeoutMs)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalSemaphoreAcquireWait(%p, %p, %u)",
+    TEMPLATE_OSAL_TRACE("template_osalSemaphorePend(%p, %p, %u)",
                         (void *)osal, (void *)semaphoreHandle, (unsigned int)timeoutMs);
 
     /* Validate args */
@@ -1873,9 +2252,9 @@ Template_osalErr_e template_osalSemaphoreAcquireWait(Template_osal_s *const osal
         (semaphoreHandle == NULL))
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalSemaphoreAcquireWait -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalSemaphorePend -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -1883,44 +2262,44 @@ Template_osalErr_e template_osalSemaphoreAcquireWait(Template_osal_s *const osal
         (osal->vtable == NULL))
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalSemaphoreAcquireWait -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalSemaphorePend -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
-    if (osal->vtable->semaphoreAcquireWait == NULL)
+    if (osal->vtable->semaphorePend == NULL)
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalSemaphoreAcquireWait -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalSemaphorePend -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
     const Template_osalErr_e retStatus =
-        osal->vtable->semaphoreAcquireWait(osal, semaphoreHandle, timeoutMs);
+        osal->vtable->semaphorePend(osal, semaphoreHandle, timeoutMs);
 
     /* Trace: returned value */
-    TEMPLATE_OSAL_TRACE("template_osalSemaphoreAcquireWait -> %d", retStatus);
+    TEMPLATE_OSAL_TRACE("template_osalSemaphorePend -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
 /**
- * \brief Release one count to a counting semaphore.
+ * \brief Post one count to a counting semaphore.
  *
  * \param osal             OSAL instance pointer.
- * \param semaphoreHandle  Counting semaphore handle.
+ * \param semaphoreHandle  Counting-semaphore handle.
  *
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
-Template_osalErr_e template_osalSemaphoreRelease(Template_osal_s *const osal,
-                                                 const Template_osalSemaphoreHandle_t semaphoreHandle)
+Template_osalErr_e template_osalSemaphorePost(Template_osal_s *const osal,
+                                              const Template_osalSemaphoreHandle_t semaphoreHandle)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalSemaphoreRelease(%p, %p)",
+    TEMPLATE_OSAL_TRACE("template_osalSemaphorePost(%p, %p)",
                         (void *)osal, (void *)semaphoreHandle);
 
     /* Validate args */
@@ -1928,9 +2307,9 @@ Template_osalErr_e template_osalSemaphoreRelease(Template_osal_s *const osal,
         (semaphoreHandle == NULL))
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalSemaphoreRelease -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalSemaphorePost -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -1938,36 +2317,36 @@ Template_osalErr_e template_osalSemaphoreRelease(Template_osal_s *const osal,
         (osal->vtable == NULL))
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalSemaphoreRelease -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalSemaphorePost -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
-    if (osal->vtable->semaphoreRelease == NULL)
+    if (osal->vtable->semaphorePost == NULL)
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalSemaphoreRelease -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalSemaphorePost -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
     const Template_osalErr_e retStatus =
-        osal->vtable->semaphoreRelease(osal, semaphoreHandle);
+        osal->vtable->semaphorePost(osal, semaphoreHandle);
 
     /* Trace: returned value */
-    TEMPLATE_OSAL_TRACE("template_osalSemaphoreRelease -> %d", retStatus);
+    TEMPLATE_OSAL_TRACE("template_osalSemaphorePost -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
 /**
- * \brief Retrieve the current counting semaphore value.
+ * \brief Read the current counting-semaphore count.
  *
  * \param osal             OSAL instance pointer.
- * \param semaphoreHandle  Counting semaphore handle.
+ * \param semaphoreHandle  Counting-semaphore handle.
  * \param semaphoreCount   Output pointer receiving the current semaphore count.
  *
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
@@ -1988,7 +2367,7 @@ Template_osalErr_e template_osalSemaphoreCountGet(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSemaphoreCountGet -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -1998,7 +2377,7 @@ Template_osalErr_e template_osalSemaphoreCountGet(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSemaphoreCountGet -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
@@ -2007,7 +2386,7 @@ Template_osalErr_e template_osalSemaphoreCountGet(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSemaphoreCountGet -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
@@ -2017,12 +2396,12 @@ Template_osalErr_e template_osalSemaphoreCountGet(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalSemaphoreCountGet -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
 /**
- * \brief Get a counting semaphore handle from a stable registry slot.
+ * \brief Get a counting-semaphore handle from a stable registry slot.
  *
  * \param osal              OSAL instance pointer.
  * \param semaphoreSlotInd  Zero-based semaphore registry slot index.
@@ -2035,8 +2414,8 @@ Template_osalErr_e template_osalSemaphoreHandleGet(Template_osal_s *const osal,
                                                    Template_osalSemaphoreHandle_t *const semaphoreHandle)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalSemaphoreHandleGet(%p, %zu, %p)",
-                        (void *)osal, semaphoreSlotInd, (void *)semaphoreHandle);
+    TEMPLATE_OSAL_TRACE("template_osalSemaphoreHandleGet(%p, %lu, %p)",
+                        (void *)osal, (unsigned long)semaphoreSlotInd, (void *)semaphoreHandle);
 
     /* Validate args */
     if ((osal == NULL) ||
@@ -2046,7 +2425,7 @@ Template_osalErr_e template_osalSemaphoreHandleGet(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSemaphoreHandleGet -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -2055,20 +2434,432 @@ Template_osalErr_e template_osalSemaphoreHandleGet(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSemaphoreHandleGet -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
-    /* Retrieve the resource handle from the specified slot */
+    /* Retrieve the semaphore handle from the specified slot */
     *semaphoreHandle = osal->semaphoreObjHandle[semaphoreSlotInd];
 
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalSemaphoreHandleGet -> %d", TEMPLATE_OSAL_NO_ERR);
 
-    return TEMPLATE_OSAL_NO_ERR;  // Exit: success
+    return TEMPLATE_OSAL_NO_ERR;  // Exit: Success: operation completed
+}
+// END SEMAPHORE
+
+// BEGIN EVENT_FLAGS
+/*-------------------------------- Event flags -------------------------------*/
+
+/**
+ * \brief Create an event flags object and register its opaque handle.
+ *
+ * \param osal              OSAL instance pointer.
+ * \param eventFlagsHandle  Output pointer receiving the created event flags handle.
+ *
+ * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
+ */
+Template_osalErr_e template_osalEventFlagsCreate(Template_osal_s *const osal,
+                                                 Template_osalEventFlagsHandle_t *const eventFlagsHandle)
+{
+    /* Trace input args */
+    TEMPLATE_OSAL_TRACE("template_osalEventFlagsCreate(%p, %p)",
+                        (void *)osal, (void *)eventFlagsHandle);
+
+    /* Validate args */
+    if ((osal == NULL) ||
+        (eventFlagsHandle == NULL))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalEventFlagsCreate -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
+    }
+
+    /* Validate instance state */
+    if ((osal->validFlag != true) ||
+        (osal->vtable == NULL))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalEventFlagsCreate -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
+    }
+
+    /* Check vtable methods table */
+    if (osal->vtable->eventFlagsCreate == NULL)
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalEventFlagsCreate -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
+    }
+
+    /* Delegate to underlying OS backend */
+    const Template_osalErr_e retStatus =
+        osal->vtable->eventFlagsCreate(osal, eventFlagsHandle);
+
+    /* Trace: returned value */
+    TEMPLATE_OSAL_TRACE("template_osalEventFlagsCreate -> %d", retStatus);
+
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
-// END SEMAPHORE
+/**
+ * \brief Delete an event flags object and release its registry slot.
+ *
+ * \param osal              OSAL instance pointer.
+ * \param eventFlagsHandle  Event flags handle to delete.
+ *
+ * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
+ */
+Template_osalErr_e template_osalEventFlagsDelete(Template_osal_s *const osal,
+                                                 const Template_osalEventFlagsHandle_t eventFlagsHandle)
+{
+    /* Trace input args */
+    TEMPLATE_OSAL_TRACE("template_osalEventFlagsDelete(%p, %p)",
+                        (void *)osal, (void *)eventFlagsHandle);
+
+    /* Validate args */
+    if ((osal == NULL) ||
+        (eventFlagsHandle == NULL))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalEventFlagsDelete -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
+    }
+
+    /* Validate instance state */
+    if ((osal->validFlag != true) ||
+        (osal->vtable == NULL))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalEventFlagsDelete -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
+    }
+
+    /* Check vtable methods table */
+    if (osal->vtable->eventFlagsDelete == NULL)
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalEventFlagsDelete -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
+    }
+
+    /* Delegate to underlying OS backend */
+    const Template_osalErr_e retStatus =
+        osal->vtable->eventFlagsDelete(osal, eventFlagsHandle);
+
+    /* Trace: returned value */
+    TEMPLATE_OSAL_TRACE("template_osalEventFlagsDelete -> %d", retStatus);
+
+    return retStatus;  // Exit: Success: backend status returned
+}
+
+
+/**
+ * \brief Atomically set one or more event flag bits.
+ *
+ * \param osal              OSAL instance pointer.
+ * \param eventFlagsHandle  Event flags handle.
+ * \param flags             Non-zero bit mask of flags to set.
+ *
+ * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
+ */
+Template_osalErr_e template_osalEventFlagsSet(Template_osal_s *const osal,
+                                              const Template_osalEventFlagsHandle_t eventFlagsHandle,
+                                              const uint32_t flags)
+{
+    /* Trace input args */
+    TEMPLATE_OSAL_TRACE("template_osalEventFlagsSet(%p, %p, 0x%08x)",
+                        (void *)osal, (void *)eventFlagsHandle, (unsigned int)flags);
+
+    /* Validate args */
+    if ((osal == NULL) ||
+        (eventFlagsHandle == NULL) ||
+        (flags == 0u))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalEventFlagsSet -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
+    }
+
+    /* Validate instance state */
+    if ((osal->validFlag != true) ||
+        (osal->vtable == NULL))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalEventFlagsSet -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
+    }
+
+    /* Check vtable methods table */
+    if (osal->vtable->eventFlagsSet == NULL)
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalEventFlagsSet -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
+    }
+
+    /* Delegate to underlying OS backend */
+    const Template_osalErr_e retStatus =
+        osal->vtable->eventFlagsSet(osal, eventFlagsHandle, flags);
+
+    /* Trace: returned value */
+    TEMPLATE_OSAL_TRACE("template_osalEventFlagsSet -> %d", retStatus);
+
+    return retStatus;  // Exit: Success: backend status returned
+}
+
+
+/**
+ * \brief Atomically clear one or more event flag bits.
+ *
+ * \param osal              OSAL instance pointer.
+ * \param eventFlagsHandle  Event flags handle.
+ * \param flags             Non-zero bit mask of flags to clear.
+ *
+ * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
+ */
+Template_osalErr_e template_osalEventFlagsClear(Template_osal_s *const osal,
+                                                const Template_osalEventFlagsHandle_t eventFlagsHandle,
+                                                const uint32_t flags)
+{
+    /* Trace input args */
+    TEMPLATE_OSAL_TRACE("template_osalEventFlagsClear(%p, %p, 0x%08x)",
+                        (void *)osal, (void *)eventFlagsHandle, (unsigned int)flags);
+
+    /* Validate args */
+    if ((osal == NULL) ||
+        (eventFlagsHandle == NULL) ||
+        (flags == 0u))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalEventFlagsClear -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
+    }
+
+    /* Validate instance state */
+    if ((osal->validFlag != true) ||
+        (osal->vtable == NULL))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalEventFlagsClear -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
+    }
+
+    /* Check vtable methods table */
+    if (osal->vtable->eventFlagsClear == NULL)
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalEventFlagsClear -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
+    }
+
+    /* Delegate to underlying OS backend */
+    const Template_osalErr_e retStatus =
+        osal->vtable->eventFlagsClear(osal, eventFlagsHandle, flags);
+
+    /* Trace: returned value */
+    TEMPLATE_OSAL_TRACE("template_osalEventFlagsClear -> %d", retStatus);
+
+    return retStatus;  // Exit: Success: backend status returned
+}
+
+
+/**
+ * \brief Read the currently set event flag bits.
+ *
+ * \param osal              OSAL instance pointer.
+ * \param eventFlagsHandle  Event flags handle.
+ * \param flags             Output pointer receiving the current event flags snapshot.
+ *
+ * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
+ */
+Template_osalErr_e template_osalEventFlagsGet(Template_osal_s *const osal,
+                                              const Template_osalEventFlagsHandle_t eventFlagsHandle,
+                                              uint32_t *const flags)
+{
+    /* Trace input args */
+    TEMPLATE_OSAL_TRACE("template_osalEventFlagsGet(%p, %p, %p)",
+                        (void *)osal, (void *)eventFlagsHandle, (void *)flags);
+
+    /* Validate args */
+    if ((osal == NULL) ||
+        (eventFlagsHandle == NULL) ||
+        (flags == NULL))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalEventFlagsGet -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
+    }
+
+    /* Validate instance state */
+    if ((osal->validFlag != true) ||
+        (osal->vtable == NULL))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalEventFlagsGet -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
+    }
+
+    /* Check vtable methods table */
+    if (osal->vtable->eventFlagsGet == NULL)
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalEventFlagsGet -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
+    }
+
+    /* Delegate to underlying OS backend */
+    const Template_osalErr_e retStatus =
+        osal->vtable->eventFlagsGet(osal, eventFlagsHandle, flags);
+
+    /* Trace: returned value */
+    TEMPLATE_OSAL_TRACE("template_osalEventFlagsGet -> %d", retStatus);
+
+    return retStatus;  // Exit: Success: backend status returned
+}
+
+
+/**
+ * \brief Wait for any or all requested event flag bits.
+ *
+ * \param osal              OSAL instance pointer.
+ * \param eventFlagsHandle  Event flags handle.
+ * \param flags             Non-zero bit mask of flags to wait for.
+ * \param options           WAIT_ANY or WAIT_ALL, optionally combined with NO_CLEAR.
+ * \param timeoutMs         Maximum wait time in milliseconds.
+ * \param actualFlags       Output pointer receiving the event flags snapshot observed when the wait completes.
+ *
+ * \return Template_osalErr_e, zero value = success, otherwise the wait condition was not satisfied or an error occurred.
+ */
+Template_osalErr_e template_osalEventFlagsWait(Template_osal_s *const osal,
+                                               const Template_osalEventFlagsHandle_t eventFlagsHandle,
+                                               const uint32_t flags,
+                                               const Template_osalEventFlagsOptions_e options,
+                                               const Template_osalTimeMs_t timeoutMs,
+                                               uint32_t *const actualFlags)
+{
+    /* Trace input args */
+    TEMPLATE_OSAL_TRACE("template_osalEventFlagsWait(%p, %p, 0x%08x, 0x%02x, %u, %p)",
+                        (void *)osal,
+                        (void *)eventFlagsHandle,
+                        (unsigned int)flags,
+                        (unsigned int)options,
+                        (unsigned int)timeoutMs,
+                        (void *)actualFlags);
+
+    /* Validate args */
+    const uint32_t validOptions = TEMPLATE_OSAL_EVENT_FLAGS_WAIT_ALL |
+                                  TEMPLATE_OSAL_EVENT_FLAGS_NO_CLEAR;
+    if ((osal == NULL) ||
+        (eventFlagsHandle == NULL) ||
+        (flags == 0u) ||
+        (actualFlags == NULL) ||
+        (((uint32_t)options & ~validOptions) != 0u))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalEventFlagsWait -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
+    }
+
+    /* Validate instance state */
+    if ((osal->validFlag != true) ||
+        (osal->vtable == NULL))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalEventFlagsWait -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
+    }
+
+    /* Check vtable methods table */
+    if (osal->vtable->eventFlagsWait == NULL)
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalEventFlagsWait -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
+    }
+
+    /* Delegate to underlying OS backend */
+    const Template_osalErr_e retStatus =
+        osal->vtable->eventFlagsWait(osal,
+                                     eventFlagsHandle,
+                                     flags,
+                                     options,
+                                     timeoutMs,
+                                     actualFlags);
+
+    /* Trace: returned value */
+    TEMPLATE_OSAL_TRACE("template_osalEventFlagsWait -> %d", retStatus);
+
+    return retStatus;  // Exit: Success: backend status returned
+}
+
+
+/**
+ * \brief Get an event flags handle from a stable registry slot.
+ *
+ * \param osal               OSAL instance pointer.
+ * \param eventFlagsSlotInd  Zero-based event flags registry slot index.
+ * \param eventFlagsHandle   Output pointer receiving the current slot handle.
+ *
+ * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
+ */
+Template_osalErr_e template_osalEventFlagsHandleGet(Template_osal_s *const osal,
+                                                    const size_t eventFlagsSlotInd,
+                                                    Template_osalEventFlagsHandle_t *const eventFlagsHandle)
+{
+    /* Trace input args */
+    TEMPLATE_OSAL_TRACE("template_osalEventFlagsHandleGet(%p, %lu, %p)",
+                        (void *)osal,
+                        (unsigned long)eventFlagsSlotInd,
+                        (void *)eventFlagsHandle);
+
+    /* Validate args */
+    if ((osal == NULL) ||
+        (eventFlagsHandle == NULL) ||
+        (eventFlagsSlotInd >= TEMPLATE_OSAL_EVENT_FLAGS_SLOTS_NUM))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalEventFlagsHandleGet -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
+    }
+
+    /* Validate instance state */
+    if (osal->validFlag != true)
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalEventFlagsHandleGet -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
+    }
+
+    /* Retrieve the event flags handle from the specified slot */
+    *eventFlagsHandle = osal->eventFlagsObjHandle[eventFlagsSlotInd];
+
+    /* Trace: returned value */
+    TEMPLATE_OSAL_TRACE("template_osalEventFlagsHandleGet -> %d", TEMPLATE_OSAL_NO_ERR);
+
+    return TEMPLATE_OSAL_NO_ERR;  // Exit: Success: operation completed
+}
+// END EVENT_FLAGS
 
 // BEGIN THREAD
 /*------------------------------------ Threads -------------------------------*/
@@ -2078,20 +2869,20 @@ Template_osalErr_e template_osalSemaphoreHandleGet(Template_osal_s *const osal,
  *
  * \param osal          Pointer to the OSAL instance.
  * \param threadHandle  Pointer to store the handle of the created thread.
- * \param threadCfg     Configuration parameters for the thread.
+ * \param threadAttr    Configuration parameters for the thread.
  *
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalThreadCreate(Template_osal_s *const osal,
                                              Template_osalThreadHandle_t *const threadHandle,
-                                             Template_osalThreadCfg_s threadCfg)
+                                             Template_osalThreadAttr_s threadAttr)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalThreadCreate(%p, %p, {%p,%s,%zu,%p,%d})",
+    TEMPLATE_OSAL_TRACE("template_osalThreadCreate(%p, %p, {%p,%s,%lu,%p,%d})",
                         (void *)osal, (void *)threadHandle,
-                        (void *)threadCfg.worker,
-                        (threadCfg.name ? threadCfg.name : "(null)"),
-                        threadCfg.stackSize, threadCfg.args, (int)threadCfg.prio);
+                        (void *)threadAttr.worker,
+                        (threadAttr.name ? threadAttr.name : "(null)"),
+                        (unsigned long)threadAttr.stackSize, threadAttr.args, (int)threadAttr.prio);
 
     /* Validate input parameters */
     if ((osal == NULL) ||
@@ -2100,7 +2891,7 @@ Template_osalErr_e template_osalThreadCreate(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalThreadCreate -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: Invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     if ((osal->validFlag != true) ||
@@ -2117,17 +2908,17 @@ Template_osalErr_e template_osalThreadCreate(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalThreadCreate -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend-specific operation failed
     }
 
     /* Attempt to create the thread and get the status */
     const Template_osalErr_e retStatus =
-        osal->vtable->threadCreate(osal, threadHandle, threadCfg);
+        osal->vtable->threadCreate(osal, threadHandle, threadAttr);
 
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalThreadCreate -> %d", retStatus);
 
-    return retStatus;
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -2154,7 +2945,7 @@ Template_osalErr_e template_osalThreadDelete(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalThreadDelete -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: Invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     if (osal->validFlag != true)
@@ -2170,7 +2961,7 @@ Template_osalErr_e template_osalThreadDelete(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalThreadDelete -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend-specific operation failed
     }
 
     /* Attempt to delete the thread */
@@ -2179,7 +2970,7 @@ Template_osalErr_e template_osalThreadDelete(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalThreadDelete -> %d", retStatus);
 
-    return retStatus;
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -2204,14 +2995,14 @@ Template_osalErr_e template_osalThreadSuspend(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalThreadSuspend -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: Invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     if (osal->validFlag != true)
     {
         TEMPLATE_OSAL_TRACE("template_osalThreadSuspend -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: Not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     if ((osal->vtable == NULL) ||
@@ -2220,7 +3011,7 @@ Template_osalErr_e template_osalThreadSuspend(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalThreadSuspend -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend-specific operation failed
     }
 
     /* Attempt to suspend the thread */
@@ -2229,7 +3020,7 @@ Template_osalErr_e template_osalThreadSuspend(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalThreadSuspend -> %d", retStatus);
 
-    return retStatus;
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -2254,7 +3045,7 @@ Template_osalErr_e template_osalThreadResume(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalThreadResume -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: Invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     if ((osal->validFlag != true) ||
@@ -2262,7 +3053,7 @@ Template_osalErr_e template_osalThreadResume(Template_osal_s *const osal,
     {
         TEMPLATE_OSAL_TRACE("template_osalThreadResume -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: Not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     if (osal->vtable->threadResume == NULL)
@@ -2270,7 +3061,7 @@ Template_osalErr_e template_osalThreadResume(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalThreadResume -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend-specific operation failed
     }
 
     /* Attempt to resume the thread */
@@ -2279,7 +3070,7 @@ Template_osalErr_e template_osalThreadResume(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalThreadResume -> %d", retStatus);
 
-    return retStatus;
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -2303,7 +3094,7 @@ Template_osalErr_e template_osalThreadDelay(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalThreadDelay -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: Invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     if ((osal->validFlag != true) ||
@@ -2311,7 +3102,7 @@ Template_osalErr_e template_osalThreadDelay(Template_osal_s *const osal,
     {
         TEMPLATE_OSAL_TRACE("template_osalThreadDelay -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: Not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     if (osal->vtable->threadDelay == NULL)
@@ -2319,7 +3110,7 @@ Template_osalErr_e template_osalThreadDelay(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalThreadDelay -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend-specific operation failed
     }
 
     /* Delay the current thread */
@@ -2328,7 +3119,65 @@ Template_osalErr_e template_osalThreadDelay(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalThreadDelay -> %d", retStatus);
 
-    return retStatus;
+    return retStatus;  // Exit: Success: backend status returned
+}
+
+
+/**
+ * \brief Delay the current thread until the next periodic wake-up point.
+ *
+ * \param osal                OSAL instance pointer.
+ * \param previousWakeTimeMs  In/out scheduled wake reference in milliseconds; updated to the next reference point.
+ * \param periodMs            Period in milliseconds; must be non-zero.
+ *
+ * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
+ */
+Template_osalErr_e template_osalThreadDelayUntil(Template_osal_s *const osal,
+                                                 Template_osalTimeMs_t *const previousWakeTimeMs,
+                                                 const Template_osalTimeMs_t periodMs)
+{
+    /* Trace input args */
+    TEMPLATE_OSAL_TRACE("template_osalThreadDelayUntil(%p, %p, %u)",
+                        (void *)osal, (void *)previousWakeTimeMs, (unsigned int)periodMs);
+
+    /* Validate args */
+    if ((osal == NULL) ||
+        (previousWakeTimeMs == NULL) ||
+        (periodMs == 0u))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalThreadDelayUntil -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
+    }
+
+    /* Validate instance state */
+    if ((osal->validFlag != true) ||
+        (osal->vtable == NULL))
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalThreadDelayUntil -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
+    }
+
+    /* Check vtable methods table */
+    if (osal->vtable->threadDelayUntil == NULL)
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalThreadDelayUntil -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
+    }
+
+    /* Delegate to underlying OS backend */
+    const Template_osalErr_e retStatus =
+        osal->vtable->threadDelayUntil(osal, previousWakeTimeMs, periodMs);
+
+    /* Trace: returned value */
+    TEMPLATE_OSAL_TRACE("template_osalThreadDelayUntil -> %d", retStatus);
+
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -2337,7 +3186,7 @@ Template_osalErr_e template_osalThreadDelay(Template_osal_s *const osal,
  *
  * \param osal  Pointer to OSAL instance (must be valid).
  *
- * \note  This function never returns control to the caller.
+ * \note This function never returns control to the caller.
  */
 void template_osalThreadExit(Template_osal_s *const osal)
 {
@@ -2379,8 +3228,8 @@ Template_osalErr_e template_osalThreadHandleGet(Template_osal_s *const osal,
                                                 Template_osalThreadHandle_t *const threadHandle)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalThreadHandleGet(%p, %zu, %p)",
-                        (void *)osal, threadSlotInd, (void *)threadHandle);
+    TEMPLATE_OSAL_TRACE("template_osalThreadHandleGet(%p, %lu, %p)",
+                        (void *)osal, (unsigned long)threadSlotInd, (void *)threadHandle);
 
     /* Validate parameters */
     if ((osal == NULL) ||
@@ -2390,7 +3239,7 @@ Template_osalErr_e template_osalThreadHandleGet(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalThreadHandleGet -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: Invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     if (osal->validFlag != true)
@@ -2398,7 +3247,7 @@ Template_osalErr_e template_osalThreadHandleGet(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalThreadHandleGet -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: Not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Copy the thread handle from the specified slot */
@@ -2407,7 +3256,7 @@ Template_osalErr_e template_osalThreadHandleGet(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalThreadHandleGet -> %d", TEMPLATE_OSAL_NO_ERR);
 
-    return TEMPLATE_OSAL_NO_ERR;  // Exit: return the summary status
+    return TEMPLATE_OSAL_NO_ERR;  // Exit: Success: summary status returned
 }
 // END THREAD
 
@@ -2431,7 +3280,7 @@ Template_osalErr_e template_osalCriticalSectionEnter(Template_osal_s *const osal
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalCriticalSectionEnter -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -2441,7 +3290,7 @@ Template_osalErr_e template_osalCriticalSectionEnter(Template_osal_s *const osal
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalCriticalSectionEnter -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
@@ -2450,7 +3299,7 @@ Template_osalErr_e template_osalCriticalSectionEnter(Template_osal_s *const osal
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalCriticalSectionEnter -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
@@ -2459,7 +3308,7 @@ Template_osalErr_e template_osalCriticalSectionEnter(Template_osal_s *const osal
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalCriticalSectionEnter -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -2481,7 +3330,7 @@ Template_osalErr_e template_osalCriticalSectionExit(Template_osal_s *const osal)
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalCriticalSectionExit -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -2491,7 +3340,7 @@ Template_osalErr_e template_osalCriticalSectionExit(Template_osal_s *const osal)
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalCriticalSectionExit -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
@@ -2500,7 +3349,7 @@ Template_osalErr_e template_osalCriticalSectionExit(Template_osal_s *const osal)
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalCriticalSectionExit -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
@@ -2509,7 +3358,7 @@ Template_osalErr_e template_osalCriticalSectionExit(Template_osal_s *const osal)
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalCriticalSectionExit -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -2522,34 +3371,34 @@ Template_osalErr_e template_osalCriticalSectionExit(Template_osal_s *const osal)
  *
  * \param osal         OSAL instance pointer.
  * \param timerHandle  Output pointer receiving the created timer handle.
- * \param timerCfg     Software timer configuration.
+ * \param timerAttr    Software timer configuration.
  *
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
 Template_osalErr_e template_osalSoftwareTimerCreate(Template_osal_s *const osal,
                                                     Template_osalSoftwareTimerHandle_t *const timerHandle,
-                                                    Template_osalSoftwareTimerCfg_s timerCfg)
+                                                    Template_osalSoftwareTimerAttr_s timerAttr)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerCreate(%p, %p, {%s, %p, %p, %d, %u})",
                         (void *)osal, (void *)timerHandle,
-                        (timerCfg.name != NULL) ? timerCfg.name : "(null)",
-                        timerCfg.timerParam,
-                        (void *)(uintptr_t)timerCfg.timerExpiredCb,
-                        (int)timerCfg.autoReload,
-                        (unsigned int)timerCfg.periodMs);
+                        (timerAttr.name != NULL) ? timerAttr.name : "(null)",
+                        timerAttr.timerParam,
+                        (void *)(uintptr_t)timerAttr.timerExpiredCb,
+                        (int)timerAttr.autoReload,
+                        (unsigned int)timerAttr.periodMs);
 
     /* Validate args */
     if ((osal == NULL) ||
         (timerHandle == NULL) ||
-        (timerCfg.timerExpiredCb == NULL) ||
-        (timerCfg.periodMs == 0u) ||
-        (timerCfg.periodMs == TEMPLATE_OSAL_INFINITY_TOUT))
+        (timerAttr.timerExpiredCb == NULL) ||
+        (timerAttr.periodMs == 0u) ||
+        (timerAttr.periodMs == TEMPLATE_OSAL_INFINITY_TOUT))
     {
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerCreate -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -2559,7 +3408,7 @@ Template_osalErr_e template_osalSoftwareTimerCreate(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerCreate -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
@@ -2568,17 +3417,17 @@ Template_osalErr_e template_osalSoftwareTimerCreate(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerCreate -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
     const Template_osalErr_e retStatus =
-        osal->vtable->softwareTimerCreate(osal, timerHandle, timerCfg);
+        osal->vtable->softwareTimerCreate(osal, timerHandle, timerAttr);
 
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerCreate -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -2604,7 +3453,7 @@ Template_osalErr_e template_osalSoftwareTimerDelete(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerDelete -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -2614,7 +3463,7 @@ Template_osalErr_e template_osalSoftwareTimerDelete(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerDelete -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
@@ -2623,7 +3472,7 @@ Template_osalErr_e template_osalSoftwareTimerDelete(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerDelete -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
@@ -2633,7 +3482,7 @@ Template_osalErr_e template_osalSoftwareTimerDelete(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerDelete -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -2659,7 +3508,7 @@ Template_osalErr_e template_osalSoftwareTimerStart(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerStart -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -2669,7 +3518,7 @@ Template_osalErr_e template_osalSoftwareTimerStart(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerStart -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
@@ -2678,7 +3527,7 @@ Template_osalErr_e template_osalSoftwareTimerStart(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerStart -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
@@ -2688,7 +3537,7 @@ Template_osalErr_e template_osalSoftwareTimerStart(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerStart -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -2714,7 +3563,7 @@ Template_osalErr_e template_osalSoftwareTimerStop(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerStop -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -2724,7 +3573,7 @@ Template_osalErr_e template_osalSoftwareTimerStop(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerStop -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
@@ -2733,7 +3582,7 @@ Template_osalErr_e template_osalSoftwareTimerStop(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerStop -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
@@ -2743,7 +3592,7 @@ Template_osalErr_e template_osalSoftwareTimerStop(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerStop -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -2769,7 +3618,7 @@ Template_osalErr_e template_osalSoftwareTimerReset(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerReset -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -2779,7 +3628,7 @@ Template_osalErr_e template_osalSoftwareTimerReset(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerReset -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Check vtable methods table */
@@ -2788,7 +3637,7 @@ Template_osalErr_e template_osalSoftwareTimerReset(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerReset -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: backend method is unavailable
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend method is unavailable
     }
 
     /* Delegate to underlying OS backend */
@@ -2798,7 +3647,7 @@ Template_osalErr_e template_osalSoftwareTimerReset(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerReset -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
@@ -2816,8 +3665,8 @@ Template_osalErr_e template_osalSoftwareTimerHandleGet(Template_osal_s *const os
                                                        Template_osalSoftwareTimerHandle_t *const timerHandle)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerHandleGet(%p, %zu, %p)",
-                        (void *)osal, timerSlotInd, (void *)timerHandle);
+    TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerHandleGet(%p, %lu, %p)",
+                        (void *)osal, (unsigned long)timerSlotInd, (void *)timerHandle);
 
     /* Validate args */
     if ((osal == NULL) ||
@@ -2827,7 +3676,7 @@ Template_osalErr_e template_osalSoftwareTimerHandleGet(Template_osal_s *const os
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerHandleGet -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     /* Validate instance state */
@@ -2836,7 +3685,7 @@ Template_osalErr_e template_osalSoftwareTimerHandleGet(Template_osal_s *const os
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerHandleGet -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     /* Retrieve the resource handle from the specified slot */
@@ -2845,7 +3694,7 @@ Template_osalErr_e template_osalSoftwareTimerHandleGet(Template_osal_s *const os
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerHandleGet -> %d", TEMPLATE_OSAL_NO_ERR);
 
-    return TEMPLATE_OSAL_NO_ERR;  // Exit: success
+    return TEMPLATE_OSAL_NO_ERR;  // Exit: Success: operation completed
 }
 
 
@@ -2875,7 +3724,7 @@ Template_osalErr_e template_osalTimeMsGet(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalTimeMsGet -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: Invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     if ((osal->validFlag != true) ||
@@ -2884,14 +3733,14 @@ Template_osalErr_e template_osalTimeMsGet(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalTimeMsGet -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     if (osal->vtable->timeMsGet == NULL)
     {
         TEMPLATE_OSAL_TRACE("template_osalTimeMsGet -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: Port (backend) specific error
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend-specific operation failed
     }
 
     /* Get the current OS time */
@@ -2900,7 +3749,7 @@ Template_osalErr_e template_osalTimeMsGet(Template_osal_s *const osal,
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalTimeMsGet -> %d", retStatus);
 
-    return retStatus;  // Exit: return the summary status
+    return retStatus;  // Exit: Success: summary status returned
 }
 // END TIME
 
@@ -2912,26 +3761,26 @@ Template_osalErr_e template_osalTimeMsGet(Template_osal_s *const osal,
  *
  * \param osal    Pointer to OSAL instance.
  * \param size    Allocation size in bytes.
- * \param outPtr  Pointer to the allocated memory (must not be NULL).
+ * \param memPtr  Output pointer receiving the allocated memory address.
  *
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalMalloc(Template_osal_s *const osal,
                                        const size_t size,
-                                       void **const outPtr)
+                                       void **const memPtr)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalMalloc(%p, %zu, %p)", (void *)osal, size, (void *)outPtr);
+    TEMPLATE_OSAL_TRACE("template_osalMalloc(%p, %lu, %p)", (void *)osal, (unsigned long)size, (void *)memPtr);
 
     /* Validate parameters */
     if ((osal == NULL) ||
-        (outPtr == NULL) ||
+        (memPtr == NULL) ||
         (size == 0u))
     {
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalMalloc -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: Invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     if ((osal->validFlag != true) ||
@@ -2940,7 +3789,7 @@ Template_osalErr_e template_osalMalloc(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalMalloc -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  /// Exit: Error: Not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  /// Exit: Error: not initialized
     }
 
     if (osal->vtable->memAlloc == NULL)
@@ -2948,7 +3797,7 @@ Template_osalErr_e template_osalMalloc(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalMalloc -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: Port (backend) specific error
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend-specific operation failed
     }
 
     /* Delegate allocation (only now) */
@@ -2961,41 +3810,41 @@ Template_osalErr_e template_osalMalloc(Template_osal_s *const osal,
         TEMPLATE_OSAL_TRACE("template_osalMalloc -> %d",
                             (retStatus != TEMPLATE_OSAL_NO_ERR) ? retStatus : TEMPLATE_OSAL_MEM_ALLOCATION_ERR);
 
-        return (retStatus != TEMPLATE_OSAL_NO_ERR) ? retStatus
+        return (retStatus != TEMPLATE_OSAL_NO_ERR) ? retStatus  // Exit: Success: operation completed
                                                    : TEMPLATE_OSAL_MEM_ALLOCATION_ERR;  // Exit: Error: backend failed or returned NULL
     }
 
-    *outPtr = ptr;
+    *memPtr = ptr;
 
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalMalloc -> %d", TEMPLATE_OSAL_NO_ERR);
 
-    return TEMPLATE_OSAL_NO_ERR;  // Exit: success
+    return TEMPLATE_OSAL_NO_ERR;  // Exit: Success: operation completed
 }
 
 
 /**
  * \brief Free memory via the OSAL backend and unregister the pointer internally.
  *
- * \param osal  Pointer to OSAL instance.
- * \param ptr   Pointer to the memory block to free (must not be NULL and must be registered).
+ * \param osal    Pointer to OSAL instance.
+ * \param memPtr  Pointer to the memory block to free (must not be NULL and must be registered).
  *
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
 Template_osalErr_e template_osalFree(Template_osal_s *const osal,
-                                     void *const ptr)
+                                     void *const memPtr)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalFree(%p, %p)", (void *)osal, ptr);
+    TEMPLATE_OSAL_TRACE("template_osalFree(%p, %p)", (void *)osal, memPtr);
 
     /* Validate parameters */
     if ((osal == NULL) ||
-        (ptr == NULL))
+        (memPtr == NULL))
     {
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalFree -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: Invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     if ((osal->validFlag != true) ||
@@ -3004,7 +3853,7 @@ Template_osalErr_e template_osalFree(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalFree -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: Not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
     if (osal->vtable->memFree == NULL)
@@ -3012,75 +3861,75 @@ Template_osalErr_e template_osalFree(Template_osal_s *const osal,
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalFree -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: Port (backend) specific error
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend-specific operation failed
     }
 
     /* Delegate free to backend */
-    const Template_osalErr_e retStatus = osal->vtable->memFree(osal, ptr);
+    const Template_osalErr_e retStatus = osal->vtable->memFree(osal, memPtr);
 
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalFree -> %d", retStatus);
 
-    return retStatus;  // Exit: backend status
+    return retStatus;  // Exit: Success: backend status returned
 }
 
 
 /**
- * \brief Get a memory handle of the given OSAL object.
+ * \brief Get a registered memory pointer from the specified OSAL memory registry slot.
  *
  * \param osal        Pointer to OSAL instance.
- * \param memSlotInd  Index of memory slot.
- * \param memHandle   Pointer where the memory handle will be copied.
+ * \param memSlotInd  Index of memory registry slot.
+ * \param memPtr      Output pointer receiving the registered memory pointer.
  *
  * \return Template_osalErr_e error code, non-zero indicates error.
  */
-Template_osalErr_e template_osalMemHandleGet(Template_osal_s *const osal,
-                                             const size_t memSlotInd,
-                                             Template_osalMemHandle_t *const memHandle)
+Template_osalErr_e template_osalMemPtrGet(Template_osal_s *const osal,
+                                          const size_t memSlotInd,
+                                          void **const memPtr)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalMemHandleGet(%p, %zu, %p)",
-                        (void *)osal, memSlotInd, (void *)memHandle);
+    TEMPLATE_OSAL_TRACE("template_osalMemPtrGet(%p, %lu, %p)",
+                        (void *)osal, (unsigned long)memSlotInd, (void *)memPtr);
 
     /* Validate parameters */
     if ((osal == NULL) ||
-        (memHandle == NULL) ||
+        (memPtr == NULL) ||
         (TEMPLATE_OSAL_MEM_SLOTS_NUM <= memSlotInd))
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalMemHandleGet -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalMemPtrGet -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
-        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: Invalid args
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
 
     if (osal->validFlag != true)
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalMemHandleGet -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalMemPtrGet -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
-        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: Not initialized
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
 
-    *memHandle = osal->memObjHandle[memSlotInd];
+    *memPtr = osal->memPtr[memSlotInd];
 
     /* Trace: returned value */
-    TEMPLATE_OSAL_TRACE("template_osalMemHandleGet -> %d", TEMPLATE_OSAL_NO_ERR);
+    TEMPLATE_OSAL_TRACE("template_osalMemPtrGet -> %d", TEMPLATE_OSAL_NO_ERR);
 
-    return TEMPLATE_OSAL_NO_ERR;  // Exit: success
+    return TEMPLATE_OSAL_NO_ERR;  // Exit: Success: operation completed
 }
 // END MEMORY
 
 /*============================================================================[ PRIVATE FUNCTIONS ]============================================================================*/
 
 /**
- * \brief Reset OSAL objects such as queues, lock objects, threads and memory slots.
+ * \brief Reset (clear) the internal OSAL objects registry
  *
  * \param osal  OSAL instance pointer.
  */
-static void template_osalResetObjects(Template_osal_s *const osal)
+static void template_osalRegReset(Template_osal_s *const osal)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalResetObjects(%p)", (void *)osal);
+    TEMPLATE_OSAL_TRACE("template_osalRegReset(%p)", (void *)osal);
 
     /* Validate by caller */
     TEMPLATE_OSAL_ASSERT(osal != NULL);
@@ -3106,14 +3955,14 @@ static void template_osalResetObjects(Template_osal_s *const osal)
 
     // END STREAM_BUFFER
 
-    // BEGIN LOCK
-    /* Reset lock object slots */
-    for (size_t i = 0; i < TEMPLATE_OSAL_LOCK_OBJ_SLOTS_NUM; ++i)
+    // BEGIN MUTEX
+    /* Reset mutex slots */
+    for (size_t i = 0; i < TEMPLATE_OSAL_MUTEX_SLOTS_NUM; ++i)
     {
-        osal->lockObjHandle[i] = NULL;
+        osal->mutexHandle[i] = NULL;
     }
 
-    // END LOCK
+    // END MUTEX
 
     // BEGIN SEMAPHORE
     /* Reset counting semaphore slots */
@@ -3124,15 +3973,24 @@ static void template_osalResetObjects(Template_osal_s *const osal)
 
     // END SEMAPHORE
 
+    // BEGIN EVENT_FLAGS
+    /* Reset event flags slots */
+    for (size_t i = 0; i < TEMPLATE_OSAL_EVENT_FLAGS_SLOTS_NUM; ++i)
+    {
+        osal->eventFlagsObjHandle[i] = NULL;
+    }
+
+    // END EVENT_FLAGS
+
     // BEGIN THREAD
     /* Reset thread slots */
     for (size_t i = 0; i < TEMPLATE_OSAL_THREAD_SLOTS_NUM; ++i)
     {
-        osal->threadObjHandle[i].cfg.worker    = NULL;
-        osal->threadObjHandle[i].cfg.name      = NULL;
-        osal->threadObjHandle[i].cfg.stackSize = 0u;
-        osal->threadObjHandle[i].cfg.args      = NULL;
-        osal->threadObjHandle[i].cfg.prio      = TEMPLATE_OSAL_THREAD_PRIORITY_LOW;
+        osal->threadObjHandle[i].attr.worker    = NULL;
+        osal->threadObjHandle[i].attr.name      = NULL;
+        osal->threadObjHandle[i].attr.stackSize = 0u;
+        osal->threadObjHandle[i].attr.args      = NULL;
+        osal->threadObjHandle[i].attr.prio      = TEMPLATE_OSAL_THREAD_PRIORITY_LOW;
         osal->threadObjHandle[i].handle        = NULL;
     }
 
@@ -3143,11 +4001,11 @@ static void template_osalResetObjects(Template_osal_s *const osal)
     for (size_t i = 0; i < TEMPLATE_OSAL_SOFTWARE_TIMER_SLOTS_NUM; ++i)
     {
         osal->softwareTimerObj[i].handle             = NULL;
-        osal->softwareTimerObj[i].cfg.name           = NULL;
-        osal->softwareTimerObj[i].cfg.timerParam     = NULL;
-        osal->softwareTimerObj[i].cfg.timerExpiredCb = NULL;
-        osal->softwareTimerObj[i].cfg.autoReload     = false;
-        osal->softwareTimerObj[i].cfg.periodMs       = 0u;
+        osal->softwareTimerObj[i].attr.name           = NULL;
+        osal->softwareTimerObj[i].attr.timerParam     = NULL;
+        osal->softwareTimerObj[i].attr.timerExpiredCb = NULL;
+        osal->softwareTimerObj[i].attr.autoReload     = false;
+        osal->softwareTimerObj[i].attr.periodMs       = 0u;
     }
 
     // END SOFTWARE_TIMER
@@ -3156,13 +4014,13 @@ static void template_osalResetObjects(Template_osal_s *const osal)
     /* Reset memory registry slots */
     for (size_t i = 0; i < TEMPLATE_OSAL_MEM_SLOTS_NUM; ++i)
     {
-        osal->memObjHandle[i] = NULL;
+        osal->memPtr[i] = NULL;
     }
 
     // END MEMORY
 
     /* Trace: returned value */
-    TEMPLATE_OSAL_TRACE("template_osalResetObjects -> ok");
+    TEMPLATE_OSAL_TRACE("template_osalRegReset -> ok");
 }
 
 
@@ -3190,16 +4048,16 @@ static size_t template_osalRegQueueFreeSlotFind(void *const osalPort)
         if (osal->queueObjHandle[i] == NULL)
         {
             /* Trace: returned value */
-            TEMPLATE_OSAL_TRACE("template_osalRegQueueFreeSlotFind -> %zu", i + 1u);
+            TEMPLATE_OSAL_TRACE("template_osalRegQueueFreeSlotFind -> %lu", (unsigned long)(i + 1u));
 
-            return i + 1u;
+            return i + 1u;  // Exit: Success: matching registry slot found
         }
     }
 
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalRegQueueFreeSlotFind -> %d", 0);
 
-    return 0u;
+    return 0u;  // Exit: Error: matching registry slot was not found
 }
 
 
@@ -3227,16 +4085,16 @@ static size_t template_osalRegQueueHandleFind(void *const osalPort,
         if (osal->queueObjHandle[i] == queueHandle)
         {
             /* Trace: returned value */
-            TEMPLATE_OSAL_TRACE("template_osalRegQueueHandleFind -> %zu", i + 1u);
+            TEMPLATE_OSAL_TRACE("template_osalRegQueueHandleFind -> %lu", (unsigned long)(i + 1u));
 
-            return i + 1u;
+            return i + 1u;  // Exit: Success: matching registry slot found
         }
     }
 
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalRegQueueHandleFind -> %d", 0);
 
-    return 0u;
+    return 0u;  // Exit: Error: matching registry slot was not found
 }
 // END QUEUE
 
@@ -3264,16 +4122,16 @@ static size_t template_osalRegStreamBufferFreeSlotFind(void *const osalPort)
         if (osal->streamBufferObjHandle[i] == NULL)
         {
             /* Trace: returned value */
-            TEMPLATE_OSAL_TRACE("template_osalRegStreamBufferFreeSlotFind -> %zu", i + 1u);
+            TEMPLATE_OSAL_TRACE("template_osalRegStreamBufferFreeSlotFind -> %lu", (unsigned long)(i + 1u));
 
-            return i + 1u;
+            return i + 1u;  // Exit: Success: matching registry slot found
         }
     }
 
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalRegStreamBufferFreeSlotFind -> %d", 0);
 
-    return 0u;
+    return 0u;  // Exit: Error: matching registry slot was not found
 }
 
 
@@ -3302,94 +4160,94 @@ static size_t template_osalRegStreamBufferHandleFind(void *const osalPort,
         if (osal->streamBufferObjHandle[i] == streamBufferHandle)
         {
             /* Trace: returned value */
-            TEMPLATE_OSAL_TRACE("template_osalRegStreamBufferHandleFind -> %zu", i + 1u);
+            TEMPLATE_OSAL_TRACE("template_osalRegStreamBufferHandleFind -> %lu", (unsigned long)(i + 1u));
 
-            return i + 1u;
+            return i + 1u;  // Exit: Success: matching registry slot found
         }
     }
 
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalRegStreamBufferHandleFind -> %d", 0);
 
-    return 0u;
+    return 0u;  // Exit: Error: matching registry slot was not found
 }
 
 
 // END STREAM_BUFFER
 
-// BEGIN LOCK
-/*-------------------------------- Registry: Locks --------------------------------*/
+// BEGIN MUTEX
+/*-------------------------------- Registry: Mutexes --------------------------------*/
 
 /**
- * \brief Find a free lock object slot.
+ * \brief Find a free mutex slot.
  *
  * \param osalPort  Derived OSAL pointer.
  *
  * \return Slot ID (index + 1) or 0 if none.
  */
-static size_t template_osalRegLockFreeSlotFind(void *const osalPort)
+static size_t template_osalRegMutexFreeSlotFind(void *const osalPort)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalRegLockFreeSlotFind(%p)", osalPort);
+    TEMPLATE_OSAL_TRACE("template_osalRegMutexFreeSlotFind(%p)", osalPort);
 
     /* Must be validated by the caller */
     TEMPLATE_OSAL_ASSERT(osalPort != NULL);
     Template_osal_s *const osal = (Template_osal_s *)osalPort;
 
-    for (size_t i = 0; i < TEMPLATE_OSAL_LOCK_OBJ_SLOTS_NUM; ++i)
+    for (size_t i = 0; i < TEMPLATE_OSAL_MUTEX_SLOTS_NUM; ++i)
     {
-        if (osal->lockObjHandle[i] == NULL)
+        if (osal->mutexHandle[i] == NULL)
         {
             /* Trace: returned value */
-            TEMPLATE_OSAL_TRACE("template_osalRegLockFreeSlotFind -> %zu", i + 1u);
+            TEMPLATE_OSAL_TRACE("template_osalRegMutexFreeSlotFind -> %lu", (unsigned long)(i + 1u));
 
-            return i + 1u;
+            return i + 1u;  // Exit: Success: matching registry slot found
         }
     }
 
     /* Trace: returned value */
-    TEMPLATE_OSAL_TRACE("template_osalRegLockFreeSlotFind -> %d", 0);
+    TEMPLATE_OSAL_TRACE("template_osalRegMutexFreeSlotFind -> %d", 0);
 
-    return 0u;
+    return 0u;  // Exit: Error: matching registry slot was not found
 }
 
 
 /**
- * \brief Find lock object handle.
+ * \brief Find mutex handle.
  *
- * \param osalPort       Derived OSAL pointer.
- * \param lockObjHandle  Handle to search.
+ * \param osalPort     Derived OSAL pointer.
+ * \param mutexHandle  Handle to search.
  *
- * \return Lock ID (index + 1) or 0 if not found.
+ * \return Mutex ID (index + 1) or 0 if not found.
  */
-static size_t template_osalRegLockHandleFind(void *const osalPort,
-                                             const Template_osalLockObjHandle_t lockObjHandle)
+static size_t template_osalRegMutexHandleFind(void *const osalPort,
+                                             const Template_osalMutexHandle_t mutexHandle)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalRegLockHandleFind(%p, %p)", osalPort, (void *)lockObjHandle);
+    TEMPLATE_OSAL_TRACE("template_osalRegMutexHandleFind(%p, %p)", osalPort, (void *)mutexHandle);
 
     /* Must be validated by the caller */
     TEMPLATE_OSAL_ASSERT(osalPort != NULL);
-    TEMPLATE_OSAL_ASSERT(lockObjHandle != NULL);
+    TEMPLATE_OSAL_ASSERT(mutexHandle != NULL);
     Template_osal_s *const osal = (Template_osal_s *)osalPort;
 
-    for (size_t i = 0; i < TEMPLATE_OSAL_LOCK_OBJ_SLOTS_NUM; ++i)
+    for (size_t i = 0; i < TEMPLATE_OSAL_MUTEX_SLOTS_NUM; ++i)
     {
-        if (osal->lockObjHandle[i] == lockObjHandle)
+        if (osal->mutexHandle[i] == mutexHandle)
         {
             /* Trace: returned value */
-            TEMPLATE_OSAL_TRACE("template_osalRegLockHandleFind -> %zu", i + 1u);
+            TEMPLATE_OSAL_TRACE("template_osalRegMutexHandleFind -> %lu", (unsigned long)(i + 1u));
 
-            return i + 1u;
+            return i + 1u;  // Exit: Success: matching registry slot found
         }
     }
 
     /* Trace: returned value */
-    TEMPLATE_OSAL_TRACE("template_osalRegLockHandleFind -> %d", 0);
+    TEMPLATE_OSAL_TRACE("template_osalRegMutexHandleFind -> %d", 0);
 
-    return 0u;
+    return 0u;  // Exit: Error: matching registry slot was not found
 }
-// END LOCK
+// END MUTEX
 
 // BEGIN SEMAPHORE
 /*------------------------- Registry: Counting semaphores -------------------------*/
@@ -3415,16 +4273,16 @@ static size_t template_osalRegSemaphoreFreeSlotFind(void *const osalPort)
         if (osal->semaphoreObjHandle[i] == NULL)
         {
             /* Trace: returned value */
-            TEMPLATE_OSAL_TRACE("template_osalRegSemaphoreFreeSlotFind -> %zu", i + 1u);
+            TEMPLATE_OSAL_TRACE("template_osalRegSemaphoreFreeSlotFind -> %lu", (unsigned long)(i + 1u));
 
-            return i + 1u;
+            return i + 1u;  // Exit: Success: matching registry slot found
         }
     }
 
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalRegSemaphoreFreeSlotFind -> %d", 0);
 
-    return 0u;
+    return 0u;  // Exit: Error: matching registry slot was not found
 }
 
 
@@ -3452,20 +4310,99 @@ static size_t template_osalRegSemaphoreHandleFind(void *const osalPort,
         if (osal->semaphoreObjHandle[i] == semaphoreHandle)
         {
             /* Trace: returned value */
-            TEMPLATE_OSAL_TRACE("template_osalRegSemaphoreHandleFind -> %zu", i + 1u);
+            TEMPLATE_OSAL_TRACE("template_osalRegSemaphoreHandleFind -> %lu", (unsigned long)(i + 1u));
 
-            return i + 1u;
+            return i + 1u;  // Exit: Success: matching registry slot found
         }
     }
 
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalRegSemaphoreHandleFind -> %d", 0);
 
-    return 0u;
+    return 0u;  // Exit: Error: matching registry slot was not found
 }
 
 
 // END SEMAPHORE
+
+// BEGIN EVENT_FLAGS
+/*------------------------------- Registry: Event flags -------------------------------*/
+
+/**
+ * \brief Find a free event-flags slot.
+ *
+ * \param osalPort  Derived OSAL pointer.
+ *
+ * \return Slot ID (index + 1) or 0 if none.
+ */
+static size_t template_osalRegEventFlagsFreeSlotFind(void *const osalPort)
+{
+    /* Trace input args */
+    TEMPLATE_OSAL_TRACE("template_osalRegEventFlagsFreeSlotFind(%p)", osalPort);
+
+    /* Must be validated by the caller */
+    TEMPLATE_OSAL_ASSERT(osalPort != NULL);
+    Template_osal_s *const osal = (Template_osal_s *)osalPort;
+
+    /* Search for an empty registry slot */
+    for (size_t i = 0; i < TEMPLATE_OSAL_EVENT_FLAGS_SLOTS_NUM; ++i)
+    {
+        if (osal->eventFlagsObjHandle[i] == NULL)
+        {
+            /* Trace: returned value */
+            TEMPLATE_OSAL_TRACE("template_osalRegEventFlagsFreeSlotFind -> %lu",
+                                (unsigned long)(i + 1u));
+
+            return i + 1u;  // Exit: Success: matching registry slot found
+        }
+    }
+
+    /* Trace: returned value */
+    TEMPLATE_OSAL_TRACE("template_osalRegEventFlagsFreeSlotFind -> %d", 0);
+
+    return 0u;  // Exit: Error: matching registry slot was not found
+}
+
+
+/**
+ * \brief Find an event-flags handle.
+ *
+ * \param osalPort          Derived OSAL pointer.
+ * \param eventFlagsHandle  Handle to search.
+ *
+ * \return Event-flags ID (index + 1) or 0 if not found.
+ */
+static size_t template_osalRegEventFlagsHandleFind(void *const osalPort,
+                                                   const Template_osalEventFlagsHandle_t eventFlagsHandle)
+{
+    /* Trace input args */
+    TEMPLATE_OSAL_TRACE("template_osalRegEventFlagsHandleFind(%p, %p)",
+                        osalPort, (void *)eventFlagsHandle);
+
+    /* Must be validated by the caller */
+    TEMPLATE_OSAL_ASSERT(osalPort != NULL);
+    TEMPLATE_OSAL_ASSERT(eventFlagsHandle != NULL);
+    Template_osal_s *const osal = (Template_osal_s *)osalPort;
+
+    /* Search for the registered handle */
+    for (size_t i = 0; i < TEMPLATE_OSAL_EVENT_FLAGS_SLOTS_NUM; ++i)
+    {
+        if (osal->eventFlagsObjHandle[i] == eventFlagsHandle)
+        {
+            /* Trace: returned value */
+            TEMPLATE_OSAL_TRACE("template_osalRegEventFlagsHandleFind -> %lu",
+                                (unsigned long)(i + 1u));
+
+            return i + 1u;  // Exit: Success: matching registry slot found
+        }
+    }
+
+    /* Trace: returned value */
+    TEMPLATE_OSAL_TRACE("template_osalRegEventFlagsHandleFind -> %d", 0);
+
+    return 0u;  // Exit: Error: matching registry slot was not found
+}
+// END EVENT_FLAGS
 
 // BEGIN THREAD
 /*------------------------------- Registry: Threads -------------------------------*/
@@ -3491,16 +4428,16 @@ static size_t template_osalRegThreadFreeSlotFind(void *const osalPort)
         if (osal->threadObjHandle[i].handle == NULL)
         {
             /* Trace: returned value */
-            TEMPLATE_OSAL_TRACE("template_osalRegThreadFreeSlotFind -> %zu", i + 1u);
+            TEMPLATE_OSAL_TRACE("template_osalRegThreadFreeSlotFind -> %lu", (unsigned long)(i + 1u));
 
-            return i + 1u;
+            return i + 1u;  // Exit: Success: matching registry slot found
         }
     }
 
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalRegThreadFreeSlotFind -> %d", 0);
 
-    return 0u;
+    return 0u;  // Exit: Error: matching registry slot was not found
 }
 
 
@@ -3528,16 +4465,16 @@ static size_t template_osalRegThreadHandleFind(void *const osalPort,
         if (osal->threadObjHandle[i].handle == threadHandle)
         {
             /* Trace: returned value */
-            TEMPLATE_OSAL_TRACE("template_osalRegThreadHandleFind -> %zu", i + 1u);
+            TEMPLATE_OSAL_TRACE("template_osalRegThreadHandleFind -> %lu", (unsigned long)(i + 1u));
 
-            return i + 1u;
+            return i + 1u;  // Exit: Success: matching registry slot found
         }
     }
 
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalRegThreadHandleFind -> %d", 0);
 
-    return 0u;
+    return 0u;  // Exit: Error: matching registry slot was not found
 }
 
 
@@ -3551,7 +4488,7 @@ static void template_osalRegThreadSlotClear(void *const osalPort,
                                             const size_t threadIdx)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalRegThreadSlotClear(%p, %zu)", osalPort, threadIdx);
+    TEMPLATE_OSAL_TRACE("template_osalRegThreadSlotClear(%p, %lu)", osalPort, (unsigned long)threadIdx);
 
     /* Validate input args */
     TEMPLATE_OSAL_ASSERT(osalPort != NULL);
@@ -3560,11 +4497,11 @@ static void template_osalRegThreadSlotClear(void *const osalPort,
     Template_osal_s *const osal = (Template_osal_s *)osalPort;
 
     /* Clear the thread registry slot */
-    osal->threadObjHandle[threadIdx].cfg.worker    = NULL;
-    osal->threadObjHandle[threadIdx].cfg.name      = NULL;
-    osal->threadObjHandle[threadIdx].cfg.stackSize = 0u;
-    osal->threadObjHandle[threadIdx].cfg.args      = NULL;
-    osal->threadObjHandle[threadIdx].cfg.prio      = TEMPLATE_OSAL_THREAD_PRIORITY_LOW;
+    osal->threadObjHandle[threadIdx].attr.worker    = NULL;
+    osal->threadObjHandle[threadIdx].attr.name      = NULL;
+    osal->threadObjHandle[threadIdx].attr.stackSize = 0u;
+    osal->threadObjHandle[threadIdx].attr.args      = NULL;
+    osal->threadObjHandle[threadIdx].attr.prio      = TEMPLATE_OSAL_THREAD_PRIORITY_LOW;
     osal->threadObjHandle[threadIdx].handle        = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
 
     /* Trace returned value */
@@ -3596,16 +4533,16 @@ static size_t template_osalRegSoftwareTimerFreeSlotFind(void *const osalPort)
         if (osal->softwareTimerObj[i].handle == NULL)
         {
             /* Trace: returned value */
-            TEMPLATE_OSAL_TRACE("template_osalRegSoftwareTimerFreeSlotFind -> %zu", i + 1u);
+            TEMPLATE_OSAL_TRACE("template_osalRegSoftwareTimerFreeSlotFind -> %lu", (unsigned long)(i + 1u));
 
-            return i + 1u;
+            return i + 1u;  // Exit: Success: matching registry slot found
         }
     }
 
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalRegSoftwareTimerFreeSlotFind -> %d", 0);
 
-    return 0u;
+    return 0u;  // Exit: Error: matching registry slot was not found
 }
 
 
@@ -3633,16 +4570,16 @@ static size_t template_osalRegSoftwareTimerHandleFind(void *const osalPort,
         if (osal->softwareTimerObj[i].handle == timerHandle)
         {
             /* Trace: returned value */
-            TEMPLATE_OSAL_TRACE("template_osalRegSoftwareTimerHandleFind -> %zu", i + 1u);
+            TEMPLATE_OSAL_TRACE("template_osalRegSoftwareTimerHandleFind -> %lu", (unsigned long)(i + 1u));
 
-            return i + 1u;
+            return i + 1u;  // Exit: Success: matching registry slot found
         }
     }
 
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalRegSoftwareTimerHandleFind -> %d", 0);
 
-    return 0u;
+    return 0u;  // Exit: Error: matching registry slot was not found
 }
 
 
@@ -3670,55 +4607,55 @@ static size_t template_osalRegMemFreeSlotFind(void *const osalPort)
 
     for (size_t i = 0; i < TEMPLATE_OSAL_MEM_SLOTS_NUM; ++i)
     {
-        if (osal->memObjHandle[i] == NULL)
+        if (osal->memPtr[i] == NULL)
         {
             /* Trace: returned value */
-            TEMPLATE_OSAL_TRACE("template_osalRegMemFreeSlotFind -> %zu", i + 1u);
+            TEMPLATE_OSAL_TRACE("template_osalRegMemFreeSlotFind -> %lu", (unsigned long)(i + 1u));
 
-            return i + 1u;
+            return i + 1u;  // Exit: Success: matching registry slot found
         }
     }
 
     /* Trace: returned value */
     TEMPLATE_OSAL_TRACE("template_osalRegMemFreeSlotFind -> %d", 0);
 
-    return 0u;
+    return 0u;  // Exit: Error: matching registry slot was not found
 }
 
 
 /**
- * \brief Find pointer in memory registry.
+ * \brief Find a registered memory pointer in the internal registry.
  *
  * \param osalPort  Derived OSAL pointer.
- * \param ptr       Pointer to search.
+ * \param memPtr    Memory pointer to search.
  *
- * \return Memory ID (index + 1) or 0 if not found.
+ * \return Memory slot ID (index + 1) or 0 if not found.
  */
-static size_t template_osalRegMemHandleFind(void *const osalPort,
-                                            const void *const ptr)
+static size_t template_osalRegMemPtrFind(void *const osalPort,
+                                         const void *const memPtr)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalRegMemHandleFind(%p, %p)", osalPort, ptr);
+    TEMPLATE_OSAL_TRACE("template_osalRegMemPtrFind(%p, %p)", osalPort, memPtr);
 
     /* Must be validated by the caller */
     TEMPLATE_OSAL_ASSERT(osalPort != NULL);
-    TEMPLATE_OSAL_ASSERT(ptr != NULL);
+    TEMPLATE_OSAL_ASSERT(memPtr != NULL);
     Template_osal_s *const osal = (Template_osal_s *)osalPort;
 
     for (size_t i = 0; i < TEMPLATE_OSAL_MEM_SLOTS_NUM; ++i)
     {
-        if (osal->memObjHandle[i] == ptr)
+        if (osal->memPtr[i] == memPtr)
         {
             /* Trace: returned value */
-            TEMPLATE_OSAL_TRACE("template_osalRegMemHandleFind -> %zu", i + 1u);
+            TEMPLATE_OSAL_TRACE("template_osalRegMemPtrFind -> %lu", (unsigned long)(i + 1u));
 
-            return i + 1u;
+            return i + 1u;  // Exit: Success: matching registry slot found
         }
     }
 
     /* Trace: returned value */
-    TEMPLATE_OSAL_TRACE("template_osalRegMemHandleFind -> %d", 0);
+    TEMPLATE_OSAL_TRACE("template_osalRegMemPtrFind -> %d", 0);
 
-    return 0u;
+    return 0u;  // Exit: Error: matching registry slot was not found
 }
 // END MEMORY
