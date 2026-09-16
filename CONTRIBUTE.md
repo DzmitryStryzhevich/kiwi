@@ -21,7 +21,7 @@ Good contribution candidates include:
 
 Avoid adding a primitive only because one backend exposes it. A new generic API group should have clear component-level semantics that can be represented consistently across the intended backends. The generic name and behavior must follow the KIWI vocabulary rather than inheriting whichever `create`/`destroy`, `give`/`take`, `post`/`pend`, or similar terminology happens to be used by the first backend.
 
-Before implementing a new primitive, define its component-visible behavior: blocking versus non-blocking operation, timeout meaning, ISR/thread context, lifecycle/ownership, success and failure semantics, and how those rules map to every intended backend. See [`generator/resources/templates/osal/README.md`](generator/resources/templates/osal/README.md#one-contract-one-meaning).
+Before implementing a new primitive, define its component-visible behavior: blocking versus non-blocking operation, timeout meaning, ISR/thread context, lifecycle/ownership, success and failure semantics, and how those rules map to every intended backend. See [`doc/osal_architecture_en.md`](doc/osal_architecture_en.md#4-one-contract--one-meaning).
 
 When introducing a new primitive group, update the whole vertical slice rather than only one file:
 
@@ -76,7 +76,7 @@ When adding a generator option, keep CLI, GUI and YAML profiles aligned wherever
 
 New behavior should ideally include tests. The automated test suite is still planned, so contributions that establish or expand that infrastructure are especially useful.
 
-See [`test/README.md`](test/README.md) for the planned coverage model.
+See [`doc/testing.md`](doc/testing.md) for the planned coverage model.
 
 For bug fixes, add a regression test when the relevant test infrastructure exists. For new ports, include at least build/syntax coverage and focused tests for lifecycle, resource handling and backend-specific semantics. Tests should verify the generic semantic contract, not merely that native OS calls can be invoked.
 
@@ -86,7 +86,7 @@ A test backend may provide deterministic controls to the test harness (for examp
 
 Update documentation when behavior, profile format, CLI options, GUI controls, supported ports or generated output layouts change.
 
-Keep the root `README.md` concise. Detailed OSAL architecture belongs in [`generator/resources/templates/osal/README.md`](generator/resources/templates/osal/README.md), while generator usage belongs in [`generator/README.md`](generator/README.md).
+Keep the root `README.md` concise. Detailed OSAL architecture belongs in [`doc/osal_architecture_en.md`](doc/osal_architecture_en.md), while generator usage belongs in [`doc/kiwicgen.md`](doc/kiwicgen.md).
 
 ## Change scope
 

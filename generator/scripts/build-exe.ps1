@@ -487,7 +487,7 @@ Copy-Item -Recurse -Force (Join-Path $RepositoryRoot "doc") (Join-Path $DistDir 
 Copy-Item -Force (Join-Path $GeneratorRoot "resources\kiwicgen-clang-format.yaml") (Join-Path $DistDir "kiwicgen-clang-format.yaml")
 Copy-Item -Force $VenvClangFormat (Join-Path $DistDir "tools\clang-format.exe")
 Copy-Item -Force (Join-Path $RepositoryRoot "README.md") (Join-Path $DistDir "README.md")
-Copy-Item -Force (Join-Path $GeneratorRoot "README.md") (Join-Path $DistDir "kiwicgen-README.md")
+Copy-Item -Force (Join-Path $RepositoryRoot "doc\kiwicgen.md") (Join-Path $DistDir "kiwicgen-README.md")
 Copy-Item -Force (Join-Path $RepositoryRoot "LICENSE") (Join-Path $DistDir "LICENSE")
 Write-Ok "Runtime resources staged."
 

@@ -36,7 +36,7 @@ A test backend can also deliberately control conditions that are difficult to re
 
 The important property is that the component still uses its normal OSAL API. The test does not need to introduce test-only branches into the component or emulate the entire native RTOS API.
 
-For the architectural rationale, see [`../generator/resources/templates/osal/README.md`](../generator/resources/templates/osal/README.md#testability-is-part-of-the-architecture).
+For the architectural rationale, see [`osal_architecture_en.md`](osal_architecture_en.md#14-testability-as-part-of-the-architecture).
 
 ## Planned test layers
 

@@ -49,9 +49,10 @@ generator/
 │   ├── build-exe.bat
 │   ├── build-exe.ps1
 │   └── build-exe.sh
-├── pyproject.toml
-└── README.md
+└── pyproject.toml
 ```
+
+Generator documentation is maintained at repository level in `doc/kiwicgen.md`.
 
 Responsibilities are intentionally separated:
 

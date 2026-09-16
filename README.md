@@ -8,17 +8,17 @@ The project is intended to make component code easier to port, test and maintain
 
 A component-scoped OSAL gives a component a small, stable and unambiguous contract for the OS services it actually uses. It also provides a natural test boundary, allowing the same component to run against a production backend or an isolated host/test implementation.
 
-For the architectural model, unified OS primitive semantics, ownership rules and testability rationale, see [`generator/resources/templates/osal/README.md`](generator/resources/templates/osal/README.md).
+For the architectural model, unified OS primitive semantics, ownership rules and testability rationale, see [`doc/osal_architecture_en.md`](doc/osal_architecture_en.md). A Russian version is available in [`doc/osal_architecture_ru.md`](doc/osal_architecture_ru.md).
 
 ## Code generator
 
 KIWI provides both CLI and GUI frontends over the same code-generation core. YAML profiles can be used to save and reproduce generation settings.
 
-For CLI options, GUI controls, profiles, output layouts and executable builds, see [`generator/README.md`](generator/README.md).
+For CLI options, GUI controls, profiles, output layouts and executable builds, see [`doc/kiwicgen.md`](doc/kiwicgen.md).
 
 ## Examples
 
-Usage examples for the generated generic OSAL API are collected in [`examples/`](examples/). The examples are currently a placeholder and will be expanded as the API is stabilized.
+Usage examples for the generated generic OSAL API are collected in [`doc/examples.md`](doc/examples.md). The examples are currently a placeholder and will be expanded as the API is stabilized.
 
 ## Supported ports
 
@@ -30,7 +30,7 @@ Usage examples for the generated generic OSAL API are collected in [`examples/`]
 
 ## Testing
 
-Automated test infrastructure is still planned. See [`test/README.md`](test/README.md) for the intended testing model and current manual checks.
+Automated test infrastructure is still planned. See [`doc/testing.md`](doc/testing.md) for the intended testing model and current manual checks.
 
 ## Contributing
 

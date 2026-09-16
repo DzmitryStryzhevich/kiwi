@@ -55,8 +55,10 @@ def resolve_app_asset(relative_path: str) -> pathlib.Path:
 
 
 def resolve_project_readme() -> pathlib.Path:
-    """Resolve the project README copied beside generated output when available."""
-    return runtime_root() / "README.md"
+    """Resolve the generator README copied beside generated output when available."""
+    if getattr(sys, "frozen", False):
+        return runtime_root() / "kiwicgen-README.md"
+    return REPOSITORY_ROOT / "doc" / "kiwicgen.md"
 
 
 def base_header_dir(module_dir: pathlib.Path, config: GenerationConfig) -> pathlib.Path:

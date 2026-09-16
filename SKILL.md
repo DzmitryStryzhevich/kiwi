@@ -96,7 +96,7 @@ If a function currently returns a summary status that may represent either succe
 
 ## OSAL Extension Rules
 
-- Preserve the component-scoped ownership model documented in `generator/resources/templates/osal/README.md`.
+- Preserve the component-scoped ownership model documented in `doc/osal_architecture_en.md`.
 - New generic OSAL operations must express component-level semantics rather than copy native RTOS vocabulary mechanically.
 - Resource-backed primitives must follow the existing registry ownership model.
 - Backend-only registry helpers belong in the protected methods table when they operate on generic OSAL-owned registry state.
