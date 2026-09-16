@@ -27,7 +27,13 @@ kiwicgen-gui = "gui.main:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["core*", "formatter*", "cli*", "gui*"]
+include = ["core*", "formatter*", "cli*", "gui*", "resources*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "core.version.__version__"}
+
+[tool.setuptools.package-data]
+resources = [
+    "kiwicgen-clang-format.yaml",
+    "templates/**/*",
+]
