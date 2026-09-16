@@ -30,7 +30,7 @@ Usage examples for the generated generic OSAL API are collected in [`doc/example
 
 ## Testing
 
-Automated test infrastructure is still planned. See [`doc/testing.md`](doc/testing.md) for the intended testing model and current manual checks.
+A four-stage GitHub Actions pipeline checks the generator, generates the full OSAL API set, builds and links the generated FreeRTOS port against the official FreeRTOS `GCC_POSIX` host port, and runs static analysis. See [`doc/testing.md`](doc/testing.md) for the current CI flow and the broader testing model.
 
 ## Contributing
 

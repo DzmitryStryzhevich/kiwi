@@ -61,7 +61,7 @@ The central KIWI OSAL principle is therefore:
 
 The component should know **what** operation it needs, while the OS-specific implementation should decide **how** the current operating system performs that operation.
 
-![KIWI OSAL architectural model](images/en/osal_architecture.png)
+<p align="center"><img src="images/en/osal_architecture.png" alt="KIWI OSAL architectural model" width="50%"></p>
 
 ---
 
@@ -215,7 +215,7 @@ One of the defining KIWI principles is that OSAL scope is owned by the software 
 
 That does not make a system-wide OSAL wrong. Global and component-scoped designs are different points on a scope continuum ranging from an individual component through a subsystem and application to an entire software platform.
 
-![Global and component-scoped OSAL](images/en/global_vs_component_osal.png)
+<p align="center"><img src="images/en/global_vs_component_osal.png" alt="Global and component-scoped OSAL" width="50%"></p>
 
 ### 6.1 Global OSAL
 
@@ -311,7 +311,7 @@ The central ownership invariant is:
 
 > **The component owns the OSAL instance. The OSAL instance owns the operating-system resources created through it.**
 
-![Resource ownership model](images/en/ownership_model.png)
+<p align="center"><img src="images/en/ownership_model.png" alt="Resource ownership model" width="50%"></p>
 
 This makes resource lifetime visible and enforceable.
 
@@ -332,7 +332,7 @@ Terminology reflects architecture:
 
 Resources created through an OSAL instance are tracked in fixed-capacity internal registries.
 
-![OSAL resource registry](images/en/resource_registry.png)
+<p align="center"><img src="images/en/resource_registry.png" alt="OSAL resource registry" width="50%"></p>
 
 This provides several properties.
 
@@ -468,7 +468,7 @@ Portability and testability are two consequences of the same boundary.
 
 If a component depends only on its OSAL contract, the production OS implementation can be replaced without changing component source code.
 
-![KIWI OSAL testability](images/en/testability.png)
+<p align="center"><img src="images/en/testability.png" alt="KIWI OSAL testability" width="50%"></p>
 
 Two different test-oriented implementations are useful.
 
@@ -534,7 +534,9 @@ The contract should be explicit:
 
 An invalid explicit configuration must not silently fall back to defaults. “Not provided” and “provided but invalid” are different states.
 
-For FreeRTOS, priority mapping from `LOW/NORMAL/HIGH/CRITICAL` to scheduler priorities is one such policy. In SMP builds, thread-slot affinity may be another.
+For FreeRTOS, priority mapping from `LOW/NORMAL/HIGH/CRITICAL` to scheduler priorities is one such policy. A custom mapping is accepted only when `LOW` is above `tskIDLE_PRIORITY`, every mapped value is below `configMAX_PRIORITIES`, and the sequence is strictly increasing: `LOW < NORMAL < HIGH < CRITICAL`. In SMP builds, thread-slot affinity may be another per-instance policy.
+
+When MPU support is enabled, the FreeRTOS instance may provide one shared `MemoryRegion_t[portNUM_CONFIGURABLE_REGIONS]` policy. Region validation rejects zero sizes, address-range overflow, and pairwise overlap. For known MPU models detected from capabilities exposed by the selected FreeRTOS headers, the port also validates architecture-specific minimum size, granularity, and alignment rules. An otherwise unknown MPU model requires an explicit platform validator instead of being silently accepted.
 
 ### 15.2 Infinite wait
 

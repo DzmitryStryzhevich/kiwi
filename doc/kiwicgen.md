@@ -264,6 +264,22 @@ Languages:
 
 Before starting a generation worker, the GUI validates configuration. At least one port and a language must be selected. Selecting an unimplemented port/language produces both a generator-log error and a GUI error message; generation is not started.
 
+## FreeRTOS port instance parameters
+
+The generated FreeRTOS port supports optional per-instance policy parameters. Passing `NULL` to the FreeRTOS initialization function selects the default port policy. A non-`NULL` parameter structure is validated before any override is applied; invalid explicitly supplied parameters cause initialization to fail rather than being silently replaced by defaults.
+
+Thread priorities use the generic OSAL levels `LOW`, `NORMAL`, `HIGH` and `CRITICAL`. The default mapping is defined by the `TEMPLATE_OSAL_FREERTOS_THREAD_PRIO_*` macros. An instance-specific mapping must satisfy all of the following conditions:
+
+- `LOW` must be above `tskIDLE_PRIORITY`;
+- every mapped priority must be below `configMAX_PRIORITIES`;
+- priorities must be strictly ordered as `LOW < NORMAL < HIGH < CRITICAL`.
+
+When `TEMPLATE_OSAL_FREERTOS_USE_SMP` is enabled, an instance may additionally provide a thread-slot-to-core-affinity policy. Affinity masks are validated against the number of cores exposed by the selected FreeRTOS port.
+
+When `TEMPLATE_OSAL_FREERTOS_USE_MPU` is enabled, the instance may provide one common set of `MemoryRegion_t` regions for the port. The regions are shared policy parameters for the instance rather than per-thread-slot configuration. Validation rejects zero-sized regions, address-range overflow and overlapping regions. For recognized Arm MPU models the port also checks the architecture-specific size and alignment constraints. MPU model detection is based on capabilities exposed by the selected FreeRTOS headers; an otherwise unknown MPU model requires `TEMPLATE_OSAL_FREERTOS_MPU_REGION_PLATFORM_VALIDATE(region)` to be supplied.
+
+The generic infinite timeout remains `TEMPLATE_OSAL_INFINITY_TOUT`. The FreeRTOS implementation converts it directly to the native `portMAX_DELAY`; no separate FreeRTOS infinity constant is introduced.
+
 ## Generated resources and formatter
 
 Source execution resolves resources from:

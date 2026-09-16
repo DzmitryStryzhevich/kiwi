@@ -1,6 +1,43 @@
 # KIWI Testing
 
-Automated tests are not implemented yet. The `test/` directory is reserved for project test infrastructure, but testing is already a central part of the KIWI architecture rather than an optional layer to be added later.
+KIWI now has a basic GitHub Actions verification pipeline. It intentionally starts with a small set of high-value checks: the generator itself must build and run, a full-set OSAL must be generated, the generated C sources must compile, and the generated sources must pass static analysis. More focused unit and integration tests remain planned.
+
+
+## GitHub Actions pipeline
+
+The repository contains a four-stage workflow in `.github/workflows/ci.yml`:
+
+```text
+generator-check
+      |
+      v
+generate-full-set
+      |
+      v
+build-generated
+      |
+      v
+static-analysis
+```
+
+The `generate-full-set` stage enables every currently implemented OSAL primitive group:
+
+- queue;
+- stream buffer;
+- mutex;
+- semaphore;
+- event flags;
+- thread;
+- critical section;
+- software timer;
+- time;
+- memory.
+
+The generated source tree is passed between jobs as a workflow artifact. The build stage checks out the official `FreeRTOS/FreeRTOS-Kernel` repository at the pinned `V11.3.1` tag and builds the generated full-set OSAL against the real `GCC_POSIX` FreeRTOS simulator port. A CI-only `FreeRTOSConfig.h` supplies the kernel configuration required by the generated API set, while the FreeRTOS kernel itself, its POSIX port, heap implementation, queue/event/stream-buffer/timer code and native headers all come from the upstream FreeRTOS release.
+
+The build uses CMake and links a small host executable against both generated OSAL libraries and the real FreeRTOS kernel. This intentionally goes beyond syntax-only compilation: unresolved FreeRTOS symbols in the generated port become link failures. The generated targets are compiled with `-Wall -Wextra -Werror`.
+
+The static-analysis stage checks the same generated full-set sources against the real FreeRTOS headers from the pinned POSIX port. It currently runs GCC `-fanalyzer` and `cppcheck`. MPU and SMP are not enabled in this host build because the FreeRTOS POSIX simulator is neither an MPU port nor an SMP target; their port-specific validation remains covered at source-contract level rather than being faked by CI-only FreeRTOS stubs.
 
 ## Why component-scoped OSAL is test-friendly
 
@@ -77,7 +114,7 @@ This separation is important: test controls belong outside the component-facing 
 
 ## Current manual smoke test
 
-Until the automated suite exists, a basic development check can be performed from the repository root.
+The same checks can also be run manually from the repository root during local development.
 
 Check Python syntax:
 
