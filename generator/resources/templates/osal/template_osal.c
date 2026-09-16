@@ -3990,7 +3990,7 @@ static void template_osalRegReset(Template_osal_s *const osal)
         osal->threadObjHandle[i].attr.name      = NULL;
         osal->threadObjHandle[i].attr.stackSize = 0u;
         osal->threadObjHandle[i].attr.args      = NULL;
-        osal->threadObjHandle[i].attr.prio      = TEMPLATE_OSAL_THREAD_PRIORITY_LOW;
+        osal->threadObjHandle[i].attr.prio      = TEMPLATE_OSAL_THREAD_PRIO_LOW;
         osal->threadObjHandle[i].handle        = NULL;
     }
 
@@ -4501,7 +4501,7 @@ static void template_osalRegThreadSlotClear(void *const osalPort,
     osal->threadObjHandle[threadIdx].attr.name      = NULL;
     osal->threadObjHandle[threadIdx].attr.stackSize = 0u;
     osal->threadObjHandle[threadIdx].attr.args      = NULL;
-    osal->threadObjHandle[threadIdx].attr.prio      = TEMPLATE_OSAL_THREAD_PRIORITY_LOW;
+    osal->threadObjHandle[threadIdx].attr.prio      = TEMPLATE_OSAL_THREAD_PRIO_LOW;
     osal->threadObjHandle[threadIdx].handle        = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
 
     /* Trace returned value */

@@ -65,11 +65,38 @@
     #endif
 #endif
 
+// BEGIN THREAD
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
+    #if !defined(configNUMBER_OF_CORES) || (configNUMBER_OF_CORES <= 1)
+        #error "TEMPLATE_OSAL_FREERTOS_USE_SMP requires FreeRTOS SMP with configNUMBER_OF_CORES > 1"
+    #endif
+    #if !defined(configUSE_CORE_AFFINITY) || (configUSE_CORE_AFFINITY != 1)
+        #error "TEMPLATE_OSAL_FREERTOS_USE_SMP requires configUSE_CORE_AFFINITY == 1"
+    #endif
+#endif
+// END THREAD
+
 //====================================================================[ INTERNAL DATA TYPES DEFINITIONS ]===========================================================================
 
 /* None */
 
 //===============================================================[ INTERNAL FUNCTIONS AND OBJECTS DECLARATION ]=====================================================================
+
+/**
+ * \brief Initialize FreeRTOS-specific instance parameters with the default port policy.
+ */
+static void template_osalFreertosParamDefaultSet(Template_osalFreertosParam_s *const param);
+
+/**
+ * \brief Validate explicitly supplied FreeRTOS-specific instance parameters.
+ */
+static bool template_osalFreertosParamValidate(const Template_osalFreertosParam_s *const param);
+
+/**
+ * \brief Apply validated FreeRTOS-specific instance parameters over the default policy.
+ */
+static void template_osalFreertosParamApply(Template_osalFreertosParam_s *const dst,
+                                            const Template_osalFreertosParam_s *const src);
 
 // BEGIN QUEUE
 /*-------------------------------- Queues ---------------------------------*/
@@ -503,15 +530,16 @@ static inline Template_osalErr_e template_osalFreertosResourceUnlock(Template_os
 
 // BEGIN THREAD
 /**
- * \brief FreeRTOS priority levels lookup table.
+ * \brief Default FreeRTOS thread priority mapping.
+ * \details Used when no instance-specific priority policy is supplied.
  */
 static const UBaseType_t template_osalFreertosThreadPriority
-[TEMPLATE_OSAL_THREAD_PRIORITY_THE_LAST_ONE] =
+[TEMPLATE_OSAL_THREAD_PRIO_MAX_COUNT] =
 {
     TEMPLATE_OSAL_FREERTOS_THREAD_PRIO_LOW,
-    TEMPLATE_OSAL_FREERTOS_THREAD_PRIO_MIDDLE,
+    TEMPLATE_OSAL_FREERTOS_THREAD_PRIO_NORMAL,
     TEMPLATE_OSAL_FREERTOS_THREAD_PRIO_HIGH,
-    TEMPLATE_OSAL_FREERTOS_THREAD_PRIO_ULTRA
+    TEMPLATE_OSAL_FREERTOS_THREAD_PRIO_CRITICAL
 };
 
 // END THREAD
@@ -630,13 +658,14 @@ static const Template_osalVtable_s template_osalFreertosVtable =
  * \brief Initialize the Template FreeRTOS OSAL instance.
  *
  * \details
- * Initializes the generic OSAL base object, creates the internal resource
- * mutex and binds the FreeRTOS backend vtable.
+ * Validates and normalizes optional instance parameters, initializes the generic
+ * OSAL base object, creates the internal resource mutex and binds the FreeRTOS
+ * backend vtable. Passing NULL as param selects the default port policy.
  *
  * \param osalFreertos  Pointer to the FreeRTOS-specific OSAL instance.
  * \param name          Optional instance name. May be NULL.
  * \param parent        Optional parent object pointer. May be NULL.
- * \param param         Optional FreeRTOS parameter structure. May be NULL.
+ * \param param         Optional FreeRTOS instance parameters. NULL selects the default port policy.
  *
  * \return Template_osalErr_e, zero value means success, otherwise an error
  *         has occurred.
@@ -674,6 +703,16 @@ Template_osalErr_e template_osalFreertosInit(Template_osalFreertos_s *const osal
         return osalStatus;  // Exit: Error: ISR context is not supported
     }
 
+    /* Validate explicitly supplied instance parameters */
+    if ((param != NULL) &&
+        !template_osalFreertosParamValidate(param))
+    {
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosInit -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: invalid instance parameters
+    }
+
     /* Initialize the generic OSAL base */
     osalStatus = template_osalInit(&osalFreertos->base, name, parent);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
@@ -686,7 +725,13 @@ Template_osalErr_e template_osalFreertosInit(Template_osalFreertos_s *const osal
     /* Reset the FreeRTOS-specific state */
     osalFreertos->validFlag     = false;
     osalFreertos->resourceMutex = NULL;
-    osalFreertos->param.handle  = NULL;
+
+    /* Initialize the default instance policy and apply explicit overrides */
+    template_osalFreertosParamDefaultSet(&osalFreertos->param);
+    if (param != NULL)
+    {
+        template_osalFreertosParamApply(&osalFreertos->param, param);
+    }
 
     /* Create the internal resource mutex */
     osalFreertos->resourceMutex = xSemaphoreCreateMutex();
@@ -699,12 +744,6 @@ Template_osalErr_e template_osalFreertosInit(Template_osalFreertos_s *const osal
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosInit -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex creation failed
-    }
-
-    /* Store optional FreeRTOS parameters */
-    if (param != NULL)
-    {
-        osalFreertos->param = *param;
     }
 
     /* Bind the FreeRTOS backend vtable */
@@ -876,7 +915,7 @@ Template_osalErr_e template_osalFreertosDeinit(Template_osalFreertos_s *const os
     osalFreertos->base.vtable = NULL;
     vSemaphoreDelete(osalFreertos->resourceMutex);
     osalFreertos->resourceMutex = NULL;
-    osalFreertos->param.handle  = NULL;
+    osalFreertos->param         = (Template_osalFreertosParam_s){0};
 
     /* Deinitialize the generic OSAL base */
     osalStatus = template_osalDeinit(&osalFreertos->base);
@@ -888,6 +927,171 @@ Template_osalErr_e template_osalFreertosDeinit(Template_osalFreertos_s *const os
 }
 
 //============================================================================[ PRIVATE FUNCTIONS ]==================================================================================
+
+/**
+ * \brief Initialize FreeRTOS-specific instance parameters with the default port policy.
+ *
+ * \param param  Destination parameter structure.
+ */
+static void template_osalFreertosParamDefaultSet(Template_osalFreertosParam_s *const param)
+{
+    /* Trace input args */
+    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosParamDefaultSet(%p)", (void *)param);
+
+    /* Validate input args */
+    TEMPLATE_OSAL_FREERTOS_ASSERT(param != NULL);
+
+    /* Reset common integration context */
+    param->handle = NULL;
+
+    // BEGIN THREAD
+    /* Apply the default priority mapping */
+    param->prio.hasParam = false;
+    for (size_t i = 0u; i < TEMPLATE_OSAL_THREAD_PRIO_MAX_COUNT; ++i)
+    {
+        param->prio.policy[i] = template_osalFreertosThreadPriority[i];
+    }
+
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
+    /* Preserve the FreeRTOS default core-affinity policy when no override is supplied. */
+    param->smp.hasParam = false;
+    for (size_t i = 0u; i < TEMPLATE_OSAL_THREAD_SLOTS_NUM; ++i)
+    {
+#ifdef configTASK_DEFAULT_CORE_AFFINITY
+        param->smp.coreAffinityMask[i] = (UBaseType_t)configTASK_DEFAULT_CORE_AFFINITY;
+#else
+        param->smp.coreAffinityMask[i] = tskNO_AFFINITY;
+#endif
+    }
+#endif
+    // END THREAD
+
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+    /* MPU instance options are disabled unless explicitly supplied. */
+    param->mpu.hasParam = false;
+#endif
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosParamDefaultSet -> ok");
+}
+
+
+/**
+ * \brief Validate explicitly supplied FreeRTOS-specific instance parameters.
+ *
+ * \param param  Parameter structure to validate.
+ *
+ * \return true if all explicitly supplied parameter groups are valid; false otherwise.
+ */
+static bool template_osalFreertosParamValidate(const Template_osalFreertosParam_s *const param)
+{
+    bool isValid = true;
+
+    /* Trace input args */
+    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosParamValidate(%p)", (const void *)param);
+
+    /* Validate input args */
+    TEMPLATE_OSAL_FREERTOS_ASSERT(param != NULL);
+
+    // BEGIN THREAD
+    /* Validate an explicitly supplied priority mapping */
+    if (param->prio.hasParam)
+    {
+        for (size_t i = 0u; i < TEMPLATE_OSAL_THREAD_PRIO_MAX_COUNT; ++i)
+        {
+            if (param->prio.policy[i] >= (UBaseType_t)configMAX_PRIORITIES)
+            {
+                isValid = false;
+                break;
+            }
+        }
+    }
+
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
+    /* Validate an explicitly supplied thread-slot affinity policy */
+    if (param->smp.hasParam)
+    {
+        const size_t affinityBits = sizeof(UBaseType_t) * 8u;
+        UBaseType_t validCoreMask = 0u;
+        for (size_t core = 0u; core < (size_t)configNUMBER_OF_CORES; ++core)
+        {
+            if (core >= affinityBits)
+            {
+                validCoreMask = (UBaseType_t)~(UBaseType_t)0u;
+                break;
+            }
+
+            validCoreMask |= (UBaseType_t)((UBaseType_t)1u << core);
+        }
+
+        for (size_t i = 0u; i < TEMPLATE_OSAL_THREAD_SLOTS_NUM; ++i)
+        {
+            const UBaseType_t affinityMask = param->smp.coreAffinityMask[i];
+            if ((affinityMask != tskNO_AFFINITY) &&
+                ((affinityMask == 0u) ||
+                 ((affinityMask & ~validCoreMask) != 0u)))
+            {
+                isValid = false;
+                break;
+            }
+        }
+    }
+#endif
+    // END THREAD
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosParamValidate -> %d", (int)isValid);
+
+    return isValid;  // Exit: Success: validation result returned
+}
+
+
+/**
+ * \brief Apply validated FreeRTOS-specific instance parameters over the default port policy.
+ *
+ * \param dst  Destination normalized parameter structure.
+ * \param src  Validated parameter structure supplied by the caller.
+ */
+static void template_osalFreertosParamApply(Template_osalFreertosParam_s *const dst,
+                                            const Template_osalFreertosParam_s *const src)
+{
+    /* Trace input args */
+    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosParamApply(%p, %p)",
+                                 (void *)dst,
+                                 (const void *)src);
+
+    /* Validate input args */
+    TEMPLATE_OSAL_FREERTOS_ASSERT(dst != NULL);
+    TEMPLATE_OSAL_FREERTOS_ASSERT(src != NULL);
+
+    /* Copy common integration context */
+    dst->handle = src->handle;
+
+    // BEGIN THREAD
+    /* Apply an optional instance-specific priority mapping */
+    if (src->prio.hasParam)
+    {
+        dst->prio = src->prio;
+    }
+
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
+    /* Apply an optional instance-specific thread-slot affinity policy */
+    if (src->smp.hasParam)
+    {
+        dst->smp = src->smp;
+    }
+#endif
+    // END THREAD
+
+#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+    /* Preserve the optional MPU parameter-group state for port integration. */
+    dst->mpu = src->mpu;
+#endif
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosParamApply -> ok");
+}
+
 
 // BEGIN QUEUE
 /*-------------------------------- Queues ---------------------------------*/
@@ -4038,19 +4242,31 @@ static Template_osalErr_e template_osalFreertosThreadCreate(void *const osal,
         return osalStatus;  // Exit: Error: no free thread slot
     }
 
+    const size_t threadIdx                  = threadId - 1u;
     const size_t stackWordSize              = sizeof(StackType_t);
     const size_t stackWordsRaw              = (threadAttr.stackSize + stackWordSize - 1u) / stackWordSize;
     const configSTACK_DEPTH_TYPE stackWords = (configSTACK_DEPTH_TYPE)stackWordsRaw;
-    const UBaseType_t priority              = template_osalFreertosThreadPriority[threadAttr.prio];
+    const UBaseType_t priority              = port->param.prio.policy[threadAttr.prio];
 
     TaskHandle_t nativeThread = NULL;
-    /* Create the native FreeRTOS task */
-    const BaseType_t rc = xTaskCreate((TaskFunction_t)threadAttr.worker,
-                                      threadAttr.name,
-                                      stackWords,
-                                      threadAttr.args,
-                                      priority,
-                                      &nativeThread);
+
+    /* Create the native FreeRTOS task using the normalized instance policy */
+    #ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
+        const BaseType_t rc = xTaskCreateAffinitySet((TaskFunction_t)threadAttr.worker,
+                                                    threadAttr.name,
+                                                    stackWords,
+                                                    threadAttr.args,
+                                                    priority,
+                                                    port->param.smp.coreAffinityMask[threadIdx],
+                                                    &nativeThread);
+    #else
+        const BaseType_t rc = xTaskCreate((TaskFunction_t)threadAttr.worker,
+                                         threadAttr.name,
+                                         stackWords,
+                                         threadAttr.args,
+                                         priority,
+                                         &nativeThread);
+    #endif
     if ((rc != pdPASS) ||
         (nativeThread == NULL))
     {
@@ -4064,7 +4280,6 @@ static Template_osalErr_e template_osalFreertosThreadCreate(void *const osal,
         return osalStatus;  // Exit: Error: task creation failed
     }
 
-    const size_t threadIdx = threadId - 1u;
     port->base.threadObjHandle[threadIdx].attr = threadAttr;
 
     /* Register the created thread */
@@ -4590,7 +4805,7 @@ static bool template_osalFreertosThreadParamCheck(const Template_osalThreadAttr_
         isValid = false;
     }
 
-    if (threadAttr->prio >= TEMPLATE_OSAL_THREAD_PRIORITY_THE_LAST_ONE)
+    if (threadAttr->prio >= TEMPLATE_OSAL_THREAD_PRIO_MAX_COUNT)
     {
         isValid = false;
     }
@@ -5298,16 +5513,15 @@ static inline TickType_t template_osalFreertosTimeMsToTicksConvert(const Templat
     TickType_t tickCount = 0u;
 
     /* Trace input args */
-    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosTimeMsToTicksConvert(%u)",
-                                 (unsigned int)timeMs);
+    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosTimeMsToTicksConvert(%lu)",
+                                 (unsigned long)timeMs);
 
-    if ((timeMs == TEMPLATE_OSAL_INFINITY_TOUT) ||
-        (timeMs == TEMPLATE_OSAL_FREERTOS_INFINITY_TIMEOUT))
+    if (timeMs == TEMPLATE_OSAL_INFINITY_TOUT)
     {
         tickCount = portMAX_DELAY;
         /* Trace returned value */
-        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosTimeMsToTicksConvert -> %u",
-                                     (unsigned int)tickCount);
+        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosTimeMsToTicksConvert -> %lu",
+                                     (unsigned long)tickCount);
 
         return tickCount;  // Exit: Success: infinite timeout converted
     }
@@ -5320,8 +5534,8 @@ static inline TickType_t template_osalFreertosTimeMsToTicksConvert(const Templat
     }
 
     /* Trace returned value */
-    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosTimeMsToTicksConvert -> %u",
-                                 (unsigned int)tickCount);
+    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosTimeMsToTicksConvert -> %lu",
+                                 (unsigned long)tickCount);
 
     return tickCount;  // Exit: Success: timeout converted
 }

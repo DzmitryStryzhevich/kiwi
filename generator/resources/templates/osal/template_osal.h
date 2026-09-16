@@ -314,17 +314,20 @@ typedef void (*Template_osalThreadWorker_f)(void *const args);
 
 /**
  * \enum    Template_osalThreadPrio_e
- * \brief Required thread priority levels for OSAL implementations.
- * \warning TEMPLATE_OSAL_THREAD_PRIORITY_THE_LAST_ONE is not a valid runtime priority.
+ * \brief   Required thread priority levels for OSAL implementations.
  */
 typedef enum
 {
-    TEMPLATE_OSAL_THREAD_PRIORITY_LOW = 0,       //!< Background tasks.
-    TEMPLATE_OSAL_THREAD_PRIORITY_MIDDLE,        //!< Standard operational tasks.
-    TEMPLATE_OSAL_THREAD_PRIORITY_HIGH,          //!< Time-sensitive tasks.
-    TEMPLATE_OSAL_THREAD_PRIORITY_ULTRA,         //!< Critical real-time tasks.
-    TEMPLATE_OSAL_THREAD_PRIORITY_THE_LAST_ONE   //!< For array sizing only.
+    TEMPLATE_OSAL_THREAD_PRIO_LOW      = 0,  //!< Background tasks.
+    TEMPLATE_OSAL_THREAD_PRIO_NORMAL   = 1,  //!< Standard operational tasks.
+    TEMPLATE_OSAL_THREAD_PRIO_HIGH     = 2,  //!< Time-sensitive tasks.
+    TEMPLATE_OSAL_THREAD_PRIO_CRITICAL = 3   //!< Critical real-time tasks.
 } Template_osalThreadPrio_e;
+
+/**
+ * \brief Number of supported OSAL thread priority levels.
+ */
+#define TEMPLATE_OSAL_THREAD_PRIO_MAX_COUNT    (4u)
 
 /**
  * \brief Template OSAL thread attributes structure.
