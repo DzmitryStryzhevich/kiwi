@@ -584,7 +584,8 @@ Template_osalErr_e template_osalQueueCreate(Template_osal_s *const osal,
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalQueueCreate(%p, %lu, %lu, %p)",
-                        (void *)osal, (unsigned long)queueItemSize, (unsigned long)queueDepth, (void *)queueHandle);
+                        (void *)osal, (unsigned long)queueItemSize,
+                        (unsigned long)queueDepth, (void *)queueHandle);
 
     /* Validate args */
     if ((osal == NULL) ||
@@ -607,8 +608,7 @@ Template_osalErr_e template_osalQueueCreate(Template_osal_s *const osal,
     }
 
     /* Check vtable methods table */
-    if ((osal->vtable == NULL) ||
-        (osal->vtable->queueCreate == NULL))
+    if (osal->vtable->queueCreate == NULL)
     {
         /* Trace: returned value */
         TEMPLATE_OSAL_TRACE("template_osalQueueCreate -> %d", TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
@@ -1652,7 +1652,8 @@ Template_osalErr_e template_osalStreamBufferHandleGet(Template_osal_s *const osa
         (streamBufferSlotInd >= TEMPLATE_OSAL_STREAM_BUFFER_SLOTS_NUM))
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalStreamBufferHandleGet -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
+        TEMPLATE_OSAL_TRACE("template_osalStreamBufferHandleGet -> %d",
+                            TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
         return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
@@ -1661,7 +1662,6 @@ Template_osalErr_e template_osalStreamBufferHandleGet(Template_osal_s *const osa
     if (osal->validFlag != true)
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalStreamBufferHandleGet -> %d", TEMPLATE_OSAL_NOT_INIT_ERR);
 
         return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
     }
@@ -3561,7 +3561,6 @@ Template_osalErr_e template_osalSoftwareTimerStop(Template_osal_s *const osal,
         (timerHandle == NULL))
     {
         /* Trace: returned value */
-        TEMPLATE_OSAL_TRACE("template_osalSoftwareTimerStop -> %d", TEMPLATE_OSAL_INVALID_ARGS_ERR);
 
         return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
     }
@@ -4488,7 +4487,6 @@ static void template_osalRegThreadSlotClear(void *const osalPort,
                                             const size_t threadIdx)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalRegThreadSlotClear(%p, %lu)", osalPort, (unsigned long)threadIdx);
 
     /* Validate input args */
     TEMPLATE_OSAL_ASSERT(osalPort != NULL);
@@ -4558,7 +4556,6 @@ static size_t template_osalRegSoftwareTimerHandleFind(void *const osalPort,
                                                       const Template_osalSoftwareTimerHandle_t timerHandle)
 {
     /* Trace input args */
-    TEMPLATE_OSAL_TRACE("template_osalRegSoftwareTimerHandleFind(%p, %p)", osalPort, (void *)timerHandle);
 
     /* Must be validated by the caller */
     TEMPLATE_OSAL_ASSERT(osalPort != NULL);
@@ -4610,7 +4607,6 @@ static size_t template_osalRegMemFreeSlotFind(void *const osalPort)
         if (osal->memPtr[i] == NULL)
         {
             /* Trace: returned value */
-            TEMPLATE_OSAL_TRACE("template_osalRegMemFreeSlotFind -> %lu", (unsigned long)(i + 1u));
 
             return i + 1u;  // Exit: Success: matching registry slot found
         }
@@ -4647,7 +4643,6 @@ static size_t template_osalRegMemPtrFind(void *const osalPort,
         if (osal->memPtr[i] == memPtr)
         {
             /* Trace: returned value */
-            TEMPLATE_OSAL_TRACE("template_osalRegMemPtrFind -> %lu", (unsigned long)(i + 1u));
 
             return i + 1u;  // Exit: Success: matching registry slot found
         }
