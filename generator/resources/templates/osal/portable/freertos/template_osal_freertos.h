@@ -32,21 +32,21 @@
  * \brief Default FreeRTOS priority assigned to TEMPLATE_OSAL_THREAD_PRIO_LOW.
  */
 #ifndef TEMPLATE_OSAL_FREERTOS_THREAD_PRIO_LOW
-    #define TEMPLATE_OSAL_FREERTOS_THREAD_PRIO_LOW         (tskIDLE_PRIORITY + 1)
+    #define TEMPLATE_OSAL_FREERTOS_THREAD_PRIO_LOW    (tskIDLE_PRIORITY + 1)
 #endif
 
 /**
  * \brief Default FreeRTOS priority assigned to TEMPLATE_OSAL_THREAD_PRIO_NORMAL.
  */
 #ifndef TEMPLATE_OSAL_FREERTOS_THREAD_PRIO_NORMAL
-    #define TEMPLATE_OSAL_FREERTOS_THREAD_PRIO_NORMAL      (tskIDLE_PRIORITY + 2)
+    #define TEMPLATE_OSAL_FREERTOS_THREAD_PRIO_NORMAL    (tskIDLE_PRIORITY + 2)
 #endif
 
 /**
  * \brief Default FreeRTOS priority assigned to TEMPLATE_OSAL_THREAD_PRIO_HIGH.
  */
 #ifndef TEMPLATE_OSAL_FREERTOS_THREAD_PRIO_HIGH
-    #define TEMPLATE_OSAL_FREERTOS_THREAD_PRIO_HIGH        (tskIDLE_PRIORITY + 3)
+    #define TEMPLATE_OSAL_FREERTOS_THREAD_PRIO_HIGH    (tskIDLE_PRIORITY + 3)
 #endif
 
 /**
@@ -57,18 +57,21 @@
 #endif
 
 #ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
-    #if !defined(portUSING_MPU_WRAPPERS) || (portUSING_MPU_WRAPPERS != 1)
+    #if !defined(portUSING_MPU_WRAPPERS) ||\
+    (portUSING_MPU_WRAPPERS != 1)
         #error "TEMPLATE_OSAL_FREERTOS_USE_MPU requires a FreeRTOS MPU port"
     #endif
 
-    #if !defined(portNUM_CONFIGURABLE_REGIONS) || (portNUM_CONFIGURABLE_REGIONS < 1)
+    #if !defined(portNUM_CONFIGURABLE_REGIONS) ||\
+    (portNUM_CONFIGURABLE_REGIONS < 1)
         #error "TEMPLATE_OSAL_FREERTOS_USE_MPU requires portNUM_CONFIGURABLE_REGIONS >= 1"
     #endif
 
-    #if !defined(configSUPPORT_DYNAMIC_ALLOCATION) || (configSUPPORT_DYNAMIC_ALLOCATION != 1)
+    #if !defined(configSUPPORT_DYNAMIC_ALLOCATION) ||\
+    (configSUPPORT_DYNAMIC_ALLOCATION != 1)
         #error "TEMPLATE_OSAL_FREERTOS_USE_MPU requires configSUPPORT_DYNAMIC_ALLOCATION == 1"
     #endif
-#endif
+#endif // ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
 // END THREAD
 
 /*========================================================[DATA TYPES DEFINITIONS]==========================================*/
@@ -91,21 +94,21 @@ typedef struct
         UBaseType_t policy[TEMPLATE_OSAL_THREAD_PRIO_MAX_COUNT]; /*!< OSAL priority to FreeRTOS priority mapping. */
     } prio;
 
-#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
-    struct
-    {
-        bool           hasParam;                                  /*!< true when a custom MPU policy is supplied. */
-        MemoryRegion_t region[portNUM_CONFIGURABLE_REGIONS];      /*!< Instance-wide configurable MPU memory regions. */
-    } mpu;
-#endif
+    #ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+        struct
+        {
+            bool           hasParam;                              /*!< true when a custom MPU policy is supplied. */
+            MemoryRegion_t region[portNUM_CONFIGURABLE_REGIONS];  /*!< Instance-wide configurable MPU memory regions. */
+        } mpu;
+    #endif
 
-#ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
-    struct
-    {
-        bool        hasParam;                                          /*!< true when a custom core-affinity policy is supplied. */
-        UBaseType_t coreAffinityMask[TEMPLATE_OSAL_THREAD_SLOTS_NUM]; /*!< Thread-slot to FreeRTOS core-affinity mapping. */
-    } smp;
-#endif
+    #ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
+        struct
+        {
+            bool        hasParam;                                      /*!< true when a custom core-affinity policy is supplied. */
+            UBaseType_t coreAffinityMask[TEMPLATE_OSAL_THREAD_SLOTS_NUM]; /*!< Thread-slot to FreeRTOS core-affinity mapping. */
+        } smp;
+    #endif
     // END THREAD
 } Template_osalFreertosParam_s;
 
@@ -122,9 +125,9 @@ typedef struct
     SemaphoreHandle_t            resourceMutex; /*!< Backend-owned registry synchronization mutex. */
 
     // BEGIN THREAD
-#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
-    StackType_t *threadStackPtr[TEMPLATE_OSAL_THREAD_SLOTS_NUM]; /*!< MPU task stack buffers owned by the backend. */
-#endif
+    #ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+        StackType_t *threadStackPtr[TEMPLATE_OSAL_THREAD_SLOTS_NUM]; /*!< MPU task stack buffers owned by the backend. */
+    #endif
     // END THREAD
 
     bool validFlag; /*!< Backend validation flag. */

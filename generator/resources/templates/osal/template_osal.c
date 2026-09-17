@@ -97,7 +97,7 @@ static size_t template_osalRegMutexFreeSlotFind(void *const osalPort);
  * \brief Find mutex handle.
  */
 static size_t template_osalRegMutexHandleFind(void *const osalPort,
-                                             const Template_osalMutexHandle_t mutexHandle);
+                                              const Template_osalMutexHandle_t mutexHandle);
 // END MUTEX
 
 // BEGIN SEMAPHORE
@@ -3991,7 +3991,7 @@ static void template_osalRegReset(Template_osal_s *const osal)
         osal->threadObjHandle[i].attr.stackSize = 0u;
         osal->threadObjHandle[i].attr.args      = NULL;
         osal->threadObjHandle[i].attr.prio      = TEMPLATE_OSAL_THREAD_PRIO_LOW;
-        osal->threadObjHandle[i].handle        = NULL;
+        osal->threadObjHandle[i].handle         = NULL;
     }
 
     // END THREAD
@@ -4000,7 +4000,7 @@ static void template_osalRegReset(Template_osal_s *const osal)
     /* Reset software timer slots */
     for (size_t i = 0; i < TEMPLATE_OSAL_SOFTWARE_TIMER_SLOTS_NUM; ++i)
     {
-        osal->softwareTimerObj[i].handle             = NULL;
+        osal->softwareTimerObj[i].handle              = NULL;
         osal->softwareTimerObj[i].attr.name           = NULL;
         osal->softwareTimerObj[i].attr.timerParam     = NULL;
         osal->softwareTimerObj[i].attr.timerExpiredCb = NULL;
@@ -4221,7 +4221,7 @@ static size_t template_osalRegMutexFreeSlotFind(void *const osalPort)
  * \return Mutex ID (index + 1) or 0 if not found.
  */
 static size_t template_osalRegMutexHandleFind(void *const osalPort,
-                                             const Template_osalMutexHandle_t mutexHandle)
+                                              const Template_osalMutexHandle_t mutexHandle)
 {
     /* Trace input args */
     TEMPLATE_OSAL_TRACE("template_osalRegMutexHandleFind(%p, %p)", osalPort, (void *)mutexHandle);
@@ -4502,7 +4502,7 @@ static void template_osalRegThreadSlotClear(void *const osalPort,
     osal->threadObjHandle[threadIdx].attr.stackSize = 0u;
     osal->threadObjHandle[threadIdx].attr.args      = NULL;
     osal->threadObjHandle[threadIdx].attr.prio      = TEMPLATE_OSAL_THREAD_PRIO_LOW;
-    osal->threadObjHandle[threadIdx].handle        = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
+    osal->threadObjHandle[threadIdx].handle         = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
 
     /* Trace returned value */
     TEMPLATE_OSAL_TRACE("template_osalRegThreadSlotClear -> ok");

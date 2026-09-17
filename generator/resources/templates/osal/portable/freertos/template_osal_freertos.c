@@ -77,23 +77,25 @@
         #define TEMPLATE_OSAL_FREERTOS_MPU_ALIGNMENT    (32u)
         #define TEMPLATE_OSAL_FREERTOS_MPU_MIN_SIZE     (32u)
     #elif defined(portMPU_REGION_SIZE_256B) && \
-          !defined(portMPU_REGION_SIZE_32B)
+    !defined(portMPU_REGION_SIZE_32B)
         #define TEMPLATE_OSAL_FREERTOS_MPU_MODEL_ARMV6M
         #define TEMPLATE_OSAL_FREERTOS_MPU_MIN_SIZE     (256u)
     #elif defined(portMPU_RASR_TEX_S_C_B_LOCATION) || \
-          defined(portMPU_REGION_SIZE_32B)
+    defined(portMPU_REGION_SIZE_32B)
         #define TEMPLATE_OSAL_FREERTOS_MPU_MODEL_CLASSIC_RASR
         #define TEMPLATE_OSAL_FREERTOS_MPU_MIN_SIZE     (32u)
     #elif !defined(TEMPLATE_OSAL_FREERTOS_MPU_REGION_PLATFORM_VALIDATE)
         #error "Unsupported FreeRTOS MPU model: provide TEMPLATE_OSAL_FREERTOS_MPU_REGION_PLATFORM_VALIDATE(region)"
-    #endif
-#endif
+    #endif /* if defined(portARMV8M_MINOR_VERSION) */
+#endif /* ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU */
 
 #ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
-    #if !defined(configNUMBER_OF_CORES) || (configNUMBER_OF_CORES <= 1)
+    #if !defined(configNUMBER_OF_CORES) ||\
+    (configNUMBER_OF_CORES <= 1)
         #error "TEMPLATE_OSAL_FREERTOS_USE_SMP requires FreeRTOS SMP with configNUMBER_OF_CORES > 1"
     #endif
-    #if !defined(configUSE_CORE_AFFINITY) || (configUSE_CORE_AFFINITY != 1)
+    #if !defined(configUSE_CORE_AFFINITY) ||\
+    (configUSE_CORE_AFFINITY != 1)
         #error "TEMPLATE_OSAL_FREERTOS_USE_SMP requires configUSE_CORE_AFFINITY == 1"
     #endif
 #endif
@@ -123,10 +125,11 @@ static bool template_osalFreertosParamApply(Template_osalFreertosParam_s *const 
 
 // BEGIN THREAD
 #ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+
 /**
  * \brief Validate one FreeRTOS MPU memory region.
  */
-static bool template_osalFreertosMpuRegionValidate(const MemoryRegion_t *const region);
+    static bool template_osalFreertosMpuRegionValidate(const MemoryRegion_t *const region);
 #endif
 // END THREAD
 
@@ -762,13 +765,13 @@ Template_osalErr_e template_osalFreertosInit(Template_osalFreertos_s *const osal
     osalFreertos->resourceMutex = NULL;
 
     // BEGIN THREAD
-#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
-    /* Reset backend-owned MPU task stack buffers. */
-    for (size_t i = 0u; i < TEMPLATE_OSAL_THREAD_SLOTS_NUM; ++i)
-    {
-        osalFreertos->threadStackPtr[i] = NULL;
-    }
-#endif
+    #ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+        /* Reset backend-owned MPU task stack buffers. */
+        for (size_t i = 0u; i < TEMPLATE_OSAL_THREAD_SLOTS_NUM; ++i)
+        {
+            osalFreertos->threadStackPtr[i] = NULL;
+        }
+    #endif
     // END THREAD
 
     /* Create the internal resource mutex */
@@ -868,17 +871,17 @@ Template_osalErr_e template_osalFreertosDeinit(Template_osalFreertos_s *const os
         }
     }
 
-#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
-    /* Release any retained stack from a task that deleted itself. */
-    for (size_t i = 0u; i < TEMPLATE_OSAL_THREAD_SLOTS_NUM; ++i)
-    {
-        if (osalFreertos->threadStackPtr[i] != NULL)
+    #ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+        /* Release any retained stack from a task that deleted itself. */
+        for (size_t i = 0u; i < TEMPLATE_OSAL_THREAD_SLOTS_NUM; ++i)
         {
-            vPortFree(osalFreertos->threadStackPtr[i]);
-            osalFreertos->threadStackPtr[i] = NULL;
+            if (osalFreertos->threadStackPtr[i] != NULL)
+            {
+                vPortFree(osalFreertos->threadStackPtr[i]);
+                osalFreertos->threadStackPtr[i] = NULL;
+            }
         }
-    }
-#endif
+    #endif
 
 // END THREAD
 
@@ -915,7 +918,7 @@ Template_osalErr_e template_osalFreertosDeinit(Template_osalFreertos_s *const os
         if (osalFreertos->base.mutexHandle[i] != NULL)
         {
             (void)template_osalFreertosMutexDelete(osalFreertos,
-                                                     osalFreertos->base.mutexHandle[i]);
+                                                   osalFreertos->base.mutexHandle[i]);
         }
     }
 
@@ -965,7 +968,9 @@ Template_osalErr_e template_osalFreertosDeinit(Template_osalFreertos_s *const os
     osalFreertos->base.vtable = NULL;
     vSemaphoreDelete(osalFreertos->resourceMutex);
     osalFreertos->resourceMutex = NULL;
-    osalFreertos->param         = (Template_osalFreertosParam_s){0};
+    osalFreertos->param         = (Template_osalFreertosParam_s) {
+        0
+    };
 
     /* Deinitialize the generic OSAL base */
     osalStatus = template_osalDeinit(&osalFreertos->base);
@@ -997,32 +1002,37 @@ static void template_osalFreertosParamDefaultSet(Template_osalFreertosParam_s *c
     // BEGIN THREAD
     /* Apply the default priority mapping */
     param->prio.hasParam = false;
+
     for (size_t i = 0u; i < TEMPLATE_OSAL_THREAD_PRIO_MAX_COUNT; ++i)
     {
         param->prio.policy[i] = template_osalFreertosThreadPriority[i];
     }
 
-#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
-    /* Disable the custom MPU policy and clear all configurable regions. */
-    param->mpu.hasParam = false;
-    for (size_t i = 0u; i < portNUM_CONFIGURABLE_REGIONS; ++i)
-    {
-        param->mpu.region[i] = (MemoryRegion_t){0};
-    }
-#endif
+    #ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+        /* Disable the custom MPU policy and clear all configurable regions. */
+        param->mpu.hasParam = false;
 
-#ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
-    /* Preserve the FreeRTOS default core-affinity policy when no override is supplied. */
-    param->smp.hasParam = false;
-    for (size_t i = 0u; i < TEMPLATE_OSAL_THREAD_SLOTS_NUM; ++i)
-    {
-#ifdef configTASK_DEFAULT_CORE_AFFINITY
-        param->smp.coreAffinityMask[i] = (UBaseType_t)configTASK_DEFAULT_CORE_AFFINITY;
-#else
-        param->smp.coreAffinityMask[i] = tskNO_AFFINITY;
-#endif
-    }
-#endif
+        for (size_t i = 0u; i < portNUM_CONFIGURABLE_REGIONS; ++i)
+        {
+            param->mpu.region[i] = (MemoryRegion_t) {
+                0
+            };
+        }
+    #endif
+
+    #ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
+        /* Preserve the FreeRTOS default core-affinity policy when no override is supplied. */
+        param->smp.hasParam = false;
+
+        for (size_t i = 0u; i < TEMPLATE_OSAL_THREAD_SLOTS_NUM; ++i)
+        {
+            #ifdef configTASK_DEFAULT_CORE_AFFINITY
+                param->smp.coreAffinityMask[i] = (UBaseType_t)configTASK_DEFAULT_CORE_AFFINITY;
+            #else
+                param->smp.coreAffinityMask[i] = tskNO_AFFINITY;
+            #endif
+        }
+    #endif /* ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP */
     // END THREAD
 
     /* Trace returned value */
@@ -1075,72 +1085,75 @@ static bool template_osalFreertosParamValidate(const Template_osalFreertosParam_
         }
     }
 
-#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
-    /* Validate explicitly supplied memory regions */
-    if (isValid && param->mpu.hasParam)
-    {
-        for (size_t i = 0u; i < portNUM_CONFIGURABLE_REGIONS; ++i)
+    #ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+        /* Validate explicitly supplied memory regions */
+        if (isValid &&
+            param->mpu.hasParam)
         {
-            if (!template_osalFreertosMpuRegionValidate(&param->mpu.region[i]))
+            for (size_t i = 0u; i < portNUM_CONFIGURABLE_REGIONS; ++i)
             {
-                isValid = false;
-                break;
+                if (!template_osalFreertosMpuRegionValidate(&param->mpu.region[i]))
+                {
+                    isValid = false;
+                    break;
+                }
+            }
+
+            /* Reject overlapping memory regions. */
+            for (size_t i = 0u; isValid &&
+                 (i < portNUM_CONFIGURABLE_REGIONS); ++i)
+            {
+                const uintptr_t startA = (uintptr_t)param->mpu.region[i].pvBaseAddress;
+                const uintptr_t endA   = startA + (uintptr_t)param->mpu.region[i].ulLengthInBytes;
+
+                for (size_t j = i + 1u; j < portNUM_CONFIGURABLE_REGIONS; ++j)
+                {
+                    const uintptr_t startB = (uintptr_t)param->mpu.region[j].pvBaseAddress;
+                    const uintptr_t endB   = startB + (uintptr_t)param->mpu.region[j].ulLengthInBytes;
+
+                    if ((startA < endB) &&
+                        (startB < endA))
+                    {
+                        isValid = false;
+                        break;
+                    }
+                }
             }
         }
+    #endif /* ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU */
 
-        /* Reject overlapping memory regions. */
-        for (size_t i = 0u; isValid && (i < portNUM_CONFIGURABLE_REGIONS); ++i)
+    #ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
+        /* Validate an explicitly supplied thread-slot affinity policy */
+        if (isValid &&
+            param->smp.hasParam)
         {
-            const uintptr_t startA = (uintptr_t)param->mpu.region[i].pvBaseAddress;
-            const uintptr_t endA   = startA + (uintptr_t)param->mpu.region[i].ulLengthInBytes;
+            const size_t affinityBits = sizeof(UBaseType_t) * 8u;
+            UBaseType_t validCoreMask = 0u;
 
-            for (size_t j = i + 1u; j < portNUM_CONFIGURABLE_REGIONS; ++j)
+            for (size_t core = 0u; core < (size_t)configNUMBER_OF_CORES; ++core)
             {
-                const uintptr_t startB = (uintptr_t)param->mpu.region[j].pvBaseAddress;
-                const uintptr_t endB   = startB + (uintptr_t)param->mpu.region[j].ulLengthInBytes;
+                if (core >= affinityBits)
+                {
+                    validCoreMask = (UBaseType_t) ~(UBaseType_t)0u;
+                    break;
+                }
 
-                if ((startA < endB) &&
-                    (startB < endA))
+                validCoreMask |= (UBaseType_t)((UBaseType_t)1u << core);
+            }
+
+            for (size_t i = 0u; i < TEMPLATE_OSAL_THREAD_SLOTS_NUM; ++i)
+            {
+                const UBaseType_t affinityMask = param->smp.coreAffinityMask[i];
+                if ((affinityMask != tskNO_AFFINITY) &&
+                    ((affinityMask == 0u) ||
+                     ((affinityMask & ~validCoreMask) != 0u)))
                 {
                     isValid = false;
                     break;
                 }
             }
         }
-    }
-#endif
-
-#ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
-    /* Validate an explicitly supplied thread-slot affinity policy */
-    if (isValid && param->smp.hasParam)
-    {
-        const size_t affinityBits = sizeof(UBaseType_t) * 8u;
-        UBaseType_t validCoreMask = 0u;
-
-        for (size_t core = 0u; core < (size_t)configNUMBER_OF_CORES; ++core)
-        {
-            if (core >= affinityBits)
-            {
-                validCoreMask = (UBaseType_t)~(UBaseType_t)0u;
-                break;
-            }
-
-            validCoreMask |= (UBaseType_t)((UBaseType_t)1u << core);
-        }
-
-        for (size_t i = 0u; i < TEMPLATE_OSAL_THREAD_SLOTS_NUM; ++i)
-        {
-            const UBaseType_t affinityMask = param->smp.coreAffinityMask[i];
-            if ((affinityMask != tskNO_AFFINITY) &&
-                ((affinityMask == 0u) ||
-                 ((affinityMask & ~validCoreMask) != 0u)))
-            {
-                isValid = false;
-                break;
-            }
-        }
-    }
-#endif
+    #endif /* ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP */
     // END THREAD
 
     /* Trace returned value */
@@ -1195,21 +1208,21 @@ static bool template_osalFreertosParamApply(Template_osalFreertosParam_s *const 
         dst->prio = src->prio;
     }
 
-#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
-    /* Apply an optional instance-specific MPU policy */
-    if (src->mpu.hasParam)
-    {
-        dst->mpu = src->mpu;
-    }
-#endif
+    #ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+        /* Apply an optional instance-specific MPU policy */
+        if (src->mpu.hasParam)
+        {
+            dst->mpu = src->mpu;
+        }
+    #endif
 
-#ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
-    /* Apply an optional instance-specific core-affinity policy */
-    if (src->smp.hasParam)
-    {
-        dst->smp = src->smp;
-    }
-#endif
+    #ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
+        /* Apply an optional instance-specific core-affinity policy */
+        if (src->smp.hasParam)
+        {
+            dst->smp = src->smp;
+        }
+    #endif
     // END THREAD
 
     isApplied = true;
@@ -1233,67 +1246,67 @@ static bool template_osalFreertosParamApply(Template_osalFreertosParam_s *const 
  *
  * \return true if the memory region is valid; false otherwise.
  */
-static bool template_osalFreertosMpuRegionValidate(const MemoryRegion_t *const region)
-{
-    bool isValid = true;
-
-    /* Trace input args */
-    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosMpuRegionValidate(%p)",
-                                 (const void *)region);
-
-    /* Validate input args */
-    if (region == NULL)
+    static bool template_osalFreertosMpuRegionValidate(const MemoryRegion_t *const region)
     {
-        isValid = false;
+        bool isValid = true;
+
+        /* Trace input args */
+        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosMpuRegionValidate(%p)",
+                                     (const void *)region);
+
+        /* Validate input args */
+        if (region == NULL)
+        {
+            isValid = false;
+            TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosMpuRegionValidate -> %d", (int)isValid);
+
+            return isValid; // Exit: Error: invalid args
+        }
+
+        const uintptr_t regionStart = (uintptr_t)region->pvBaseAddress;
+        const uintptr_t regionSize  = (uintptr_t)region->ulLengthInBytes;
+
+        /* Validate the generic region range */
+        if ((regionSize == 0u) ||
+            (regionSize > (UINTPTR_MAX - regionStart)))
+        {
+            isValid = false;
+        }
+
+        #if defined(TEMPLATE_OSAL_FREERTOS_MPU_MODEL_ARMV8M)
+            /* ARMv8-M RBAR/RLAR addresses use 32-byte granularity. */
+            if (isValid &&
+                ((regionSize < TEMPLATE_OSAL_FREERTOS_MPU_MIN_SIZE) ||
+                 ((regionStart % TEMPLATE_OSAL_FREERTOS_MPU_ALIGNMENT) != 0u) ||
+                 ((regionSize % TEMPLATE_OSAL_FREERTOS_MPU_ALIGNMENT) != 0u)))
+            {
+                isValid = false;
+            }
+        #elif defined(TEMPLATE_OSAL_FREERTOS_MPU_MODEL_ARMV6M) || \
+        defined(TEMPLATE_OSAL_FREERTOS_MPU_MODEL_CLASSIC_RASR)
+            /* Classic Arm MPU regions are power-of-two sized and aligned to their size. */
+            if (isValid &&
+                ((regionSize < TEMPLATE_OSAL_FREERTOS_MPU_MIN_SIZE) ||
+                 ((regionSize & (regionSize - 1u)) != 0u) ||
+                 ((regionStart & (regionSize - 1u)) != 0u)))
+            {
+                isValid = false;
+            }
+        #elif defined(TEMPLATE_OSAL_FREERTOS_MPU_REGION_PLATFORM_VALIDATE)
+            /* Use the application-provided validator for an otherwise unknown MPU model. */
+            if (isValid &&
+                !TEMPLATE_OSAL_FREERTOS_MPU_REGION_PLATFORM_VALIDATE(region))
+            {
+                isValid = false;
+            }
+        #endif /* if defined(TEMPLATE_OSAL_FREERTOS_MPU_MODEL_ARMV8M) */
+
+        /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosMpuRegionValidate -> %d", (int)isValid);
 
-        return isValid;  // Exit: Error: invalid args
+        return isValid; // Exit: Success: validation result returned
     }
-
-    const uintptr_t regionStart = (uintptr_t)region->pvBaseAddress;
-    const uintptr_t regionSize  = (uintptr_t)region->ulLengthInBytes;
-
-    /* Validate the generic region range */
-    if ((regionSize == 0u) ||
-        (regionSize > (UINTPTR_MAX - regionStart)))
-    {
-        isValid = false;
-    }
-
-#if defined(TEMPLATE_OSAL_FREERTOS_MPU_MODEL_ARMV8M)
-    /* ARMv8-M RBAR/RLAR addresses use 32-byte granularity. */
-    if (isValid &&
-        ((regionSize < TEMPLATE_OSAL_FREERTOS_MPU_MIN_SIZE) ||
-         ((regionStart % TEMPLATE_OSAL_FREERTOS_MPU_ALIGNMENT) != 0u) ||
-         ((regionSize % TEMPLATE_OSAL_FREERTOS_MPU_ALIGNMENT) != 0u)))
-    {
-        isValid = false;
-    }
-#elif defined(TEMPLATE_OSAL_FREERTOS_MPU_MODEL_ARMV6M) || \
-      defined(TEMPLATE_OSAL_FREERTOS_MPU_MODEL_CLASSIC_RASR)
-    /* Classic Arm MPU regions are power-of-two sized and aligned to their size. */
-    if (isValid &&
-        ((regionSize < TEMPLATE_OSAL_FREERTOS_MPU_MIN_SIZE) ||
-         ((regionSize & (regionSize - 1u)) != 0u) ||
-         ((regionStart & (regionSize - 1u)) != 0u)))
-    {
-        isValid = false;
-    }
-#elif defined(TEMPLATE_OSAL_FREERTOS_MPU_REGION_PLATFORM_VALIDATE)
-    /* Use the application-provided validator for an otherwise unknown MPU model. */
-    if (isValid &&
-        !TEMPLATE_OSAL_FREERTOS_MPU_REGION_PLATFORM_VALIDATE(region))
-    {
-        isValid = false;
-    }
-#endif
-
-    /* Trace returned value */
-    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosMpuRegionValidate -> %d", (int)isValid);
-
-    return isValid;  // Exit: Success: validation result returned
-}
-#endif
+#endif /* ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU */
 // END THREAD
 
 
@@ -2101,7 +2114,7 @@ static Template_osalErr_e template_osalFreertosStreamBufferCreate(void *const os
 
     /* Register the resource handle */
     port->base.streamBufferObjHandle[streamBufferId - 1u] = (Template_osalStreamBufferHandle_t)nativeHandle;
-    *streamBufferHandle                                  = (Template_osalStreamBufferHandle_t)nativeHandle;
+    *streamBufferHandle                                   = (Template_osalStreamBufferHandle_t)nativeHandle;
 
     /* Release the resource mutex */
     osalStatus = template_osalFreertosResourceUnlock(port);
@@ -2881,7 +2894,7 @@ static Template_osalErr_e template_osalFreertosMutexCreate(void *const osal,
 
     /* Register the resource handle */
     port->base.mutexHandle[mutexId - 1u] = (Template_osalMutexHandle_t)nativeMutex;
-    *mutexHandle                        = (Template_osalMutexHandle_t)nativeMutex;
+    *mutexHandle                         = (Template_osalMutexHandle_t)nativeMutex;
 
     /* Release the resource mutex */
     osalStatus = template_osalFreertosResourceUnlock(port);
@@ -3716,7 +3729,7 @@ static Template_osalErr_e template_osalFreertosSemaphorePost(void *const osal,
     {
         BaseType_t higherPriorityTaskWoken = pdFALSE;
         postStatus = xSemaphoreGiveFromISR((SemaphoreHandle_t)semaphoreHandle,
-                                              &higherPriorityTaskWoken);
+                                           &higherPriorityTaskWoken);
         portYIELD_FROM_ISR(higherPriorityTaskWoken);
     }
     else
@@ -3907,7 +3920,7 @@ static Template_osalErr_e template_osalFreertosEventFlagsCreate(void *const osal
 
     /* Register the resource handle */
     port->base.eventFlagsObjHandle[eventFlagsId - 1u] = (Template_osalEventFlagsHandle_t)nativeHandle;
-    *eventFlagsHandle                                = (Template_osalEventFlagsHandle_t)nativeHandle;
+    *eventFlagsHandle                                 = (Template_osalEventFlagsHandle_t)nativeHandle;
 
     /* Release the resource mutex */
     osalStatus = template_osalFreertosResourceUnlock(port);
@@ -4257,8 +4270,8 @@ static Template_osalErr_e template_osalFreertosEventFlagsWait(void *const osal,
                                                               uint32_t *const actualFlags)
 {
     Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
-    const uint32_t validOptions = (uint32_t)TEMPLATE_OSAL_EVENT_FLAGS_WAIT_ALL |
-                                  (uint32_t)TEMPLATE_OSAL_EVENT_FLAGS_NO_CLEAR;
+    const uint32_t validOptions   = (uint32_t)TEMPLATE_OSAL_EVENT_FLAGS_WAIT_ALL |
+                                    (uint32_t)TEMPLATE_OSAL_EVENT_FLAGS_NO_CLEAR;
 
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosEventFlagsWait(%p, %p, 0x%08lX, 0x%08lX, %u, %p)",
@@ -4453,85 +4466,85 @@ static Template_osalErr_e template_osalFreertosThreadCreate(void *const osal,
     const UBaseType_t priority              = port->param.prio.policy[threadAttr.prio];
 
     TaskHandle_t nativeThread = NULL;
-    BaseType_t rc              = pdFAIL;
+    BaseType_t rc             = pdFAIL;
 
     /* Create the native FreeRTOS task using the normalized instance policy */
-#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
-    /* Release a retained stack from a task that previously deleted itself in this slot. */
-    if (port->threadStackPtr[threadIdx] != NULL)
-    {
-        vPortFree(port->threadStackPtr[threadIdx]);
-        port->threadStackPtr[threadIdx] = NULL;
-    }
+    #ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+        /* Release a retained stack from a task that previously deleted itself in this slot. */
+        if (port->threadStackPtr[threadIdx] != NULL)
+        {
+            vPortFree(port->threadStackPtr[threadIdx]);
+            port->threadStackPtr[threadIdx] = NULL;
+        }
 
-    const size_t stackSizeBytes = stackWordsRaw * stackWordSize;
-    StackType_t *const stackPtr = (StackType_t *)pvPortMalloc(stackSizeBytes);
-    if (stackPtr == NULL)
-    {
-        /* Release the resource mutex */
-        (void)template_osalFreertosResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_THREAD_MEM_ALLOCATION_ERR;
+        const size_t stackSizeBytes = stackWordsRaw * stackWordSize;
+        StackType_t *const stackPtr = (StackType_t *)pvPortMalloc(stackSizeBytes);
+        if (stackPtr == NULL)
+        {
+            /* Release the resource mutex */
+            (void)template_osalFreertosResourceUnlock(port);
+            osalStatus = TEMPLATE_OSAL_THREAD_MEM_ALLOCATION_ERR;
 
-        /* Trace returned value */
-        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadCreate -> %d", (int)osalStatus);
+            /* Trace returned value */
+            TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadCreate -> %d", (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: task stack allocation failed
-    }
+            return osalStatus; // Exit: Error: task stack allocation failed
+        }
 
-    port->threadStackPtr[threadIdx] = stackPtr;
+        port->threadStackPtr[threadIdx] = stackPtr;
 
-    TaskParameters_t taskParam =
-    {
-        .pvTaskCode     = (TaskFunction_t)threadAttr.worker,
-        .pcName         = threadAttr.name,
-        .usStackDepth   = stackWords,
-        .pvParameters   = threadAttr.args,
-        .uxPriority     = priority,
-        .puxStackBuffer = stackPtr,
-        .xRegions       = {0}
-#if (configSUPPORT_STATIC_ALLOCATION == 1)
-        , .pxTaskBuffer = NULL
-#endif
-    };
+        TaskParameters_t taskParam =
+        {
+            .pvTaskCode     = (TaskFunction_t)threadAttr.worker,
+            .pcName         = threadAttr.name,
+            .usStackDepth   = stackWords,
+            .pvParameters   = threadAttr.args,
+            .uxPriority     = priority,
+            .puxStackBuffer = stackPtr,
+            .xRegions       = {0}
+            #if (configSUPPORT_STATIC_ALLOCATION == 1)
+                , .pxTaskBuffer = NULL
+            #endif
+        };
 
-    for (size_t i = 0u; i < portNUM_CONFIGURABLE_REGIONS; ++i)
-    {
-        taskParam.xRegions[i] = port->param.mpu.region[i];
-    }
+        for (size_t i = 0u; i < portNUM_CONFIGURABLE_REGIONS; ++i)
+        {
+            taskParam.xRegions[i] = port->param.mpu.region[i];
+        }
 
-#ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
-    rc = xTaskCreateRestrictedAffinitySet(&taskParam,
-                                          port->param.smp.coreAffinityMask[threadIdx],
-                                          &nativeThread);
-#else
-    rc = xTaskCreateRestricted(&taskParam, &nativeThread);
-#endif
-#else
-#ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
-    rc = xTaskCreateAffinitySet((TaskFunction_t)threadAttr.worker,
-                                threadAttr.name,
-                                stackWords,
-                                threadAttr.args,
-                                priority,
-                                port->param.smp.coreAffinityMask[threadIdx],
-                                &nativeThread);
-#else
-    rc = xTaskCreate((TaskFunction_t)threadAttr.worker,
-                     threadAttr.name,
-                     stackWords,
-                     threadAttr.args,
-                     priority,
-                     &nativeThread);
-#endif
-#endif
+        #ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
+            rc = xTaskCreateRestrictedAffinitySet(&taskParam,
+                                                  port->param.smp.coreAffinityMask[threadIdx],
+                                                  &nativeThread);
+        #else
+            rc = xTaskCreateRestricted(&taskParam, &nativeThread);
+        #endif
+    #else  /* ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU */
+        #ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
+            rc = xTaskCreateAffinitySet((TaskFunction_t)threadAttr.worker,
+                                        threadAttr.name,
+                                        stackWords,
+                                        threadAttr.args,
+                                        priority,
+                                        port->param.smp.coreAffinityMask[threadIdx],
+                                        &nativeThread);
+        #else
+            rc = xTaskCreate((TaskFunction_t)threadAttr.worker,
+                             threadAttr.name,
+                             stackWords,
+                             threadAttr.args,
+                             priority,
+                             &nativeThread);
+        #endif /* ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP */
+    #endif /* ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU */
 
     if ((rc != pdPASS) ||
         (nativeThread == NULL))
     {
-#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
-        vPortFree(port->threadStackPtr[threadIdx]);
-        port->threadStackPtr[threadIdx] = NULL;
-#endif
+        #ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+            vPortFree(port->threadStackPtr[threadIdx]);
+            port->threadStackPtr[threadIdx] = NULL;
+        #endif
 
         /* Release the resource mutex */
         (void)template_osalFreertosResourceUnlock(port);
@@ -4637,7 +4650,7 @@ static Template_osalErr_e template_osalFreertosThreadDelete(void *const osal,
     }
 
     const size_t threadIdx = threadId - 1u;
-    const bool deleteSelf   = ((TaskHandle_t)threadHandle == xTaskGetCurrentTaskHandle());
+    const bool deleteSelf  = ((TaskHandle_t)threadHandle == xTaskGetCurrentTaskHandle());
     port->base.ptable->threadSlotClear(port, threadIdx);
 
     /* Release the resource mutex */
@@ -4670,14 +4683,14 @@ static Template_osalErr_e template_osalFreertosThreadDelete(void *const osal,
     /* Delete the native FreeRTOS task */
     vTaskDelete((TaskHandle_t)threadHandle);
 
-#ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
-    /* Release the backend-owned stack after an externally deleted restricted task. */
-    if (port->threadStackPtr[threadIdx] != NULL)
-    {
-        vPortFree(port->threadStackPtr[threadIdx]);
-        port->threadStackPtr[threadIdx] = NULL;
-    }
-#endif
+    #ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
+        /* Release the backend-owned stack after an externally deleted restricted task. */
+        if (port->threadStackPtr[threadIdx] != NULL)
+        {
+            vPortFree(port->threadStackPtr[threadIdx]);
+            port->threadStackPtr[threadIdx] = NULL;
+        }
+    #endif
 
     /* Trace returned value */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelete -> %d", (int)osalStatus);
@@ -5421,7 +5434,7 @@ static Template_osalErr_e template_osalFreertosSoftwareTimerDelete(void *const o
     }
 
     Template_osalSoftwareTimer_s *const timerObj = &port->base.softwareTimerObj[timerId - 1u];
-    timerObj->handle             = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
+    timerObj->handle              = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
     timerObj->attr.name           = NULL;
     timerObj->attr.timerParam     = NULL;
     timerObj->attr.timerExpiredCb = NULL;

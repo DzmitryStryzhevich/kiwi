@@ -131,52 +131,52 @@
  */
 typedef enum
 {
-    TEMPLATE_OSAL_NO_ERR                            = 0,   //!< No error occurred; operation was successful.
-    TEMPLATE_OSAL_INVALID_ARGS_ERR                  = 1,   //!< Invalid arguments passed to an OSAL function.
-    TEMPLATE_OSAL_NOT_INIT_ERR                      = 2,   //!< OSAL instance or required service is not initialized.
-    TEMPLATE_OSAL_CALL_FROM_ISR_ERR                 = 3,   //!< Function was called from an ISR where this operation is not allowed.
+    TEMPLATE_OSAL_NO_ERR            = 0,                   //!< No error occurred; operation was successful.
+    TEMPLATE_OSAL_INVALID_ARGS_ERR  = 1,                   //!< Invalid arguments passed to an OSAL function.
+    TEMPLATE_OSAL_NOT_INIT_ERR      = 2,                   //!< OSAL instance or required service is not initialized.
+    TEMPLATE_OSAL_CALL_FROM_ISR_ERR = 3,                   //!< Function was called from an ISR where this operation is not allowed.
 
     // BEGIN QUEUE
-    TEMPLATE_OSAL_QUEUE_CREATE_ERR                  = 4,   //!< Failed to create a queue or reserve a queue registry slot.
-    TEMPLATE_OSAL_QUEUE_MEM_ALLOCATION_ERR          = 5,   //!< Memory allocation failed during queue creation.
-    TEMPLATE_OSAL_QUEUE_OVERFLOW_ERR                = 6,   //!< Queue item could not be inserted because the queue is full.
-    TEMPLATE_OSAL_QUEUE_IS_EMPTY_ERR                = 7,   //!< Queue item could not be retrieved because the queue is empty.
-    TEMPLATE_OSAL_QUEUE_IS_FULL_ERR                 = 8,   //!< Queue is currently full.
+    TEMPLATE_OSAL_QUEUE_CREATE_ERR         = 4,            //!< Failed to create a queue or reserve a queue registry slot.
+    TEMPLATE_OSAL_QUEUE_MEM_ALLOCATION_ERR = 5,            //!< Memory allocation failed during queue creation.
+    TEMPLATE_OSAL_QUEUE_OVERFLOW_ERR       = 6,            //!< Queue item could not be inserted because the queue is full.
+    TEMPLATE_OSAL_QUEUE_IS_EMPTY_ERR       = 7,            //!< Queue item could not be retrieved because the queue is empty.
+    TEMPLATE_OSAL_QUEUE_IS_FULL_ERR        = 8,            //!< Queue is currently full.
     // END QUEUE
 
     // BEGIN STREAM_BUFFER
-    TEMPLATE_OSAL_STREAM_BUFFER_CREATE_ERR          = 9,   //!< Failed to create a stream buffer or reserve a registry slot.
-    TEMPLATE_OSAL_STREAM_BUFFER_MEM_ALLOCATION_ERR  = 10,  //!< Memory allocation failed during stream buffer creation.
-    TEMPLATE_OSAL_STREAM_BUFFER_IS_EMPTY_ERR        = 11,  //!< Stream buffer does not contain data available for reading.
-    TEMPLATE_OSAL_STREAM_BUFFER_IS_FULL_ERR         = 12,  //!< Stream buffer does not have capacity available for writing.
-    TEMPLATE_OSAL_STREAM_BUFFER_RESET_ERR           = 13,  //!< Failed to reset the stream buffer to its empty state.
+    TEMPLATE_OSAL_STREAM_BUFFER_CREATE_ERR         = 9,    //!< Failed to create a stream buffer or reserve a registry slot.
+    TEMPLATE_OSAL_STREAM_BUFFER_MEM_ALLOCATION_ERR = 10,   //!< Memory allocation failed during stream buffer creation.
+    TEMPLATE_OSAL_STREAM_BUFFER_IS_EMPTY_ERR       = 11,   //!< Stream buffer does not contain data available for reading.
+    TEMPLATE_OSAL_STREAM_BUFFER_IS_FULL_ERR        = 12,   //!< Stream buffer does not have capacity available for writing.
+    TEMPLATE_OSAL_STREAM_BUFFER_RESET_ERR          = 13,   //!< Failed to reset the stream buffer to its empty state.
     // END STREAM_BUFFER
 
     // BEGIN MUTEX
-    TEMPLATE_OSAL_MUTEX_CREATE_ERR                  = 14,  //!< Failed to create a mutex or reserve a mutex registry slot.
-    TEMPLATE_OSAL_MUTEX_MEM_ALLOCATION_ERR          = 15,  //!< Memory allocation failed during mutex creation.
-    TEMPLATE_OSAL_MUTEX_LOCK_ERR                    = 16,  //!< Mutex could not be locked within the requested wait condition.
-    TEMPLATE_OSAL_MUTEX_UNLOCK_ERR                  = 17,  //!< Mutex could not be unlocked.
+    TEMPLATE_OSAL_MUTEX_CREATE_ERR         = 14,           //!< Failed to create a mutex or reserve a mutex registry slot.
+    TEMPLATE_OSAL_MUTEX_MEM_ALLOCATION_ERR = 15,           //!< Memory allocation failed during mutex creation.
+    TEMPLATE_OSAL_MUTEX_LOCK_ERR           = 16,           //!< Mutex could not be locked within the requested wait condition.
+    TEMPLATE_OSAL_MUTEX_UNLOCK_ERR         = 17,           //!< Mutex could not be unlocked.
     // END MUTEX
 
     // BEGIN SEMAPHORE
-    TEMPLATE_OSAL_SEMAPHORE_CREATE_ERR              = 18,  //!< Failed to create a counting semaphore or reserve a registry slot.
-    TEMPLATE_OSAL_SEMAPHORE_MEM_ALLOCATION_ERR      = 19,  //!< Memory allocation failed during semaphore creation.
-    TEMPLATE_OSAL_SEMAPHORE_WAIT_ERR                = 20,  //!< Semaphore wait or pend operation did not complete successfully.
-    TEMPLATE_OSAL_SEMAPHORE_POST_ERR                = 21,  //!< Failed to post a count to the semaphore.
+    TEMPLATE_OSAL_SEMAPHORE_CREATE_ERR         = 18,       //!< Failed to create a counting semaphore or reserve a registry slot.
+    TEMPLATE_OSAL_SEMAPHORE_MEM_ALLOCATION_ERR = 19,       //!< Memory allocation failed during semaphore creation.
+    TEMPLATE_OSAL_SEMAPHORE_WAIT_ERR           = 20,       //!< Semaphore wait or pend operation did not complete successfully.
+    TEMPLATE_OSAL_SEMAPHORE_POST_ERR           = 21,       //!< Failed to post a count to the semaphore.
     // END SEMAPHORE
 
     // BEGIN THREAD
-    TEMPLATE_OSAL_THREAD_CREATE_ERR                 = 22,  //!< Failed to create a thread or reserve a thread registry slot.
-    TEMPLATE_OSAL_THREAD_MEM_ALLOCATION_ERR         = 23,  //!< Memory allocation failed during thread creation.
+    TEMPLATE_OSAL_THREAD_CREATE_ERR         = 22,          //!< Failed to create a thread or reserve a thread registry slot.
+    TEMPLATE_OSAL_THREAD_MEM_ALLOCATION_ERR = 23,          //!< Memory allocation failed during thread creation.
     // END THREAD
 
     // BEGIN EVENT_FLAGS
-    TEMPLATE_OSAL_EVENT_FLAGS_CREATE_ERR            = 24,  //!< Failed to create an event flags object or reserve a registry slot.
-    TEMPLATE_OSAL_EVENT_FLAGS_MEM_ALLOCATION_ERR    = 25,  //!< Memory allocation failed during event flags creation.
-    TEMPLATE_OSAL_EVENT_FLAGS_WAIT_ERR              = 26,  //!< Requested event flags wait condition was not satisfied.
-    TEMPLATE_OSAL_EVENT_FLAGS_SET_ERR               = 27,  //!< Failed to set one or more event flags bits.
-    TEMPLATE_OSAL_EVENT_FLAGS_CLEAR_ERR             = 28,  //!< Failed to clear one or more event flags bits.
+    TEMPLATE_OSAL_EVENT_FLAGS_CREATE_ERR         = 24,     //!< Failed to create an event flags object or reserve a registry slot.
+    TEMPLATE_OSAL_EVENT_FLAGS_MEM_ALLOCATION_ERR = 25,     //!< Memory allocation failed during event flags creation.
+    TEMPLATE_OSAL_EVENT_FLAGS_WAIT_ERR           = 26,     //!< Requested event flags wait condition was not satisfied.
+    TEMPLATE_OSAL_EVENT_FLAGS_SET_ERR            = 27,     //!< Failed to set one or more event flags bits.
+    TEMPLATE_OSAL_EVENT_FLAGS_CLEAR_ERR          = 28,     //!< Failed to clear one or more event flags bits.
     // END EVENT_FLAGS
 
     // BEGIN SOFTWARE_TIMER
@@ -188,10 +188,10 @@ typedef enum
     // END SOFTWARE_TIMER
 
     // BEGIN MEMORY
-    TEMPLATE_OSAL_MEM_ALLOCATION_ERR                = 34,  //!< Backend memory allocation failed.
+    TEMPLATE_OSAL_MEM_ALLOCATION_ERR = 34,                 //!< Backend memory allocation failed.
     // END MEMORY
 
-    TEMPLATE_OSAL_PORT_SPECIFIC_ERR                 = 35   //!< Port-specific or RTOS-specific operation failed.
+    TEMPLATE_OSAL_PORT_SPECIFIC_ERR = 35                   //!< Port-specific or RTOS-specific operation failed.
 } Template_osalErr_e;
 
 /**
@@ -288,8 +288,8 @@ typedef struct
     const char                            *name;           /*!< Optional timer name. */
     void                                  *timerParam;     /*!< User parameter passed to callback; may be NULL. */
     Template_osalSoftwareTimerExpiredCb_f timerExpiredCb;  /*!< Expiration callback; must not be NULL. */
-    bool                                   autoReload;     /*!< true = periodic, false = one-shot. */
-    Template_osalTimeMs_t                  periodMs;       /*!< Timer period in milliseconds; must be non-zero. */
+    bool                                  autoReload;      /*!< true = periodic, false = one-shot. */
+    Template_osalTimeMs_t                 periodMs;        /*!< Timer period in milliseconds; must be non-zero. */
 } Template_osalSoftwareTimerAttr_s;
 
 /**
@@ -297,7 +297,7 @@ typedef struct
  */
 typedef struct
 {
-    Template_osalSoftwareTimerAttr_s    attr;     /*!< Creation attributes snapshot. */
+    Template_osalSoftwareTimerAttr_s   attr;      /*!< Creation attributes snapshot. */
     Template_osalSoftwareTimerHandle_t handle;  /*!< RTOS-native timer handle. */
 } Template_osalSoftwareTimer_s;
 // END SOFTWARE_TIMER
@@ -346,7 +346,7 @@ typedef struct
  */
 typedef struct
 {
-    Template_osalThreadAttr_s    attr;      /*!< Creation attributes (snapshot). */
+    Template_osalThreadAttr_s   attr;       /*!< Creation attributes (snapshot). */
     Template_osalThreadHandle_t handle;   /*!< RTOS-native handle.         */
 } Template_osalThread_s;
 // END THREAD
@@ -1137,7 +1137,7 @@ typedef struct
      * \return size_t        Mutex ID (index + 1) if found; 0 otherwise.
      */
     size_t (*mutexHandleFind)(void *const osalPort,
-                                const Template_osalMutexHandle_t mutexHandle);
+                              const Template_osalMutexHandle_t mutexHandle);
     // END MUTEX
 
     // BEGIN SEMAPHORE
