@@ -120,13 +120,13 @@ typedef struct
  */
 typedef struct
 {
-    Template_osal_s              base;          /*!< Base OSAL object; must remain first. */
-    Template_osalFreertosParam_s param;         /*!< Normalized FreeRTOS-specific instance configuration. */
-    SemaphoreHandle_t            resourceMutex; /*!< Backend-owned registry synchronization mutex. */
-
+    Template_osal_s              base;           /*!< Base OSAL object; must remain first. */
+    Template_osalFreertosParam_s param;          /*!< Normalized FreeRTOS-specific instance configuration. */
+    SemaphoreHandle_t            resourceMutex;  /*!< Backend-owned registry synchronization mutex. */
+ 
     // BEGIN THREAD
     #ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
-        StackType_t *threadStackPtr[TEMPLATE_OSAL_THREAD_SLOTS_NUM]; /*!< MPU task stack buffers owned by the backend. */
+        StackType_t *threadStackPtr[TEMPLATE_OSAL_THREAD_SLOTS_NUM];  /*!< MPU task stack buffers owned by the backend. */
     #endif
     // END THREAD
 
