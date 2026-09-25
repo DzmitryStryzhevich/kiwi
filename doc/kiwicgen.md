@@ -254,7 +254,7 @@ The settings area remains compact when the window is resized; extra space is ass
 Ports:
 
 - FreeRTOS — implemented.
-- POSIX — planned, selectable in the GUI, but generation is not implemented yet.
+- POSIX — implemented (Milestone 1). Queue, recursive mutex, counting semaphore, core thread operations including `DelayUntil`, monotonic time and memory are implemented. Stream buffers, event flags, critical sections and software timers remain explicit compile-time stubs for a subsequent milestone.
 
 Languages:
 
@@ -263,6 +263,14 @@ Languages:
 
 
 Before starting a generation worker, the GUI validates configuration. At least one port and a language must be selected. Selecting an unimplemented port/language produces both a generator-log error and a GUI error message; generation is not started.
+
+## POSIX port Milestone 1
+
+The generated POSIX port is intended for host/native execution and maps supported generic OSAL operations to pthreads, POSIX semaphores and libc services. Queue synchronization uses one native mutex plus two backend-private semaphores, `freeSlotsSmphr` and `busySlotsSmphr`; these internal objects are not generic OSAL semaphores and do not consume semaphore registry slots. Generic OSAL mutexes are always recursive/reentrant on every backend.
+
+POSIX timed waits use native blocking primitives rather than polling loops. `ThreadDelayUntil` uses an absolute `CLOCK_MONOTONIC` deadline to avoid accumulating periodic-delay drift, and `TimeMsGet` is based on `CLOCK_MONOTONIC`. Generated POSIX build scripts discover and link `Threads::Threads` and request `_POSIX_C_SOURCE=200809L`.
+
+The Milestone 1 implementation intentionally leaves stream buffers, event flags, critical sections and software timers as compile-time stubs. Thread suspend/resume remain explicit runtime stubs because portable pthreads provide no direct suspend/resume primitive with the required OSAL semantics.
 
 ## FreeRTOS port instance parameters
 

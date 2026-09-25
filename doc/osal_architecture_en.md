@@ -182,6 +182,10 @@ Not every term has to be used by every primitive group. Consistency means preser
 
 One nuance matters: `Wait` is not defined as a universal synonym for “always wait forever” across every possible primitive. For event flags, for example, a wait naturally combines a flag mask, `WAIT_ANY` / `WAIT_ALL`, clear behavior, and a timeout. The important requirement is not identical function shapes, but predictable semantics at the component boundary.
 
+### 4.3 Mutex recursion contract
+
+Every mutex created through the KIWI generic OSAL API is **recursive/reentrant**. If the owning thread locks the same mutex multiple times, each acquisition succeeds and increments the recursive ownership depth. The mutex becomes available to another thread only after the owner performs the same number of matching `Unlock` operations. Backends shall preserve this behavior even when their native default mutex type is non-recursive.
+
 ---
 
 ## 5. KIWI OSAL architectural model
@@ -604,9 +608,9 @@ It is useful to distinguish two kinds of test environment.
 
 ### 15.1 Development and integration implementation
 
-A future POSIX backend, for example, can allow a component to run on an ordinary development workstation.
+The POSIX backend allows a component to run on an ordinary development workstation while preserving the same generic OSAL contract.
 
-This is not a collection of stubs. A thread remains a real thread, a queue behaves as a queue, and a mutex performs actual synchronization. Such an implementation is useful for:
+For implemented primitives, this is not a collection of stubs. A thread remains a real thread, a queue behaves as a queue, and a mutex performs actual synchronization. Such an implementation is useful for:
 
 - integration tests;
 - system tests;

@@ -27,12 +27,13 @@ SUPPORTED_APIS = (
 )
 DEFAULT_APIS = frozenset()
 SUPPORTED_PORTS = ("FreeRTOS", "POSIX")
-IMPLEMENTED_PORTS = frozenset({"FreeRTOS"})
+IMPLEMENTED_PORTS = frozenset({"FreeRTOS", "POSIX"})
 SUPPORTED_LANGUAGES = ("C", "C++")
 IMPLEMENTED_LANGUAGES = frozenset({"C"})
 
 PORT_TEMPLATE_DIRS = {
     "FreeRTOS": "freertos",
+    "POSIX": "posix",
 }
 
 

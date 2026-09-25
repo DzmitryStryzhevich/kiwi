@@ -1683,7 +1683,9 @@ Template_osalErr_e template_osalStreamBufferHandleGet(Template_osal_s *const osa
 /*------------------------------------- Mutexes --------------------------------*/
 
 /**
- * \brief Create a mutex.
+ * \brief Create a recursive/reentrant mutex.
+ * \details Recursive ownership is part of the generic OSAL contract. The owning thread
+ *          may lock the mutex repeatedly; each successful lock requires a matching unlock.
  *
  * \param osal         OSAL instance pointer.
  * \param mutexHandle  Output pointer receiving the created mutex handle.

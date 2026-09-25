@@ -224,7 +224,10 @@ typedef void *Template_osalStreamBufferHandle_t;
 
 // BEGIN MUTEX
 /**
- * \brief Template OSAL mutex type definition.
+ * \brief Template OSAL recursive mutex handle type definition.
+ * \details Every mutex created through the generic OSAL contract is recursive/reentrant.
+ *          The owning thread may acquire the same mutex repeatedly and shall perform a
+ *          matching number of unlock operations before another thread can acquire it.
  */
 typedef void *Template_osalMutexHandle_t;
 // END MUTEX
@@ -603,7 +606,9 @@ typedef struct
     /*------------------------------------ Mutexes -------------------------------------*/
 
     /**
-     * \brief Create a mutex.
+     * \brief Create a recursive/reentrant mutex.
+     * \details Recursive ownership is part of the generic OSAL contract and shall be
+     *          preserved by every backend implementation.
      *
      * \param osal         OSAL instance pointer.
      * \param mutexHandle  Output pointer receiving the created mutex handle.
@@ -1686,7 +1691,9 @@ Template_osalErr_e template_osalStreamBufferHandleGet(Template_osal_s *const osa
 /*------------------------------------- Mutexes --------------------------------*/
 
 /**
- * \brief Create a mutex.
+ * \brief Create a recursive/reentrant mutex.
+ * \details Recursive ownership is part of the generic OSAL contract. The owning thread
+ *          may lock the mutex repeatedly; each successful lock requires a matching unlock.
  *
  * \param osal         OSAL instance pointer.
  * \param mutexHandle  Output pointer receiving the created mutex handle.

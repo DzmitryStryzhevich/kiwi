@@ -25,7 +25,7 @@ Usage examples for the generated generic OSAL API are collected in [`doc/example
 | Target | Language | Status | Notes |
 | --- | --- | --- | --- |
 | FreeRTOS | C | Implemented | Queues, stream buffers, mutexes, counting semaphores, event flags, threads, critical sections, software timers, time and memory |
-| POSIX | C | Planned | Host/portable backend scaffold exists |
+| POSIX | C | Implemented (Milestone 1) | Queues, recursive mutexes, counting semaphores, core thread operations including `DelayUntil`, monotonic time and memory; stream buffers, event flags, critical sections and software timers are deferred |
 | C++ OSAL variant | C++ | Planned | C++ generation/port support is on the roadmap |
 
 ## Testing
