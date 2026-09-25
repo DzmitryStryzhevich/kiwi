@@ -45,10 +45,10 @@ typedef struct
  */
 typedef struct
 {
-    Template_osal_s          base;          /*!< Base OSAL object; must remain first. */
-    Template_osalPosixParam_s param;        /*!< Normalized POSIX-specific instance configuration. */
-    pthread_mutex_t          resourceMutex; /*!< Backend-owned registry synchronization mutex. */
-    bool                     validFlag;     /*!< Backend validation flag. */
+    Template_osal_s           base;           /*!< Base OSAL object; must remain first. */
+    Template_osalPosixParam_s param;          /*!< Normalized POSIX-specific instance configuration. */
+    pthread_mutex_t           resourceMutex;  /*!< Backend-owned registry synchronization mutex. */
+    bool                      validFlag;      /*!< Backend validation flag. */
 } Template_osalPosix_s;
 
 /*===========================================================[PUBLIC INTERFACE]=============================================*/

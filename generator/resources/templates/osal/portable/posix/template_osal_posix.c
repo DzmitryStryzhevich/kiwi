@@ -7,11 +7,6 @@
  * \file     template_osal_posix.c
  * \brief    POSIX OSAL port for Template.
  * \details  POSIX implementation of the component-scoped Template OSAL contract.
- *
- * \note     Milestone 1 implements queues, recursive mutexes, counting semaphores,
- *           core thread lifecycle/delay operations, monotonic time and memory.
- *           Stream buffers, event flags, critical sections and software timers are
- *           intentionally kept as compile-time stubs for a subsequent milestone.
  */
 
 //===============================================================================[ INCLUDE ]========================================================================================
@@ -80,7 +75,7 @@ typedef struct
     size_t          readIdx;        /*!< Next ring-buffer read index. */
     size_t          writeIdx;       /*!< Next ring-buffer write index. */
     size_t          itemCount;      /*!< Number of committed queue items. */
-    void           *buffer;         /*!< Ring-buffer storage. */
+    void            *buffer;        /*!< Ring-buffer storage. */
     pthread_mutex_t mutex;          /*!< Native ring-buffer protection mutex. */
     sem_t           freeSlotsSmphr; /*!< Backend-private count of free queue slots. */
     sem_t           busySlotsSmphr; /*!< Backend-private count of occupied queue slots. */
@@ -108,8 +103,8 @@ typedef struct
  */
 typedef struct
 {
-    sem_t                        availableCountSmphr; /*!< Counts currently available to Wait/Pend. */
-    sem_t                        freeCountSmphr;      /*!< Remaining capacity up to maxCount. */
+    sem_t                         availableCountSmphr; /*!< Counts currently available to Wait/Pend. */
+    sem_t                         freeCountSmphr;     /*!< Remaining capacity up to maxCount. */
     Template_osalSemaphoreCount_t maxCount;           /*!< Configured maximum semaphore count. */
 } Template_osalPosixSemaphore_s;
 // END SEMAPHORE
@@ -122,7 +117,7 @@ typedef struct
 typedef struct
 {
     Template_osalThreadWorker_f worker;     /*!< OSAL worker entry function. */
-    void                       *workerArgs; /*!< User argument passed to the worker. */
+    void                        *workerArgs; /*!< User argument passed to the worker. */
 } Template_osalPosixThreadArg_s;
 
 /**
@@ -131,7 +126,7 @@ typedef struct
  */
 typedef struct
 {
-    pthread_t                    thread; /*!< Native pthread identifier. */
+    pthread_t                     thread; /*!< Native pthread identifier. */
     Template_osalPosixThreadArg_s arg;   /*!< Embedded pthread thunk argument pack. */
 } Template_osalPosixThread_s;
 // END THREAD
@@ -204,7 +199,6 @@ static Template_osalErr_e template_osalPosixQueueReset(void *const osal,
 
 /**
  * \brief Create a POSIX stream buffer and register it in the OSAL instance.
- * \note Milestone 1 stub; POSIX stream buffers are not implemented yet.
  */
 static Template_osalErr_e template_osalPosixStreamBufferCreate(void *const osal,
                                                                const size_t bufferSizeBytes,
@@ -213,14 +207,12 @@ static Template_osalErr_e template_osalPosixStreamBufferCreate(void *const osal,
 
 /**
  * \brief Delete a registered POSIX stream buffer.
- * \note Milestone 1 stub; POSIX stream buffers are not implemented yet.
  */
 static Template_osalErr_e template_osalPosixStreamBufferDelete(void *const osal,
                                                                const Template_osalStreamBufferHandle_t streamBufferHandle);
 
 /**
  * \brief Put bytes into a registered POSIX stream buffer without waiting.
- * \note Milestone 1 stub; POSIX stream buffers are not implemented yet.
  */
 static Template_osalErr_e template_osalPosixStreamBufferPut(void *const osal,
                                                             const Template_osalStreamBufferHandle_t streamBufferHandle,
@@ -230,7 +222,6 @@ static Template_osalErr_e template_osalPosixStreamBufferPut(void *const osal,
 
 /**
  * \brief Put bytes into a registered POSIX stream buffer using the requested timeout.
- * \note Milestone 1 stub; POSIX stream buffers are not implemented yet.
  */
 static Template_osalErr_e template_osalPosixStreamBufferPost(void *const osal,
                                                              const Template_osalStreamBufferHandle_t streamBufferHandle,
@@ -241,7 +232,6 @@ static Template_osalErr_e template_osalPosixStreamBufferPost(void *const osal,
 
 /**
  * \brief Get already available bytes from a registered POSIX stream buffer.
- * \note Milestone 1 stub; POSIX stream buffers are not implemented yet.
  */
 static Template_osalErr_e template_osalPosixStreamBufferGet(void *const osal,
                                                             const Template_osalStreamBufferHandle_t streamBufferHandle,
@@ -744,11 +734,8 @@ Template_osalErr_e template_osalPosixInit(Template_osalPosix_s *const osalPosix,
     }
 
     /* Reset POSIX-specific instance state */
-    osalPosix->param = (Template_osalPosixParam_s) {
-        0
-    };
+    osalPosix->param = ((Template_osalPosixParam_s) {0});
     osalPosix->validFlag = false;
-
     if (param != NULL)
     {
         osalPosix->param = *param;
@@ -824,6 +811,7 @@ Template_osalErr_e template_osalPosixDeinit(Template_osalPosix_s *const osalPosi
                                                  osalPosix->base.threadObjHandle[i].handle);
         }
     }
+
 // END THREAD
 
 // BEGIN QUEUE
@@ -836,6 +824,7 @@ Template_osalErr_e template_osalPosixDeinit(Template_osalPosix_s *const osalPosi
                                                 osalPosix->base.queueObjHandle[i]);
         }
     }
+
 // END QUEUE
 
 // BEGIN MUTEX
@@ -848,6 +837,7 @@ Template_osalErr_e template_osalPosixDeinit(Template_osalPosix_s *const osalPosi
                                                 osalPosix->base.mutexHandle[i]);
         }
     }
+
 // END MUTEX
 
 // BEGIN SEMAPHORE
@@ -860,6 +850,7 @@ Template_osalErr_e template_osalPosixDeinit(Template_osalPosix_s *const osalPosi
                                                     osalPosix->base.semaphoreObjHandle[i]);
         }
     }
+
 // END SEMAPHORE
 
 // BEGIN MEMORY
@@ -872,6 +863,7 @@ Template_osalErr_e template_osalPosixDeinit(Template_osalPosix_s *const osalPosi
                                             osalPosix->base.memPtr[i]);
         }
     }
+
 // END MEMORY
 
     /* Clear the POSIX-specific state */
@@ -1191,6 +1183,7 @@ static Template_osalErr_e template_osalPosixQueueItemPut(void *const osal,
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->queueHandleFind != NULL);
 
+    /* Try to find the queue handle in the OSAL registry */
     const size_t queueId = port->base.ptable->queueHandleFind(port, queueHandle);
     if ((queueId == 0u) ||
         (queueId > TEMPLATE_OSAL_QUEUE_SLOTS_NUM))
@@ -1199,9 +1192,10 @@ static Template_osalErr_e template_osalPosixQueueItemPut(void *const osal,
         osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPut -> %d", (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: queue handle is not registered
+        return osalStatus;  // Exit: Error: queue handle is not registered within OSAL instance
     }
 
+    /* Down-casting of queue handle */
     Template_osalPosixQueue_s *const queue = (Template_osalPosixQueue_s *)queueHandle;
 
     /* Reserve one free queue slot without waiting */
@@ -1221,7 +1215,7 @@ static Template_osalErr_e template_osalPosixQueueItemPut(void *const osal,
         return osalStatus;  // Exit: Error: queue has no immediately available free slot
     }
 
-    /* Commit the item to the ring buffer */
+    /* Lock internal queue mutex */
     if (pthread_mutex_lock(&queue->mutex) != 0)
     {
         (void)sem_post(&queue->freeSlotsSmphr);
@@ -1232,11 +1226,13 @@ static Template_osalErr_e template_osalPosixQueueItemPut(void *const osal,
         return osalStatus;  // Exit: Error: queue mutex acquisition failed
     }
 
+    /* Copy an item to the next free queue slot */
     void *const dst = (uint8_t *)queue->buffer + (queue->writeIdx * queue->itemSize);
     memcpy(dst, queueItemPtr, queue->itemSize);
     queue->writeIdx = (queue->writeIdx + 1u) % queue->depth;
     ++queue->itemCount;
 
+    /* Unlock the internal queue mutex */
     if (pthread_mutex_unlock(&queue->mutex) != 0)
     {
         TEMPLATE_OSAL_POSIX_ASSERT(0);
@@ -1246,7 +1242,7 @@ static Template_osalErr_e template_osalPosixQueueItemPut(void *const osal,
         return osalStatus;  // Exit: Error: queue mutex release failed
     }
 
-    /* Publish one occupied queue slot */
+    /* Publish one occupied queue slot via counting semaphore */
     if (sem_post(&queue->busySlotsSmphr) != 0)
     {
         TEMPLATE_OSAL_POSIX_ASSERT(0);
@@ -1326,7 +1322,7 @@ static Template_osalErr_e template_osalPosixQueueItemPost(void *const osal,
         return osalStatus;  // Exit: Error: queue post timed out or native wait failed
     }
 
-    /* Commit the item to the ring buffer */
+    /* Lock the internal queue mutex */
     if (pthread_mutex_lock(&queue->mutex) != 0)
     {
         (void)sem_post(&queue->freeSlotsSmphr);
@@ -1731,12 +1727,13 @@ static Template_osalErr_e template_osalPosixQueueReset(void *const osal,
 
     /* Drain the occupied-slot semaphore */
     int nativeStatus = 0;
+
     do
     {
         nativeStatus = sem_trywait(&queue->busySlotsSmphr);
-    }
-    while ((nativeStatus == 0) ||
-           ((nativeStatus != 0) && (errno == EINTR)));
+    } while((nativeStatus == 0) ||
+            ((nativeStatus != 0) &&
+             (errno == EINTR)));
 
     if (errno != EAGAIN)
     {
@@ -1752,9 +1749,9 @@ static Template_osalErr_e template_osalPosixQueueReset(void *const osal,
     do
     {
         nativeStatus = sem_trywait(&queue->freeSlotsSmphr);
-    }
-    while ((nativeStatus == 0) ||
-           ((nativeStatus != 0) && (errno == EINTR)));
+    } while((nativeStatus == 0) ||
+            ((nativeStatus != 0) &&
+             (errno == EINTR)));
 
     if (errno != EAGAIN)
     {
@@ -2250,7 +2247,7 @@ static Template_osalErr_e template_osalPosixMutexTryLock(void *const osal,
     }
 
     Template_osalPosixMutex_s *const mutex = (Template_osalPosixMutex_s *)mutexHandle;
-    const int nativeStatus = pthread_mutex_trylock(&mutex->mutex);
+    const int nativeStatus                 = pthread_mutex_trylock(&mutex->mutex);
     if (nativeStatus != 0)
     {
         if (nativeStatus == EBUSY)
@@ -2316,7 +2313,7 @@ static Template_osalErr_e template_osalPosixMutexPendLock(void *const osal,
     }
 
     Template_osalPosixMutex_s *const mutex = (Template_osalPosixMutex_s *)mutexHandle;
-    int nativeStatus = 0;
+    int nativeStatus                       = 0;
 
     if (timeoutMs == TEMPLATE_OSAL_INFINITY_TOUT)
     {
@@ -2539,7 +2536,7 @@ static Template_osalErr_e template_osalPosixSemaphoreCreate(void *const osal,
 
     /* Register the counting-semaphore handle */
     port->base.semaphoreObjHandle[semaphoreId - 1u] = (Template_osalSemaphoreHandle_t)semaphore;
-    *semaphoreHandle                                  = (Template_osalSemaphoreHandle_t)semaphore;
+    *semaphoreHandle                                = (Template_osalSemaphoreHandle_t)semaphore;
 
     /* Release the resource mutex */
     osalStatus = template_osalPosixResourceUnlock(port);
@@ -3125,7 +3122,7 @@ static Template_osalErr_e template_osalPosixThreadCreate(void *const osal,
     }
 
     /* POSIX may enforce a host-specific minimum stack larger than an embedded profile requests. */
-    size_t nativeStackSize = threadAttr.stackSize;
+    size_t nativeStackSize      = threadAttr.stackSize;
     const long minimumStackSize = sysconf(_SC_THREAD_STACK_MIN);
     if ((minimumStackSize > 0L) &&
         (nativeStackSize < (size_t)minimumStackSize))
@@ -3182,8 +3179,9 @@ static Template_osalErr_e template_osalPosixThreadCreate(void *const osal,
     }
 
     /* Apply the generic priority on a best-effort basis */
-    int policy = SCHED_OTHER;
-    struct sched_param schedParam = {
+    int policy                    = SCHED_OTHER;
+    struct sched_param schedParam =
+    {
         0
     };
     if (pthread_getschedparam(thread->thread, &policy, &schedParam) == 0)
@@ -3474,11 +3472,11 @@ static Template_osalErr_e template_osalPosixThreadDelay(void *const osal,
     template_osalPosixTimespecAddMs(&deadline, delayMs);
 
     int nativeStatus = 0;
+
     do
     {
         nativeStatus = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &deadline, NULL);
-    }
-    while (nativeStatus == EINTR);
+    } while(nativeStatus == EINTR);
 
     if (nativeStatus != 0)
     {
@@ -3537,9 +3535,9 @@ static Template_osalErr_e template_osalPosixThreadDelayUntil(void *const osal,
 
     const uint64_t nowMs64 = ((uint64_t)now.tv_sec * 1000u) +
                              ((uint64_t)now.tv_nsec / 1000000u);
-    const Template_osalTimeMs_t nowMs = (Template_osalTimeMs_t)nowMs64;
+    const Template_osalTimeMs_t nowMs          = (Template_osalTimeMs_t)nowMs64;
     const Template_osalTimeMs_t nextWakeTimeMs = *previousWakeTimeMs + periodMs;
-    const int32_t waitMs = (int32_t)(nextWakeTimeMs - nowMs);
+    const int32_t waitMs                       = (int32_t)(nextWakeTimeMs - nowMs);
 
     if (waitMs > 0)
     {
@@ -3547,11 +3545,11 @@ static Template_osalErr_e template_osalPosixThreadDelayUntil(void *const osal,
         template_osalPosixTimespecAddMs(&deadline, (Template_osalTimeMs_t)waitMs);
 
         int nativeStatus = 0;
+
         do
         {
             nativeStatus = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &deadline, NULL);
-        }
-        while (nativeStatus == EINTR);
+        } while(nativeStatus == EINTR);
 
         if (nativeStatus != 0)
         {
@@ -3618,9 +3616,9 @@ static void template_osalPosixThreadExit(void *const osal)
         return;  // Exit: Error: resource mutex acquisition failed
     }
 
-    const pthread_t currentThread = pthread_self();
+    const pthread_t currentThread          = pthread_self();
     Template_osalPosixThread_s *currentTcb = NULL;
-    size_t currentThreadIdx = TEMPLATE_OSAL_THREAD_SLOTS_NUM;
+    size_t currentThreadIdx                = TEMPLATE_OSAL_THREAD_SLOTS_NUM;
 
     for (size_t i = 0u; i < TEMPLATE_OSAL_THREAD_SLOTS_NUM; ++i)
     {
@@ -4126,8 +4124,8 @@ static bool template_osalPosixIsValid(const void *const osal)
 
     const Template_osalPosix_s *const osalPosix = (const Template_osalPosix_s *)osal;
 
-    return (osalPosix->validFlag &&
-            (osalPosix->base.vtable == &template_osalPosixVtable));  // Exit: Success: backend validity returned
+    return(osalPosix->validFlag &&
+           (osalPosix->base.vtable == &template_osalPosixVtable));   // Exit: Success: backend validity returned
 }
 
 
@@ -4193,12 +4191,12 @@ static inline void template_osalPosixTimespecAddMs(struct timespec *const timeSp
 {
     TEMPLATE_OSAL_POSIX_ASSERT(timeSpec != NULL);
 
-    timeSpec->tv_sec += (time_t)(timeMs / 1000u);
+    timeSpec->tv_sec  += (time_t)(timeMs / 1000u);
     timeSpec->tv_nsec += (long)((timeMs % 1000u) * 1000000u);
 
     if (timeSpec->tv_nsec >= 1000000000L)
     {
-        timeSpec->tv_sec += (time_t)(timeSpec->tv_nsec / 1000000000L);
+        timeSpec->tv_sec  += (time_t)(timeSpec->tv_nsec / 1000000000L);
         timeSpec->tv_nsec %= 1000000000L;
     }
 }
@@ -4250,11 +4248,12 @@ static inline int template_osalPosixSemaphorePendNative(sem_t *const semaphore,
     if (timeoutMs == 0u)
     {
         int result = 0;
+
         do
         {
             result = sem_trywait(semaphore);
-        }
-        while ((result != 0) && (errno == EINTR));
+        } while((result != 0) &&
+                (errno == EINTR));
 
         return result;  // Exit: Success/Error: immediate native semaphore result returned
     }
@@ -4262,11 +4261,12 @@ static inline int template_osalPosixSemaphorePendNative(sem_t *const semaphore,
     if (timeoutMs == TEMPLATE_OSAL_INFINITY_TOUT)
     {
         int result = 0;
+
         do
         {
             result = sem_wait(semaphore);
-        }
-        while ((result != 0) && (errno == EINTR));
+        } while((result != 0) &&
+                (errno == EINTR));
 
         return result;  // Exit: Success/Error: infinite native semaphore result returned
     }
@@ -4280,11 +4280,12 @@ static inline int template_osalPosixSemaphorePendNative(sem_t *const semaphore,
     }
 
     int result = 0;
+
     do
     {
         result = sem_timedwait(semaphore, &deadline);
-    }
-    while ((result != 0) && (errno == EINTR));
+    } while((result != 0) &&
+            (errno == EINTR));
 
     return result;  // Exit: Success/Error: timed native semaphore result returned
 }
