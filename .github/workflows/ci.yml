@@ -1,0 +1,207 @@
+name: CI
+
+"on":
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  FREERTOS_KERNEL_REF: V11.3.1
+
+jobs:
+  generator-build:
+    name: 1 - Generator build check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build generator package
+        run: |
+          python -m pip install --upgrade pip build
+          python -m compileall -q generator/core generator/formatter generator/cli generator/gui
+          python -m build generator --outdir dist-generator
+
+      - name: Verify built generator
+        run: |
+          python -m pip install dist-generator/*.whl
+          kiwicgen --version
+          kiwicgen --help
+
+      - name: Upload generator package
+        uses: actions/upload-artifact@v4
+        with:
+          name: generator-dist
+          path: dist-generator/
+          if-no-files-found: error
+
+  generate-full-set:
+    name: 2 - Generate full OSAL set
+    runs-on: ubuntu-latest
+    needs: generator-build
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download generator package
+        uses: actions/download-artifact@v4
+        with:
+          name: generator-dist
+          path: dist-generator
+
+      - name: Install generator
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install dist-generator/*.whl
+
+      - name: Generate full FreeRTOS OSAL
+        run: |
+          kiwicgen \
+            --module-prefix=ci_osal \
+            --port=FreeRTOS \
+            --language=C \
+            --use-queue-api \
+            --use-stream-buffer-api \
+            --use-mutex-api \
+            --use-semaphore-api \
+            --use-event-flags-api \
+            --use-thread-api \
+            --use-critical-section-api \
+            --use-software-timer-api \
+            --use-time-api \
+            --use-memory-api \
+            --split-into-port-dir \
+            --output=ci-generated
+
+      - name: Verify generated tree
+        run: |
+          test -f ci-generated/ci_osal/ci_osal_osal.h
+          test -f ci-generated/ci_osal/ci_osal_osal.c
+          test -f ci-generated/ci_osal/portable/freertos/ci_osal_osal_freertos.h
+          test -f ci-generated/ci_osal/portable/freertos/ci_osal_osal_freertos.c
+          ! grep -R -n -E '// BEGIN |// END ' ci-generated/ci_osal --include='*.c' --include='*.h'
+
+      - name: Upload generated full set
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-full-set
+          path: ci-generated/
+          if-no-files-found: error
+
+  build-generated:
+    name: 3 - Build generated code
+    runs-on: ubuntu-latest
+    needs: generate-full-set
+
+    steps:
+      - name: Checkout KIWI
+        uses: actions/checkout@v4
+
+      - name: Checkout FreeRTOS-Kernel
+        uses: actions/checkout@v4
+        with:
+          repository: FreeRTOS/FreeRTOS-Kernel
+          ref: ${{ env.FREERTOS_KERNEL_REF }}
+          path: third_party/FreeRTOS-Kernel
+
+      - name: Download generated full set
+        uses: actions/download-artifact@v4
+        with:
+          name: generated-full-set
+          path: ci-generated
+
+      - name: Configure real FreeRTOS POSIX build
+        run: |
+          cmake \
+            -S .github/ci/freertos_posix \
+            -B build-generated \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DFREERTOS_KERNEL_DIR="$PWD/third_party/FreeRTOS-Kernel" \
+            -DGENERATED_OSAL_DIR="$PWD/ci-generated/ci_osal"
+
+      - name: Build generated code with FreeRTOS POSIX port
+        run: |
+          cmake --build build-generated --parallel
+
+      - name: Upload compile commands
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-build-metadata
+          path: build-generated/compile_commands.json
+          if-no-files-found: ignore
+
+  static-analysis:
+    name: 4 - Static analysis
+    runs-on: ubuntu-latest
+    needs: build-generated
+
+    steps:
+      - name: Checkout KIWI
+        uses: actions/checkout@v4
+
+      - name: Checkout FreeRTOS-Kernel
+        uses: actions/checkout@v4
+        with:
+          repository: FreeRTOS/FreeRTOS-Kernel
+          ref: ${{ env.FREERTOS_KERNEL_REF }}
+          path: third_party/FreeRTOS-Kernel
+
+      - name: Download generated full set
+        uses: actions/download-artifact@v4
+        with:
+          name: generated-full-set
+          path: ci-generated
+
+      - name: Install static-analysis tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cppcheck
+
+      - name: Run GCC static analyzer on generated sources
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -fanalyzer \
+            -Ici-generated/ci_osal \
+            -Ici-generated/ci_osal/portable/freertos \
+            -I.github/ci/freertos_posix \
+            -Ithird_party/FreeRTOS-Kernel/include \
+            -Ithird_party/FreeRTOS-Kernel/portable/ThirdParty/GCC/Posix \
+            -c ci-generated/ci_osal/ci_osal_osal.c \
+            -o /tmp/ci_osal_osal_analyze.o
+
+          gcc -std=c11 -Wall -Wextra -Werror -fanalyzer \
+            -Ici-generated/ci_osal \
+            -Ici-generated/ci_osal/portable/freertos \
+            -I.github/ci/freertos_posix \
+            -Ithird_party/FreeRTOS-Kernel/include \
+            -Ithird_party/FreeRTOS-Kernel/portable/ThirdParty/GCC/Posix \
+            -c ci-generated/ci_osal/portable/freertos/ci_osal_osal_freertos.c \
+            -o /tmp/ci_osal_osal_freertos_analyze.o
+
+      - name: Run cppcheck on generated sources
+        run: |
+          cppcheck \
+            --std=c11 \
+            --enable=warning,performance,portability \
+            --error-exitcode=1 \
+            --suppress=missingIncludeSystem \
+            -Ici-generated/ci_osal \
+            -Ici-generated/ci_osal/portable/freertos \
+            -I.github/ci/freertos_posix \
+            -Ithird_party/FreeRTOS-Kernel/include \
+            -Ithird_party/FreeRTOS-Kernel/portable/ThirdParty/GCC/Posix \
+            ci-generated/ci_osal/ci_osal_osal.c \
+            ci-generated/ci_osal/portable/freertos/ci_osal_osal_freertos.c

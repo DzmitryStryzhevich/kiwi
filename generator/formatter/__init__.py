@@ -1,0 +1,1 @@
+"""Generated-source formatting subsystem."""

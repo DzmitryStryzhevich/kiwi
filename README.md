@@ -1,49 +1,43 @@
-# OSAL Code Generator (Python GUI)
+# KIWI OSAL Code Generator
 
-Приложение генерирует C-файлы OSAL для embedded-проектов на основе шаблонов в `osal_templates`.
+KIWI is a code generator for building **component-scoped Operating System Abstraction Layers (OSALs)** for embedded software. It generates a small OS-facing interface tailored to the needs of a particular component instead of forcing the whole project through one large system-wide abstraction.
 
-## Возможности
+The project is intended to make component code easier to port, test and maintain while keeping direct FreeRTOS, POSIX and other OS-specific dependencies behind generated OSAL boundaries.
 
-- GUI (Tkinter) с аккуратным тёмным интерфейсом.
-- Настройка префикса модуля (замена `sys_param_srv` / `SysParamSrv` / `sysParamSrv` / `SYS_PARAM_SRV`).
-- Выбор набора API:
-  - Queues
-  - Locks
-  - Threads
-  - Time
-  - Memory
-- Выбор порта:
-  - `freertos` — поддерживается сейчас
-  - `posix (coming soon)` — предусмотрено на будущее
-- Генерация структуры:
-  - `<prefix>/...`
-  - `<prefix>/portable/...`
-  - `<prefix>/<prefix>_osal_profile.h`
+## Why OSAL and why component-scoped?
 
-## Запуск из исходников
+A component-scoped OSAL gives a component a small, stable and unambiguous contract for the OS services it actually uses. It also provides a natural test boundary, allowing the same component to run against a production backend or an isolated host/test implementation.
 
-```bash
-python osal_codegen_app.py
-```
+For the architectural model, unified OS primitive semantics, ownership rules and testability rationale, see [`doc/osal_architecture_en.md`](doc/osal_architecture_en.md). A Russian version is available in [`doc/osal_architecture_ru.md`](doc/osal_architecture_ru.md).
 
-## Сборка `.exe`
+## Code generator
 
-### Вариант 1 (Windows)
+KIWI provides both CLI and GUI frontends over the same code-generation core. YAML profiles can be used to save and reproduce generation settings.
 
-Запустить `build_exe.bat`.
+For CLI options, GUI controls, profiles, output layouts and executable builds, see [`doc/kiwicgen.md`](doc/kiwicgen.md).
 
-### Вариант 2 (вручную)
+## Examples
 
-```bash
-python -m pip install -r requirements.txt
-pyinstaller --noconfirm --clean --onefile --windowed --name OSAL_Code_Generator --add-data "osal_templates;osal_templates" osal_codegen_app.py
-```
+Usage examples for the generated generic OSAL API are collected in [`doc/examples.md`](doc/examples.md). The examples are currently a placeholder and will be expanded as the API is stabilized.
 
-Готовый файл будет в `dist/OSAL_Code_Generator.exe`.
+## Supported ports
 
-> Важно: шаблоны `osal_templates` вшиваются в `.exe`, поэтому приложение корректно работает без ошибки `templates directory not found`.
+| Target | Language | Status | Notes |
+| --- | --- | --- | --- |
+| FreeRTOS | C | Implemented | Queues, stream buffers, mutexes, counting semaphores, event flags, threads, critical sections, software timers, time and memory |
+| POSIX | C | Planned | Host/portable backend scaffold exists |
+| C++ OSAL variant | C++ | Planned | C++ generation/port support is on the roadmap |
 
-## Как работает ограничение API
+## Testing
 
-Для отключённых групп API генератор выставляет соответствующие функции в vtable порта `freertos` в `NULL`.
-Это позволяет формировать профиль, где, например, используются только lock-механизмы.
+A four-stage GitHub Actions pipeline checks the generator, generates the full OSAL API set, builds and links the generated FreeRTOS port against the official FreeRTOS `GCC_POSIX` host port, and runs static analysis. See [`doc/testing.md`](doc/testing.md) for the current CI flow and the broader testing model.
+
+## Contributing
+
+Contributions are welcome, including new ports, tests, examples, generator improvements, documentation and OSAL API extensions.
+
+See [`CONTRIBUTE.md`](CONTRIBUTE.md) before preparing a contribution.
+
+## License
+
+KIWI is distributed under the MIT License. See [`LICENSE`](LICENSE).
