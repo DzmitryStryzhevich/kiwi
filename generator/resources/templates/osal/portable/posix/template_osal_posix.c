@@ -64,21 +64,21 @@
 /**
  * \struct  Template_osalPosixQueue_s
  * \brief   POSIX bounded FIFO queue control block.
- * \details The ring buffer is protected by a native mutex. Two backend-private
+ * \details The ring buffer is protected by a POSIX mutex. Two backend-private
  *          POSIX semaphores represent free and occupied slots. They are not
  *          generic OSAL semaphore objects and never consume semaphore registry slots.
  */
 typedef struct
 {
-    size_t          itemSize;       /*!< Size of one queue item in bytes. */
-    size_t          depth;          /*!< Maximum number of queue items. */
-    size_t          readIdx;        /*!< Next ring-buffer read index. */
-    size_t          writeIdx;       /*!< Next ring-buffer write index. */
-    size_t          itemCount;      /*!< Number of committed queue items. */
-    void            *buffer;        /*!< Ring-buffer storage. */
-    pthread_mutex_t mutex;          /*!< Native ring-buffer protection mutex. */
-    sem_t           freeSlotsSmphr; /*!< Backend-private count of free queue slots. */
-    sem_t           busySlotsSmphr; /*!< Backend-private count of occupied queue slots. */
+    size_t          itemSize;        /*!< Size of one queue item in bytes. */
+    size_t          depth;           /*!< Maximum number of queue items. */
+    size_t          readIdx;         /*!< Next ring-buffer read index. */
+    size_t          writeIdx;        /*!< Next ring-buffer write index. */
+    size_t          itemCount;       /*!< Number of committed queue items. */
+    void            *buffer;         /*!< Ring-buffer storage. */
+    pthread_mutex_t mutex;           /*!< Native ring-buffer protection mutex. */
+    sem_t           freeSlotsSmphr;  /*!< Backend-private count of free queue slots. */
+    sem_t           busySlotsSmphr;  /*!< Backend-private count of occupied queue slots. */
 } Template_osalPosixQueue_s;
 // END QUEUE
 
@@ -99,13 +99,13 @@ typedef struct
  * \brief   POSIX counting-semaphore control block.
  * \details availableCountSmphr holds consumable counts. freeCountSmphr tracks
  *          the remaining configured capacity so Post cannot exceed maxCount.
- *          Both native semaphores are backend-private implementation details.
+ *          Both POSIX semaphores are backend-private implementation details.
  */
 typedef struct
 {
-    sem_t                         availableCountSmphr; /*!< Counts currently available to Wait/Pend. */
-    sem_t                         freeCountSmphr;     /*!< Remaining capacity up to maxCount. */
-    Template_osalSemaphoreCount_t maxCount;           /*!< Configured maximum semaphore count. */
+    sem_t                         availableCountSmphr;  /*!< Counts currently available to Wait/Pend. */
+    sem_t                         freeCountSmphr;       /*!< Remaining capacity up to maxCount. */
+    Template_osalSemaphoreCount_t maxCount;             /*!< Configured maximum semaphore count. */
 } Template_osalPosixSemaphore_s;
 // END SEMAPHORE
 
@@ -116,8 +116,8 @@ typedef struct
  */
 typedef struct
 {
-    Template_osalThreadWorker_f worker;     /*!< OSAL worker entry function. */
-    void                        *workerArgs; /*!< User argument passed to the worker. */
+    Template_osalThreadWorker_f worker;        /*!< OSAL worker entry function. */
+    void                        *workerArgs;   /*!< User argument passed to the worker. */
 } Template_osalPosixThreadArg_s;
 
 /**
@@ -126,8 +126,8 @@ typedef struct
  */
 typedef struct
 {
-    pthread_t                     thread; /*!< Native pthread identifier. */
-    Template_osalPosixThreadArg_s arg;   /*!< Embedded pthread thunk argument pack. */
+    pthread_t                     thread;   /*!< Native pthread identifier. */
+    Template_osalPosixThreadArg_s arg;      /*!< Embedded pthread thunk argument pack. */
 } Template_osalPosixThread_s;
 // END THREAD
 
@@ -564,7 +564,7 @@ static inline bool template_osalPosixRealtimeDeadlineGet(const Template_osalTime
                                                          struct timespec *const deadline);
 
 /**
- * \brief Wait on a native POSIX semaphore using the generic OSAL timeout semantics.
+ * \brief Wait on a POSIX semaphore using the generic OSAL timeout semantics.
  */
 static inline int template_osalPosixSemaphorePendNative(sem_t *const semaphore,
                                                         const Template_osalTimeMs_t timeoutMs);
@@ -673,7 +673,7 @@ static const Template_osalVtable_s template_osalPosixVtable =
  * \brief Initialize the Template POSIX OSAL instance.
  *
  * \details Initializes the generic OSAL base object, initializes the backend-owned
- *          resource mutex and binds the POSIX vtable. The resource mutex is native
+ *          resource mutex and binds the POSIX vtable. The resource mutex is POSIX
  *          backend state and does not consume a generic OSAL mutex registry slot.
  *
  * \param osalPosix  Pointer to the POSIX-specific OSAL instance.
@@ -700,7 +700,9 @@ Template_osalErr_e template_osalPosixInit(Template_osalPosix_s *const osalPosix,
     /* Validate args */
     if (osalPosix == NULL)
     {
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid arguments
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixInit -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: invalid args
@@ -710,15 +712,14 @@ Template_osalErr_e template_osalPosixInit(Template_osalPosix_s *const osalPosix,
     osalStatus = template_osalInit(&osalPosix->base, name, parent);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixInit -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: base initialization failed
     }
 
     /* Reset POSIX-specific instance state */
-    osalPosix->param = (Template_osalPosixParam_s) {
-        0
-    };
+    osalPosix->param     = ((Template_osalPosixParam_s) {0});
     osalPosix->validFlag = false;
 
     if (param != NULL)
@@ -731,7 +732,9 @@ Template_osalErr_e template_osalPosixInit(Template_osalPosix_s *const osalPosix,
     {
         (void)template_osalDeinit(&osalPosix->base);
 
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Resource mutex creation failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixInit -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex creation failed
@@ -743,7 +746,7 @@ Template_osalErr_e template_osalPosixInit(Template_osalPosix_s *const osalPosix,
     /* Mark the POSIX backend as valid */
     osalPosix->validFlag = true;
 
-    /* Trace initialization success */
+    /* Trace initialization result */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixInit -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: POSIX OSAL was initialized
@@ -771,7 +774,9 @@ Template_osalErr_e template_osalPosixDeinit(Template_osalPosix_s *const osalPosi
     /* Validate args */
     if (osalPosix == NULL)
     {
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid arguments
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixDeinit -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: invalid args
@@ -780,7 +785,9 @@ Template_osalErr_e template_osalPosixDeinit(Template_osalPosix_s *const osalPosi
     /* Validate backend state */
     if (!template_osalPosixIsValid(osalPosix))
     {
-        osalStatus = TEMPLATE_OSAL_NOT_INIT_ERR;
+        osalStatus = TEMPLATE_OSAL_NOT_INIT_ERR;  // Error: Backend is not initialized
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixDeinit -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: backend is not initialized
@@ -854,14 +861,16 @@ Template_osalErr_e template_osalPosixDeinit(Template_osalPosix_s *const osalPosi
     /* Clear the POSIX-specific state */
     osalPosix->validFlag   = false;
     osalPosix->base.vtable = NULL;
-    osalPosix->param       = (Template_osalPosixParam_s) {
-        0
-    };
+    osalPosix->param       = ((Template_osalPosixParam_s) {0});
 
     if (pthread_mutex_destroy(&osalPosix->resourceMutex) != 0)
     {
+        /* This branch is impossible under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Resource mutex destruction failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixDeinit -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex destruction failed
@@ -870,7 +879,7 @@ Template_osalErr_e template_osalPosixDeinit(Template_osalPosix_s *const osalPosi
     /* Deinitialize the generic OSAL base */
     osalStatus = template_osalDeinit(&osalPosix->base);
 
-    /* Trace the deinitialization result */
+    /* Trace deinitialization result */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixDeinit -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: POSIX OSAL was deinitialized
@@ -885,9 +894,9 @@ Template_osalErr_e template_osalPosixDeinit(Template_osalPosix_s *const osalPosi
  * \brief Create a bounded POSIX queue and register it in the OSAL instance.
  *
  * \details The queue is implemented as a private ring buffer protected by a
- *          pthread mutex. freeSlotsSmphr and busySlotsSmphr are native POSIX
- *          semaphores owned by the queue control block; they are not generic
- *          OSAL semaphore objects and do not consume semaphore registry slots.
+ *          pthread mutex. freeSlotsSmphr and busySlotsSmphr are POSIX semaphores
+ *          owned by the queue control block; they are not generic OSAL semaphore
+ *           objects and do not consume semaphore registry slots.
  *
  * \param osal           Opaque pointer to the initialized POSIX OSAL instance.
  * \param queueItemSize  Size of one queue item in bytes.
@@ -924,13 +933,13 @@ static Template_osalErr_e template_osalPosixQueueCreate(void *const osal,
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->queueFreeSlotFind != NULL);
 
-    /* Defensively reject values that cannot be represented by POSIX semaphores or storage size */
-    if ((queueItemSize == 0u) ||
-        (queueDepth == 0u) ||
-        (queueItemSize > (SIZE_MAX / queueDepth)) ||
+    /* Reject values that cannot be represented by POSIX semaphores or storage size */
+    if ((queueItemSize > (SIZE_MAX / queueDepth)) ||
         (queueDepth > (size_t)SEM_VALUE_MAX))
     {
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Queue dimensions are not representable by the POSIX backend
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue dimensions are not representable by the POSIX backend
@@ -943,6 +952,10 @@ static Template_osalErr_e template_osalPosixQueueCreate(void *const osal,
     osalStatus = template_osalPosixResourceLock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex acquisition failed
@@ -954,7 +967,9 @@ static Template_osalErr_e template_osalPosixQueueCreate(void *const osal,
         (queueId > TEMPLATE_OSAL_QUEUE_SLOTS_NUM))
     {
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_QUEUE_CREATE_ERR;
+        osalStatus = TEMPLATE_OSAL_QUEUE_CREATE_ERR;  // Error: No free queue slot
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: no free queue slot
@@ -966,7 +981,9 @@ static Template_osalErr_e template_osalPosixQueueCreate(void *const osal,
     if (queue == NULL)
     {
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_QUEUE_MEM_ALLOCATION_ERR;
+        osalStatus = TEMPLATE_OSAL_QUEUE_MEM_ALLOCATION_ERR;  // Error: Queue control-block allocation failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue control-block allocation failed
@@ -978,7 +995,9 @@ static Template_osalErr_e template_osalPosixQueueCreate(void *const osal,
     {
         free(queue);
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_QUEUE_MEM_ALLOCATION_ERR;
+        osalStatus = TEMPLATE_OSAL_QUEUE_MEM_ALLOCATION_ERR;  // Error: Queue storage allocation failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue storage allocation failed
@@ -991,30 +1010,36 @@ static Template_osalErr_e template_osalPosixQueueCreate(void *const osal,
     queue->writeIdx  = 0u;
     queue->itemCount = 0u;
 
-    /* Initialize native queue synchronization primitives */
+    /* Initialize the internal queue mutex */
     if (pthread_mutex_init(&queue->mutex, NULL) != 0)
     {
         free(queue->buffer);
         free(queue);
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_QUEUE_CREATE_ERR;
+        osalStatus = TEMPLATE_OSAL_QUEUE_CREATE_ERR;  // Error: Queue mutex initialization failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue mutex initialization failed
     }
 
+    /* Initialize the free-slots semaphore */
     if (sem_init(&queue->freeSlotsSmphr, 0, (unsigned int)queueDepth) != 0)
     {
         (void)pthread_mutex_destroy(&queue->mutex);
         free(queue->buffer);
         free(queue);
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_QUEUE_CREATE_ERR;
+        osalStatus = TEMPLATE_OSAL_QUEUE_CREATE_ERR;  // Error: Free-slot semaphore initialization failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: free-slot semaphore initialization failed
     }
 
+    /* Initialize the busy-slots semaphore */
     if (sem_init(&queue->busySlotsSmphr, 0, 0u) != 0)
     {
         (void)sem_destroy(&queue->freeSlotsSmphr);
@@ -1022,7 +1047,9 @@ static Template_osalErr_e template_osalPosixQueueCreate(void *const osal,
         free(queue->buffer);
         free(queue);
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_QUEUE_CREATE_ERR;
+        osalStatus = TEMPLATE_OSAL_QUEUE_CREATE_ERR;  // Error: Occupied-slot semaphore initialization failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: occupied-slot semaphore initialization failed
@@ -1036,11 +1063,13 @@ static Template_osalErr_e template_osalPosixQueueCreate(void *const osal,
     osalStatus = template_osalPosixResourceUnlock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex release failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueCreate -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: queue was created and registered
@@ -1064,7 +1093,8 @@ static Template_osalErr_e template_osalPosixQueueDelete(void *const osal,
     Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
 
     /* Trace input args */
-    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueDelete(%p, %p)", osal, (void *)queueHandle);
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueDelete(%p, %p)",
+                              osal, (void *)queueHandle);
 
     /* Validate input args */
     TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
@@ -1078,11 +1108,13 @@ static Template_osalErr_e template_osalPosixQueueDelete(void *const osal,
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->queueHandleFind != NULL);
 
-    /* Acquire the resource mutex */
+    /* Lock */
     osalStatus = template_osalPosixResourceLock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
-        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueDelete -> %d", (int)osalStatus);
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueDelete -> %d",
+                                  (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex acquisition failed
     }
@@ -1092,10 +1124,13 @@ static Template_osalErr_e template_osalPosixQueueDelete(void *const osal,
     if ((queueId == 0u) ||
         (queueId > TEMPLATE_OSAL_QUEUE_SLOTS_NUM))
     {
+        /* Unlock */
         (void)template_osalPosixResourceUnlock(port);
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
-        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueDelete -> %d", (int)osalStatus);
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid queue handle
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueDelete -> %d",
+                                  (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue handle is not registered
     }
@@ -1103,7 +1138,7 @@ static Template_osalErr_e template_osalPosixQueueDelete(void *const osal,
     /* Down-casting of the queue handle */
     Template_osalPosixQueue_s *const queue = (Template_osalPosixQueue_s *)queueHandle;
 
-    /* Destroy backend-private synchronization resources */
+    /* Destroy internal synchronization resources */
     const int busyRc  = sem_destroy(&queue->busySlotsSmphr);
     const int freeRc  = sem_destroy(&queue->freeSlotsSmphr);
     const int mutexRc = pthread_mutex_destroy(&queue->mutex);
@@ -1111,12 +1146,23 @@ static Template_osalErr_e template_osalPosixQueueDelete(void *const osal,
         (freeRc != 0) ||
         (mutexRc != 0))
     {
+        /* This branch is impossible under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
-        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueDelete -> %d", (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: native queue synchronization teardown failed
+        /* Release queue storage and clear the registry slot */
+        free(queue->buffer);
+        free(queue);
+        port->base.queueObjHandle[queueId - 1u] = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
+
+        /* Unlock */
+        (void)template_osalPosixResourceUnlock(port);
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Native queue synchronization teardown failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueDelete -> %d",
+                                  (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: POSIX queue synchronization teardown failed
     }
 
     /* Release queue storage and clear the registry slot */
@@ -1124,16 +1170,20 @@ static Template_osalErr_e template_osalPosixQueueDelete(void *const osal,
     free(queue);
     port->base.queueObjHandle[queueId - 1u] = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
 
-    /* Release the resource mutex */
+    /* Unlock */
     osalStatus = template_osalPosixResourceUnlock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
-        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueDelete -> %d", (int)osalStatus);
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueDelete -> %d",
+                                  (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex release failed
     }
 
-    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueDelete -> %d", (int)osalStatus);
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueDelete -> %d",
+                              (int)osalStatus);
 
     return osalStatus;  // Exit: Success: queue was deleted and unregistered
 }
@@ -1176,9 +1226,11 @@ static Template_osalErr_e template_osalPosixQueueItemPut(void *const osal,
     if ((queueId == 0u) ||
         (queueId > TEMPLATE_OSAL_QUEUE_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
-        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPut -> %d", (int)osalStatus);
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid queue handle
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPut -> %d",
+                                  (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue handle is not registered
     }
@@ -1191,25 +1243,30 @@ static Template_osalErr_e template_osalPosixQueueItemPut(void *const osal,
     {
         if (errno == EAGAIN)
         {
-            osalStatus = TEMPLATE_OSAL_QUEUE_IS_FULL_ERR;
+            osalStatus = TEMPLATE_OSAL_QUEUE_IS_FULL_ERR;  // Error: Queue is full
         }
         else
         {
-            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Native free-slot semaphore wait failed
         }
 
-        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPut -> %d", (int)osalStatus);
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPut -> %d",
+                                  (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue has no immediately available free slot
     }
 
-    /* Lock using internal (associated with the queue) mutex */
+    /* Lock using the internal queue mutex */
     if (pthread_mutex_lock(&queue->mutex) != 0)
     {
         (void)sem_post(&queue->freeSlotsSmphr);
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
-        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPut -> %d", (int)osalStatus);
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Queue mutex acquisition failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPut -> %d",
+                                  (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue mutex acquisition failed
     }
@@ -1223,9 +1280,14 @@ static Template_osalErr_e template_osalPosixQueueItemPut(void *const osal,
     /* Unlock */
     if (pthread_mutex_unlock(&queue->mutex) != 0)
     {
+        /* This branch is impossible under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
-        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPut -> %d", (int)osalStatus);
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Queue mutex release failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPut -> %d",
+                                  (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue mutex release failed
     }
@@ -1233,14 +1295,21 @@ static Template_osalErr_e template_osalPosixQueueItemPut(void *const osal,
     /* Publish one occupied queue slot */
     if (sem_post(&queue->busySlotsSmphr) != 0)
     {
+        /* This branch is impossible under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
-        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPut -> %d", (int)osalStatus);
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Occupied-slot semaphore update failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPut -> %d",
+                                  (int)osalStatus);
 
         return osalStatus;  // Exit: Error: occupied-slot semaphore update failed
     }
 
-    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPut -> %d", (int)osalStatus);
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPut -> %d",
+                              (int)osalStatus);
 
     return osalStatus;  // Exit: Success: queue item was put
 }
@@ -1285,8 +1354,9 @@ static Template_osalErr_e template_osalPosixQueueItemPost(void *const osal,
     if ((queueId == 0u) ||
         (queueId > TEMPLATE_OSAL_QUEUE_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid queue handle
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPost -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue handle is not registered
@@ -1301,24 +1371,29 @@ static Template_osalErr_e template_osalPosixQueueItemPost(void *const osal,
         if ((errno == EAGAIN) ||
             (errno == ETIMEDOUT))
         {
-            osalStatus = TEMPLATE_OSAL_QUEUE_OVERFLOW_ERR;
+            osalStatus = TEMPLATE_OSAL_QUEUE_OVERFLOW_ERR;  // Error: Queue is full
         }
         else
         {
-            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Port-specific issue
         }
 
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPost -> %d", (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: queue post timed out or native wait failed
+        return osalStatus;  // Exit: Error: queue post timed out or wait failed
     }
 
-    /* Lock the internal queue mutex */
+    /* Lock using the internal queue mutex */
     if (pthread_mutex_lock(&queue->mutex) != 0)
     {
-        (void)sem_post(&queue->freeSlotsSmphr);
+        /* This branch is considered as unlikely under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+        (void)sem_post(&queue->freeSlotsSmphr);
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Queue mutex acquisition failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPost -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue mutex acquisition failed
@@ -1331,11 +1406,15 @@ static Template_osalErr_e template_osalPosixQueueItemPost(void *const osal,
     queue->writeIdx = (queue->writeIdx + 1u) % queue->depth;
     ++queue->itemCount;
 
-    /* Unlock the internal queue mutex */
+    /* Unlock */
     if (pthread_mutex_unlock(&queue->mutex) != 0)
     {
+        /* This branch is considered as unlikely under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Queue mutex release failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPost -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue mutex release failed
@@ -1344,13 +1423,18 @@ static Template_osalErr_e template_osalPosixQueueItemPost(void *const osal,
     /* Publish one occupied queue slot */
     if (sem_post(&queue->busySlotsSmphr) != 0)
     {
+        /* This branch is considered as unlikely under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Occupied-slot semaphore update failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPost -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: occupied-slot semaphore update failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPost -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: queue item was posted
@@ -1394,14 +1478,14 @@ static Template_osalErr_e template_osalPosixQueueItemGet(void *const osal,
     if ((queueId == 0u) ||
         (queueId > TEMPLATE_OSAL_QUEUE_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid queue handle
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemGet -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue handle is not registered
     }
 
-    /* Down-casting */
     /* Down-casting of the queue handle */
     Template_osalPosixQueue_s *const queue = (Template_osalPosixQueue_s *)queueHandle;
 
@@ -1410,24 +1494,29 @@ static Template_osalErr_e template_osalPosixQueueItemGet(void *const osal,
     {
         if (errno == EAGAIN)
         {
-            osalStatus = TEMPLATE_OSAL_QUEUE_IS_EMPTY_ERR;
+            osalStatus = TEMPLATE_OSAL_QUEUE_IS_EMPTY_ERR;  // Error: Queue is empty
         }
         else
         {
-            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Native busy-slot semaphore wait failed
         }
 
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemGet -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue has no immediately available item
     }
 
-    /* Lock using internal associated mutex */
+    /* Lock using the internal queue mutex */
     if (pthread_mutex_lock(&queue->mutex) != 0)
     {
-        (void)sem_post(&queue->busySlotsSmphr);
+        /* This branch is considered as unlikely under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+        (void)sem_post(&queue->busySlotsSmphr);
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Queue mutex acquisition failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemGet -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue mutex acquisition failed
@@ -1443,8 +1532,12 @@ static Template_osalErr_e template_osalPosixQueueItemGet(void *const osal,
     /* Unlock */
     if (pthread_mutex_unlock(&queue->mutex) != 0)
     {
+        /* This branch is considered as unlikely under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Queue mutex release failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemGet -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue mutex release failed
@@ -1453,13 +1546,18 @@ static Template_osalErr_e template_osalPosixQueueItemGet(void *const osal,
     /* Publish one free queue slot */
     if (sem_post(&queue->freeSlotsSmphr) != 0)
     {
+        /* This branch is considered as unlikely under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Free-slot semaphore update failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemGet -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: free-slot semaphore update failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemGet -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: queue item was retrieved
@@ -1503,8 +1601,9 @@ static Template_osalErr_e template_osalPosixQueueItemWait(void *const osal,
     if ((queueId == 0u) ||
         (queueId > TEMPLATE_OSAL_QUEUE_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid queue handle
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemWait -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue handle is not registered
@@ -1517,24 +1616,32 @@ static Template_osalErr_e template_osalPosixQueueItemWait(void *const osal,
     if (template_osalPosixSemaphorePendNative(&queue->busySlotsSmphr,
                                               TEMPLATE_OSAL_INFINITY_TOUT) != 0)
     {
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Native infinite queue wait failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemWait -> %d", (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: native infinite queue wait failed
+        return osalStatus;  // Exit: Error: infinite queue wait failed
     }
 
-    /* Lock */
+    /* Lock using the internal queue mutex */
     if (pthread_mutex_lock(&queue->mutex) != 0)
     {
-        (void)sem_post(&queue->busySlotsSmphr);
+        /* This branch is considered as unlikely under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+        /* This branch is impossible under normal conditions */
+        (void)sem_post(&queue->busySlotsSmphr);
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Queue mutex acquisition failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemWait -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue mutex acquisition failed
     }
 
-    /* Retrive an item from the queue */
+    /* Retrieve an item from the queue */
     TEMPLATE_OSAL_POSIX_ASSERT(queue->itemCount > 0);
     void *const src = (uint8_t *)queue->buffer + (queue->readIdx * queue->itemSize);
     memcpy(queueItemPtr, src, queue->itemSize);
@@ -1544,23 +1651,32 @@ static Template_osalErr_e template_osalPosixQueueItemWait(void *const osal,
     /* Unlock */
     if (pthread_mutex_unlock(&queue->mutex) != 0)
     {
+        /* This branch is considered as unlikely under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Queue mutex release failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemWait -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue mutex release failed
     }
 
-    /* Publish one free slot in the queue */
+    /* Publish one free queue slot */
     if (sem_post(&queue->freeSlotsSmphr) != 0)
     {
+        /* This branch is impossible under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Free-slot semaphore update failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemWait -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: free-slot semaphore update failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemWait -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: queue item was retrieved
@@ -1606,8 +1722,9 @@ static Template_osalErr_e template_osalPosixQueueItemPend(void *const osal,
     if ((queueId == 0u) ||
         (queueId > TEMPLATE_OSAL_QUEUE_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid queue handle
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPend -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue handle is not registered
@@ -1622,24 +1739,29 @@ static Template_osalErr_e template_osalPosixQueueItemPend(void *const osal,
         if ((errno == EAGAIN) ||
             (errno == ETIMEDOUT))
         {
-            osalStatus = TEMPLATE_OSAL_QUEUE_IS_EMPTY_ERR;
+            osalStatus = TEMPLATE_OSAL_QUEUE_IS_EMPTY_ERR;  // Error: Queue receive timed out
         }
         else
         {
-            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Native busy-slot semaphore wait failed
         }
 
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPend -> %d", (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: queue receive timed out or native wait failed
+        return osalStatus;  // Exit: Error: queue receive timed out or wait failed
     }
 
-    /* Lock */
+    /* Lock using the internal queue mutex */
     if (pthread_mutex_lock(&queue->mutex) != 0)
     {
-        (void)sem_post(&queue->busySlotsSmphr);
+        /* This branch is impossible under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+        (void)sem_post(&queue->busySlotsSmphr);
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Queue mutex acquisition failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPend -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue mutex acquisition failed
@@ -1655,23 +1777,32 @@ static Template_osalErr_e template_osalPosixQueueItemPend(void *const osal,
     /* Unlock */
     if (pthread_mutex_unlock(&queue->mutex) != 0)
     {
+        /* This branch is impossible under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Queue mutex release failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPend -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue mutex release failed
     }
 
-    /* Publish the free slot */
+    /* Publish one free queue slot */
     if (sem_post(&queue->freeSlotsSmphr) != 0)
     {
+        /* This branch is impossible under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Free-slot semaphore update failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPend -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: free-slot semaphore update failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueItemPend -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: queue item was retrieved
@@ -1681,12 +1812,12 @@ static Template_osalErr_e template_osalPosixQueueItemPend(void *const osal,
 /**
  * \brief Reset a registered POSIX queue to its initial empty state.
  *
- * \details Resets ring-buffer indices, discards queued data, drains both native
+ * \details Resets ring-buffer indices, discards queued data, drains both POSIX
  *          slot semaphores and restores freeSlotsSmphr to queue depth.
  *
  * \note The caller must ensure no producer or consumer is blocked on or using
  *       the queue while reset is performed. This matches the resource-lifecycle
- *       expectation for native synchronization objects in this backend.
+ *       expectation for POSIX synchronization objects in this backend.
  *
  * \param osal         Opaque pointer to the initialized POSIX OSAL instance.
  * \param queueHandle  Registered queue handle.
@@ -1718,8 +1849,9 @@ static Template_osalErr_e template_osalPosixQueueReset(void *const osal,
     if ((queueId == 0u) ||
         (queueId > TEMPLATE_OSAL_QUEUE_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid queue handle was passed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueReset -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue handle is not registered
@@ -1728,36 +1860,46 @@ static Template_osalErr_e template_osalPosixQueueReset(void *const osal,
     /* Down-casting of the queue handle */
     Template_osalPosixQueue_s *const queue = (Template_osalPosixQueue_s *)queueHandle;
 
-    /* Protect ring-buffer state while it is reset */
+    /* Lock */
     if (pthread_mutex_lock(&queue->mutex) != 0)
     {
+        /* This branch is impossible under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Port-specific error
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueReset -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue mutex acquisition failed
     }
 
+    /* Reset the ring-buffer state */
     queue->readIdx   = 0u;
     queue->writeIdx  = 0u;
     queue->itemCount = 0u;
     memset(queue->buffer, 0, queue->itemSize * queue->depth);
 
     /* Drain the occupied-slot semaphore */
-    int nativeStatus = 0;
+    int rc = 0;
 
     do
     {
-        nativeStatus = sem_trywait(&queue->busySlotsSmphr);
-    } while((nativeStatus == 0) ||
-            ((nativeStatus != 0) &&
+        rc = sem_trywait(&queue->busySlotsSmphr);
+    } while((rc == 0) ||
+            ((rc != 0) &&
              (errno == EINTR)));
 
     if (errno != EAGAIN)
     {
-        (void)pthread_mutex_unlock(&queue->mutex);
+        /* This branch is impossible under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+        /* Unlock the internal queue control block mutex */
+        (void)pthread_mutex_unlock(&queue->mutex);
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Occupied-slot semaphore reset failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueReset -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: occupied-slot semaphore reset failed
@@ -1766,16 +1908,21 @@ static Template_osalErr_e template_osalPosixQueueReset(void *const osal,
     /* Drain and restore the free-slot semaphore to queue depth */
     do
     {
-        nativeStatus = sem_trywait(&queue->freeSlotsSmphr);
-    } while((nativeStatus == 0) ||
-            ((nativeStatus != 0) &&
+        rc = sem_trywait(&queue->freeSlotsSmphr);
+    } while((rc == 0) ||
+            ((rc != 0) &&
              (errno == EINTR)));
 
     if (errno != EAGAIN)
     {
-        (void)pthread_mutex_unlock(&queue->mutex);
+        /* This branch is impossible under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+        /* Unlock */
+        (void)pthread_mutex_unlock(&queue->mutex);
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Free-slot semaphore drain failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueReset -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: free-slot semaphore drain failed
@@ -1785,24 +1932,35 @@ static Template_osalErr_e template_osalPosixQueueReset(void *const osal,
     {
         if (sem_post(&queue->freeSlotsSmphr) != 0)
         {
-            (void)pthread_mutex_unlock(&queue->mutex);
+            /* This branch is impossible under normal conditions */
             TEMPLATE_OSAL_POSIX_ASSERT(0);
-            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+            /* Unlock */
+            (void)pthread_mutex_unlock(&queue->mutex);
+            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Free-slot semaphore restore failed
+
+            /* Trace returned value */
             TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueReset -> %d", (int)osalStatus);
 
             return osalStatus;  // Exit: Error: free-slot semaphore restore failed
         }
     }
 
+    /* Unlock */
     if (pthread_mutex_unlock(&queue->mutex) != 0)
     {
+        /* This branch is impossible under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Queue mutex release failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueReset -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: queue mutex release failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixQueueReset -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: queue was reset
@@ -2033,7 +2191,7 @@ static Template_osalErr_e template_osalPosixStreamBufferReset(void *const osal,
  *
  * \details The generic KIWI OSAL mutex contract requires every public mutex to
  *          be recursive/reentrant. The POSIX backend therefore creates each
- *          native mutex with PTHREAD_MUTEX_RECURSIVE semantics.
+ *          POSIX mutex with PTHREAD_MUTEX_RECURSIVE semantics.
  *
  * \param osal         Opaque pointer to the initialized POSIX OSAL instance.
  * \param mutexHandle  Output pointer receiving the mutex handle.
@@ -2063,10 +2221,11 @@ static Template_osalErr_e template_osalPosixMutexCreate(void *const osal,
     /* Clear the output value */
     *mutexHandle = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
 
-    /* Acquire the resource mutex (protect internal OSAL registry integrity ) */
+    /* Acquire the resource mutex */
     osalStatus = template_osalPosixResourceLock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex acquisition failed
@@ -2078,64 +2237,74 @@ static Template_osalErr_e template_osalPosixMutexCreate(void *const osal,
         (mutexId > TEMPLATE_OSAL_MUTEX_SLOTS_NUM))
     {
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_MUTEX_CREATE_ERR;
+        osalStatus = TEMPLATE_OSAL_MUTEX_CREATE_ERR;  // Error: No free mutex slot
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: no free mutex slot
     }
 
-    /* Allocate the memory for the mutex control block */
+    /* Allocate the mutex control block */
     Template_osalPosixMutex_s *const mutex =
         (Template_osalPosixMutex_s *)calloc(1u, sizeof(Template_osalPosixMutex_s));
     if (mutex == NULL)
     {
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_MUTEX_MEM_ALLOCATION_ERR;
+        osalStatus = TEMPLATE_OSAL_MUTEX_MEM_ALLOCATION_ERR;  // Error: Mutex control-block allocation failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: mutex control-block allocation failed
     }
 
-    /* Configure native recursive-mutex attributes */
+    /* Initialize POSIX mutex attributes */
     pthread_mutexattr_t attr;
-    int nativeStatus = pthread_mutexattr_init(&attr);
-    if (nativeStatus != 0)
+    int rc = pthread_mutexattr_init(&attr);
+    if (rc != 0)
     {
         free(mutex);
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_MUTEX_CREATE_ERR;
+        osalStatus = TEMPLATE_OSAL_MUTEX_CREATE_ERR;  // Error: Native mutex attributes initialization failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexCreate -> %d", (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: native mutex attributes initialization failed
+        return osalStatus;  // Exit: Error: POSIX mutex attributes initialization failed
     }
 
-    /* Use only recursive mutex type */
-    nativeStatus = pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
-    if (nativeStatus != 0)
+    /* Set the recursive mutex type */
+    rc = pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+    if (rc != 0)
     {
         (void)pthread_mutexattr_destroy(&attr);
         free(mutex);
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_MUTEX_CREATE_ERR;
+        osalStatus = TEMPLATE_OSAL_MUTEX_CREATE_ERR;  // Error: Recursive mutex attribute configuration failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: recursive mutex attribute configuration failed
     }
 
-    /* Create the POSIX mutex */
-    nativeStatus = pthread_mutex_init(&mutex->mutex, &attr);
+    /* Initialize the POSIX recursive mutex */
+    rc = pthread_mutex_init(&mutex->mutex, &attr);
     (void)pthread_mutexattr_destroy(&attr);
-    if (nativeStatus != 0)
+    if (rc != 0)
     {
         free(mutex);
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_MUTEX_CREATE_ERR;
+        osalStatus = TEMPLATE_OSAL_MUTEX_CREATE_ERR;  // Error: Recursive mutex initialization failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: recursive mutex initialization failed
     }
 
-    /* Register the mutex handle in the internal registry */
+    /* Register the mutex handle */
     port->base.mutexHandle[mutexId - 1u] = (Template_osalMutexHandle_t)mutex;
     *mutexHandle                         = (Template_osalMutexHandle_t)mutex;
 
@@ -2143,11 +2312,13 @@ static Template_osalErr_e template_osalPosixMutexCreate(void *const osal,
     osalStatus = template_osalPosixResourceUnlock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex release failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexCreate -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: recursive mutex was created and registered
@@ -2182,10 +2353,11 @@ static Template_osalErr_e template_osalPosixMutexDelete(void *const osal,
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->mutexHandleFind != NULL);
 
-    /* Acquire the resource mutex */
+    /* Lock */
     osalStatus = template_osalPosixResourceLock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexDelete -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex acquisition failed
@@ -2196,9 +2368,12 @@ static Template_osalErr_e template_osalPosixMutexDelete(void *const osal,
     if ((mutexId == 0u) ||
         (mutexId > TEMPLATE_OSAL_MUTEX_SLOTS_NUM))
     {
+        /* Unlock resource mutex */
         (void)template_osalPosixResourceUnlock(port);
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid mutex handle
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexDelete -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: mutex handle is not registered
@@ -2207,29 +2382,35 @@ static Template_osalErr_e template_osalPosixMutexDelete(void *const osal,
     /* Down-casting of the mutex handle */
     Template_osalPosixMutex_s *const mutex = (Template_osalPosixMutex_s *)mutexHandle;
 
-    /* Destroy the native recursive mutex */
+    /* Destroy the POSIX recursive mutex */
     if (pthread_mutex_destroy(&mutex->mutex) != 0)
     {
+        /* Unlock resource mutex */
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Port-specific error
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexDelete -> %d", (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: native mutex destruction failed
+        return osalStatus;  // Exit: Error: POSIX mutex destruction failed
     }
 
-    /* Release allocated memory for the mutex control block */
+    /* Release mutex storage and clear the registry slot */
     free(mutex);
     port->base.mutexHandle[mutexId - 1u] = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
 
-    /* Release the resource mutex */
+    /* Unlock */
     osalStatus = template_osalPosixResourceUnlock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexDelete -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex release failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexDelete -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: mutex was deleted and unregistered
@@ -2269,8 +2450,9 @@ static Template_osalErr_e template_osalPosixMutexLock(void *const osal,
     if ((mutexId == 0u) ||
         (mutexId > TEMPLATE_OSAL_MUTEX_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid mutex handle
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexLock -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: mutex handle is not registered
@@ -2279,15 +2461,18 @@ static Template_osalErr_e template_osalPosixMutexLock(void *const osal,
     /* Down-casting of the mutex handle */
     Template_osalPosixMutex_s *const mutex = (Template_osalPosixMutex_s *)mutexHandle;
 
+    /* Lock */
     if (pthread_mutex_lock(&mutex->mutex) != 0)
     {
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Port-specific error
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexLock -> %d", (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: native recursive mutex operation failed
+        return osalStatus;  // Exit: Error: POSIX recursive mutex operation failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexLock -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: mutex was locked
@@ -2327,8 +2512,9 @@ static Template_osalErr_e template_osalPosixMutexTryLock(void *const osal,
     if ((mutexId == 0u) ||
         (mutexId > TEMPLATE_OSAL_MUTEX_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid mutex handle
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexTryLock -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: mutex handle is not registered
@@ -2336,24 +2522,27 @@ static Template_osalErr_e template_osalPosixMutexTryLock(void *const osal,
 
     /* Down-casting of the mutex handle */
     Template_osalPosixMutex_s *const mutex = (Template_osalPosixMutex_s *)mutexHandle;
-    const int nativeStatus                 = pthread_mutex_trylock(&mutex->mutex);
-    if (nativeStatus != 0)
+
+    /* Try to lock without waiting */
+    const int rc = pthread_mutex_trylock(&mutex->mutex);
+    if (rc != 0)
     {
-        if (nativeStatus == EBUSY)
+        if (rc == EBUSY)
         {
-            osalStatus = TEMPLATE_OSAL_MUTEX_LOCK_ERR;
+            osalStatus = TEMPLATE_OSAL_MUTEX_LOCK_ERR;  // Error: Mutex is not immediately available
         }
         else
         {
-            TEMPLATE_OSAL_POSIX_ASSERT(0);
-            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: POSIX mutex try-lock failed
         }
 
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexTryLock -> %d", (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: mutex is not immediately available or native lock failed
+        return osalStatus;  // Exit: Error: mutex is not immediately available or POSIX lock failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexTryLock -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: mutex was locked
@@ -2396,8 +2585,9 @@ static Template_osalErr_e template_osalPosixMutexPendLock(void *const osal,
     if ((mutexId == 0u) ||
         (mutexId > TEMPLATE_OSAL_MUTEX_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid mutex handle
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexPendLock -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: mutex handle is not registered
@@ -2405,49 +2595,53 @@ static Template_osalErr_e template_osalPosixMutexPendLock(void *const osal,
 
     /* Down-casting of the mutex handle */
     Template_osalPosixMutex_s *const mutex = (Template_osalPosixMutex_s *)mutexHandle;
-    int nativeStatus                       = 0;
+
+    /* Lock using the requested timeout */
+    int rc = 0;
 
     if (timeoutMs == TEMPLATE_OSAL_INFINITY_TOUT)
     {
-        nativeStatus = pthread_mutex_lock(&mutex->mutex);
+        rc = pthread_mutex_lock(&mutex->mutex);
     }
     else if (timeoutMs == 0u)
     {
-        nativeStatus = pthread_mutex_trylock(&mutex->mutex);
+        rc = pthread_mutex_trylock(&mutex->mutex);
     }
     else
     {
         struct timespec deadline;
         if (!template_osalPosixRealtimeDeadlineGet(timeoutMs, &deadline))
         {
-            TEMPLATE_OSAL_POSIX_ASSERT(0);
-            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Timed-lock deadline creation failed
+
+            /* Trace returned value */
             TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexPendLock -> %d", (int)osalStatus);
 
             return osalStatus;  // Exit: Error: timed-lock deadline creation failed
         }
 
-        nativeStatus = pthread_mutex_timedlock(&mutex->mutex, &deadline);
+        rc = pthread_mutex_timedlock(&mutex->mutex, &deadline);
     }
 
-    if (nativeStatus != 0)
+    if (rc != 0)
     {
-        if ((nativeStatus == EBUSY) ||
-            (nativeStatus == ETIMEDOUT))
+        if ((rc == EBUSY) ||
+            (rc == ETIMEDOUT))
         {
-            osalStatus = TEMPLATE_OSAL_MUTEX_LOCK_ERR;
+            osalStatus = TEMPLATE_OSAL_MUTEX_LOCK_ERR;  // Error: Mutex lock timed out
         }
         else
         {
-            TEMPLATE_OSAL_POSIX_ASSERT(0);
-            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: POSIX timed mutex lock failed
         }
 
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexPendLock -> %d", (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: mutex lock timed out or native lock failed
+        return osalStatus;  // Exit: Error: mutex lock timed out or lock failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexPendLock -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: mutex was locked
@@ -2487,8 +2681,9 @@ static Template_osalErr_e template_osalPosixMutexUnlock(void *const osal,
     if ((mutexId == 0u) ||
         (mutexId > TEMPLATE_OSAL_MUTEX_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid mutex handle
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexUnlock -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: mutex handle is not registered
@@ -2497,14 +2692,18 @@ static Template_osalErr_e template_osalPosixMutexUnlock(void *const osal,
     /* Down-casting of the mutex handle */
     Template_osalPosixMutex_s *const mutex = (Template_osalPosixMutex_s *)mutexHandle;
 
+    /* Unlock */
     if (pthread_mutex_unlock(&mutex->mutex) != 0)
     {
-        osalStatus = TEMPLATE_OSAL_MUTEX_UNLOCK_ERR;
+        osalStatus = TEMPLATE_OSAL_MUTEX_UNLOCK_ERR;  // Error: Couldn't unlock the mutex
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexUnlock -> %d", (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: native recursive mutex unlock failed
+        return osalStatus;  // Exit: Error: POSIX recursive mutex unlock failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMutexUnlock -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: mutex was unlocked
@@ -2518,7 +2717,7 @@ static Template_osalErr_e template_osalPosixMutexUnlock(void *const osal,
 /**
  * \brief Create a bounded POSIX counting semaphore and register it in the OSAL instance.
  *
- * \details The implementation uses two backend-private native semaphores. The
+ * \details The implementation uses two backend-private POSIX semaphores. The
  *          available-count semaphore represents consumable counts while the
  *          free-count semaphore enforces the configured maxCount exactly.
  *
@@ -2557,12 +2756,14 @@ static Template_osalErr_e template_osalPosixSemaphoreCreate(void *const osal,
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->semaphoreFreeSlotFind != NULL);
 
-    /* Defensively reject counts that cannot be represented by native semaphores */
+    /* Reject counts that cannot be represented by POSIX semaphores */
     if ((maxCount == 0u) ||
         (initialCount > maxCount) ||
         (maxCount > (Template_osalSemaphoreCount_t)SEM_VALUE_MAX))
     {
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid semaphore handle
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: semaphore count range is invalid for the POSIX backend
@@ -2575,6 +2776,7 @@ static Template_osalErr_e template_osalPosixSemaphoreCreate(void *const osal,
     osalStatus = template_osalPosixResourceLock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex acquisition failed
@@ -2586,51 +2788,63 @@ static Template_osalErr_e template_osalPosixSemaphoreCreate(void *const osal,
         (semaphoreId > TEMPLATE_OSAL_SEMAPHORE_SLOTS_NUM))
     {
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_SEMAPHORE_CREATE_ERR;
+        osalStatus = TEMPLATE_OSAL_SEMAPHORE_CREATE_ERR;  // Error: No free counting-semaphore slot
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: no free counting-semaphore slot
     }
 
-    /* Allocate the counting-semaphore control block */
+    /* Allocate the semaphore control block */
     Template_osalPosixSemaphore_s *const semaphore =
         (Template_osalPosixSemaphore_s *)calloc(1u, sizeof(Template_osalPosixSemaphore_s));
     if (semaphore == NULL)
     {
+        /* Unlock resource mutex */
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_SEMAPHORE_MEM_ALLOCATION_ERR;
+
+        osalStatus = TEMPLATE_OSAL_SEMAPHORE_MEM_ALLOCATION_ERR;  // Error: Couldn't allocate memory for semaphore control block
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: counting-semaphore control-block allocation failed
     }
 
-    /* Initialize the native available-count semaphore */
+    /* Initialize the available-count semaphore */
     if (sem_init(&semaphore->availableCountSmphr, 0, (unsigned int)initialCount) != 0)
     {
         free(semaphore);
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_SEMAPHORE_CREATE_ERR;
+        osalStatus = TEMPLATE_OSAL_SEMAPHORE_CREATE_ERR;  // Error: Available-count semaphore initialization failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: available-count semaphore initialization failed
     }
 
-    /* Initialize the native capacity semaphore */
+    /* Initialize the free-count semaphore */
     const Template_osalSemaphoreCount_t freeCount = maxCount - initialCount;
     if (sem_init(&semaphore->freeCountSmphr, 0, (unsigned int)freeCount) != 0)
     {
         (void)sem_destroy(&semaphore->availableCountSmphr);
         free(semaphore);
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_SEMAPHORE_CREATE_ERR;
+
+        osalStatus = TEMPLATE_OSAL_SEMAPHORE_CREATE_ERR;  // Error: Couldn't create POSIX semaphore control block
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: capacity semaphore initialization failed
     }
 
+    /* Max count of semaphore */
     semaphore->maxCount = maxCount;
 
-    /* Register the counting-semaphore handle */
+    /* Register the semaphore handle */
     port->base.semaphoreObjHandle[semaphoreId - 1u] = (Template_osalSemaphoreHandle_t)semaphore;
     *semaphoreHandle                                = (Template_osalSemaphoreHandle_t)semaphore;
 
@@ -2638,11 +2852,13 @@ static Template_osalErr_e template_osalPosixSemaphoreCreate(void *const osal,
     osalStatus = template_osalPosixResourceUnlock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex release failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreCreate -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: counting semaphore was created and registered
@@ -2680,10 +2896,11 @@ static Template_osalErr_e template_osalPosixSemaphoreDelete(void *const osal,
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->semaphoreHandleFind != NULL);
 
-    /* Acquire the resource mutex */
+    /* Lock */
     osalStatus = template_osalPosixResourceLock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreDelete -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex acquisition failed
@@ -2695,8 +2912,9 @@ static Template_osalErr_e template_osalPosixSemaphoreDelete(void *const osal,
         (semaphoreId > TEMPLATE_OSAL_SEMAPHORE_SLOTS_NUM))
     {
         (void)template_osalPosixResourceUnlock(port);
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid semaphore handle
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreDelete -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: counting-semaphore handle is not registered
@@ -2706,7 +2924,7 @@ static Template_osalErr_e template_osalPosixSemaphoreDelete(void *const osal,
     Template_osalPosixSemaphore_s *const semaphore =
         (Template_osalPosixSemaphore_s *)semaphoreHandle;
 
-    /* Destroy backend-private native semaphores */
+    /* Destroy backend-private POSIX semaphores */
     const int availableRc = sem_destroy(&semaphore->availableCountSmphr);
     const int freeRc      = sem_destroy(&semaphore->freeCountSmphr);
     if ((availableRc != 0) ||
@@ -2714,24 +2932,29 @@ static Template_osalErr_e template_osalPosixSemaphoreDelete(void *const osal,
     {
         TEMPLATE_OSAL_POSIX_ASSERT(0);
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: POSIX counting-semaphore teardown failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreDelete -> %d", (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: native counting-semaphore teardown failed
+        return osalStatus;  // Exit: Error: POSIX counting-semaphore teardown failed
     }
 
+    /* Release memory for semaphore control block */
     free(semaphore);
     port->base.semaphoreObjHandle[semaphoreId - 1u] = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
 
-    /* Release the resource mutex */
+    /* Unlock */
     osalStatus = template_osalPosixResourceUnlock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreDelete -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex release failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreDelete -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: counting semaphore was deleted and unregistered
@@ -2772,8 +2995,9 @@ static Template_osalErr_e template_osalPosixSemaphoreWait(void *const osal,
     if ((semaphoreId == 0u) ||
         (semaphoreId > TEMPLATE_OSAL_SEMAPHORE_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid semaphore handle
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreWait -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: counting-semaphore handle is not registered
@@ -2787,22 +3011,29 @@ static Template_osalErr_e template_osalPosixSemaphoreWait(void *const osal,
     if (template_osalPosixSemaphorePendNative(&semaphore->availableCountSmphr,
                                               TEMPLATE_OSAL_INFINITY_TOUT) != 0)
     {
-        osalStatus = TEMPLATE_OSAL_SEMAPHORE_WAIT_ERR;
+        osalStatus = TEMPLATE_OSAL_SEMAPHORE_WAIT_ERR;  // Error: Native counting-semaphore wait failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreWait -> %d", (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: native counting-semaphore wait failed
+        return osalStatus;  // Exit: Error: POSIX counting-semaphore wait failed
     }
 
     /* Return one unit of configured capacity */
     if (sem_post(&semaphore->freeCountSmphr) != 0)
     {
+        /* This branch is impossible under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Port-specific error
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreWait -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: semaphore capacity update failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreWait -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: one semaphore count was consumed
@@ -2845,8 +3076,9 @@ static Template_osalErr_e template_osalPosixSemaphorePend(void *const osal,
     if ((semaphoreId == 0u) ||
         (semaphoreId > TEMPLATE_OSAL_SEMAPHORE_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid semaphore handle
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphorePend -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: counting-semaphore handle is not registered
@@ -2859,22 +3091,29 @@ static Template_osalErr_e template_osalPosixSemaphorePend(void *const osal,
     /* Consume one available count using the requested timeout */
     if (template_osalPosixSemaphorePendNative(&semaphore->availableCountSmphr, timeoutMs) != 0)
     {
-        osalStatus = TEMPLATE_OSAL_SEMAPHORE_WAIT_ERR;
+        osalStatus = TEMPLATE_OSAL_SEMAPHORE_WAIT_ERR;  // Error: Semaphore wait timed out
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphorePend -> %d", (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: semaphore wait timed out or native wait failed
+        return osalStatus;  // Exit: Error: semaphore wait timed out or POSIX wait failed
     }
 
     /* Return one unit of configured capacity */
     if (sem_post(&semaphore->freeCountSmphr) != 0)
     {
+        /* This branch is impossible under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Semaphore capacity update failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphorePend -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: semaphore capacity update failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphorePend -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: one semaphore count was consumed
@@ -2915,8 +3154,9 @@ static Template_osalErr_e template_osalPosixSemaphorePost(void *const osal,
     if ((semaphoreId == 0u) ||
         (semaphoreId > TEMPLATE_OSAL_SEMAPHORE_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid semaphore handle
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphorePost -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: counting-semaphore handle is not registered
@@ -2929,7 +3169,9 @@ static Template_osalErr_e template_osalPosixSemaphorePost(void *const osal,
     /* Reserve one unit of configured capacity without waiting */
     if (template_osalPosixSemaphorePendNative(&semaphore->freeCountSmphr, 0u) != 0)
     {
-        osalStatus = TEMPLATE_OSAL_SEMAPHORE_POST_ERR;
+        osalStatus = TEMPLATE_OSAL_SEMAPHORE_POST_ERR;  // Error: Counting semaphore is already at maxCount
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphorePost -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: counting semaphore is already at maxCount
@@ -2938,14 +3180,19 @@ static Template_osalErr_e template_osalPosixSemaphorePost(void *const osal,
     /* Publish one available count */
     if (sem_post(&semaphore->availableCountSmphr) != 0)
     {
-        (void)sem_post(&semaphore->freeCountSmphr);
+        /* This branch is impossible under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_SEMAPHORE_POST_ERR;
+
+        (void)sem_post(&semaphore->freeCountSmphr);
+        osalStatus = TEMPLATE_OSAL_SEMAPHORE_POST_ERR;  // Error: Native counting-semaphore post failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphorePost -> %d", (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: native counting-semaphore post failed
+        return osalStatus;  // Exit: Error: POSIX counting-semaphore post failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphorePost -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: one semaphore count was posted
@@ -2989,8 +3236,9 @@ static Template_osalErr_e template_osalPosixSemaphoreCountGet(void *const osal,
     if ((semaphoreId == 0u) ||
         (semaphoreId > TEMPLATE_OSAL_SEMAPHORE_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid semaphore handle
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreCountGet -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: counting-semaphore handle is not registered
@@ -3001,24 +3249,28 @@ static Template_osalErr_e template_osalPosixSemaphoreCountGet(void *const osal,
         (Template_osalPosixSemaphore_s *)semaphoreHandle;
 
     /* Get the current semaphore value */
-    int nativeCount = 0;
-    if (sem_getvalue(&semaphore->availableCountSmphr, &nativeCount) != 0)
+    int semCount = 0;
+    if (sem_getvalue(&semaphore->availableCountSmphr, &semCount) != 0)
     {
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Native semaphore count query failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreCountGet -> %d", (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: native semaphore count query failed
+        return osalStatus;  // Exit: Error: POSIX semaphore count query failed
     }
 
-    if (nativeCount < 0)
+    if (semCount < 0)
     {
-        nativeCount = 0;
+        semCount = 0;
     }
 
-    *semaphoreCount = (Template_osalSemaphoreCount_t)nativeCount;
+    *semaphoreCount = (Template_osalSemaphoreCount_t)semCount;
 
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreCountGet: count = %u",
                               (unsigned int)*semaphoreCount);
+
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreCountGet -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: semaphore count was returned
@@ -3175,7 +3427,7 @@ static Template_osalErr_e template_osalPosixEventFlagsWait(void *const osal,
  *
  * \details The OSAL worker is launched through a pthread-compatible thunk. The
  *          requested stack size is applied through pthread attributes. Generic
- *          OSAL priority levels are mapped to the active native scheduler on a
+ *          OSAL priority levels are mapped to the active POSIX scheduler on a
  *          best-effort basis; lack of host privileges to change priority does not
  *          invalidate an otherwise successful thread creation.
  *
@@ -3215,7 +3467,9 @@ static Template_osalErr_e template_osalPosixThreadCreate(void *const osal,
 
     if (!template_osalPosixThreadAttrValidate(&threadAttr))
     {
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid thread attributes
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: invalid thread attributes
@@ -3228,6 +3482,7 @@ static Template_osalErr_e template_osalPosixThreadCreate(void *const osal,
     osalStatus = template_osalPosixResourceLock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex acquisition failed
@@ -3239,7 +3494,9 @@ static Template_osalErr_e template_osalPosixThreadCreate(void *const osal,
         (threadId > TEMPLATE_OSAL_THREAD_SLOTS_NUM))
     {
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_THREAD_CREATE_ERR;
+        osalStatus = TEMPLATE_OSAL_THREAD_CREATE_ERR;  // Error: No free thread slot
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: no free thread slot
@@ -3247,70 +3504,79 @@ static Template_osalErr_e template_osalPosixThreadCreate(void *const osal,
 
     const size_t threadIdx = threadId - 1u;
 
-    /* Allocate the POSIX thread control block */
+    /* Allocate the thread control block */
     Template_osalPosixThread_s *const thread =
         (Template_osalPosixThread_s *)calloc(1u, sizeof(Template_osalPosixThread_s));
     if (thread == NULL)
     {
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_THREAD_MEM_ALLOCATION_ERR;
+        osalStatus = TEMPLATE_OSAL_THREAD_MEM_ALLOCATION_ERR;  // Error: Thread control-block allocation failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: thread control-block allocation failed
     }
 
-    pthread_attr_t nativeAttr;
-    if (pthread_attr_init(&nativeAttr) != 0)
+    /* Initialize pthread attributes */
+    pthread_attr_t semAttr;
+    if (pthread_attr_init(&semAttr) != 0)
     {
         free(thread);
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_THREAD_CREATE_ERR;
+        osalStatus = TEMPLATE_OSAL_THREAD_CREATE_ERR;  // Error: Pthread attributes initialization failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: pthread attributes initialization failed
     }
 
-    /* POSIX may enforce a host-specific minimum stack larger than an embedded profile requests. */
-    size_t nativeStackSize      = threadAttr.stackSize;
+    /* Adjust the requested stack size to the host minimum if required */
+    size_t threadStackSize      = threadAttr.stackSize;
     const long minimumStackSize = sysconf(_SC_THREAD_STACK_MIN);
     if ((minimumStackSize > 0L) &&
-        (nativeStackSize < (size_t)minimumStackSize))
+        (threadStackSize < (size_t)minimumStackSize))
     {
-        nativeStackSize = (size_t)minimumStackSize;
+        threadStackSize = (size_t)minimumStackSize;
     }
 
-    if (pthread_attr_setstacksize(&nativeAttr, nativeStackSize) != 0)
+    if (pthread_attr_setstacksize(&semAttr, threadStackSize) != 0)
     {
-        (void)pthread_attr_destroy(&nativeAttr);
+        (void)pthread_attr_destroy(&semAttr);
         free(thread);
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Requested pthread stack size is not supported
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: requested pthread stack size is not supported
     }
 
-    /* Prepare the embedded pthread thunk arguments */
+    /* Prepare pthread thunk arguments */
     thread->arg.worker     = threadAttr.worker;
     thread->arg.workerArgs = threadAttr.args;
 
-    /* Register the control block before starting the worker */
+    /* Register the thread handle before starting the worker */
     port->base.threadObjHandle[threadIdx].attr   = threadAttr;
     port->base.threadObjHandle[threadIdx].handle = (Template_osalThreadHandle_t)thread;
 
-    /* Create the native POSIX thread */
-    const int nativeStatus = pthread_create(&thread->thread,
-                                            &nativeAttr,
-                                            template_osalPosixThreadThunk,
-                                            (void *)&thread->arg);
-    (void)pthread_attr_destroy(&nativeAttr);
+    /* Create the POSIX thread */
+    const int rc = pthread_create(&thread->thread,
+                                  &semAttr,
+                                  template_osalPosixThreadThunk,
+                                  (void *)&thread->arg);
+    (void)pthread_attr_destroy(&semAttr);
 
-    if (nativeStatus != 0)
+    if (rc != 0)
     {
         port->base.ptable->threadSlotClear(port, threadIdx);
         free(thread);
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_THREAD_CREATE_ERR;
+        osalStatus = TEMPLATE_OSAL_THREAD_CREATE_ERR;  // Error: Pthread creation failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: pthread creation failed
@@ -3318,16 +3584,17 @@ static Template_osalErr_e template_osalPosixThreadCreate(void *const osal,
 
     *threadHandle = (Template_osalThreadHandle_t)thread;
 
-    /* Release the resource mutex before optional scheduler tuning */
+    /* Release the resource mutex */
     osalStatus = template_osalPosixResourceUnlock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadCreate -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex release failed
     }
 
-    /* Apply the generic priority on a best-effort basis */
+    /* Apply the requested thread priority on a best-effort basis */
     int policy                    = SCHED_OTHER;
     struct sched_param schedParam =
     {
@@ -3385,6 +3652,7 @@ static Template_osalErr_e template_osalPosixThreadCreate(void *const osal,
         }
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadCreate -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: thread was created and registered
@@ -3394,7 +3662,7 @@ static Template_osalErr_e template_osalPosixThreadCreate(void *const osal,
 /**
  * \brief Delete a registered POSIX thread synchronously.
  *
- * \details Requests pthread cancellation, joins the native thread and releases
+ * \details Requests pthread cancellation, joins the POSIX thread and releases
  *          the backend control block before clearing the OSAL registry slot.
  *
  * \note The component should arrange for the thread operation to be stopped or
@@ -3426,14 +3694,14 @@ static Template_osalErr_e template_osalPosixThreadDelete(void *const osal,
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->threadHandleFind != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->threadSlotClear != NULL);
 
-    /* Locate the registered thread */
     /* Try to find the thread handle within the OSAL instance registry */
     const size_t threadId = port->base.ptable->threadHandleFind(port, threadHandle);
     if ((threadId == 0u) ||
         (threadId > TEMPLATE_OSAL_THREAD_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid thread handle
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelete -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: thread handle is not registered
@@ -3442,40 +3710,47 @@ static Template_osalErr_e template_osalPosixThreadDelete(void *const osal,
     /* Down-casting of the thread handle */
     Template_osalPosixThread_s *const thread = (Template_osalPosixThread_s *)threadHandle;
 
-    /* Reject self-delete; the threadExit operation is the portable self-termination path */
+    /* Reject self-delete */
     if (pthread_equal(thread->thread, pthread_self()) != 0)
     {
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: A thread cannot synchronously delete itself
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelete -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: a thread cannot synchronously delete itself
     }
 
-    /* Request cancellation; an already terminating joinable thread may report ESRCH */
+    /* Request thread cancellation */
     const int cancelStatus = pthread_cancel(thread->thread);
     if ((cancelStatus != 0) &&
         (cancelStatus != ESRCH))
     {
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Pthread cancellation request failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelete -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: pthread cancellation request failed
     }
 
-    /* Join to make deletion synchronous and reclaim native thread resources */
+    /* Join the POSIX thread */
     const int joinStatus = pthread_join(thread->thread, NULL);
     if (joinStatus != 0)
     {
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Pthread join failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelete -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: pthread join failed
     }
 
-    /* Acquire the registry lock before clearing ownership state */
+    /* Lock */
     osalStatus = template_osalPosixResourceLock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelete -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex acquisition failed
@@ -3487,25 +3762,29 @@ static Template_osalErr_e template_osalPosixThreadDelete(void *const osal,
         (currentThreadId > TEMPLATE_OSAL_THREAD_SLOTS_NUM))
     {
         (void)template_osalPosixResourceUnlock(port);
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid thread handle
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelete -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: thread registry changed unexpectedly during deletion
     }
 
+    /* Clear the registry slot and release thread storage */
     port->base.ptable->threadSlotClear(port, currentThreadId - 1u);
     free(thread);
 
-    /* Release the resource mutex */
+    /* Unlock */
     osalStatus = template_osalPosixResourceUnlock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelete -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex release failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelete -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: thread was deleted and unregistered
@@ -3527,23 +3806,43 @@ static Template_osalErr_e template_osalPosixThreadDelete(void *const osal,
 static Template_osalErr_e template_osalPosixThreadSuspend(void *const osal,
                                                           const Template_osalThreadHandle_t threadHandle)
 {
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
+
     /* Trace input args */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadSuspend(%p, %p)", osal, (void *)threadHandle);
 
+    /* Validate input args */
     TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(threadHandle != NULL);
 
     /* Down-casting of the OSAL handle */
     Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
     TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->threadHandleFind != NULL);
-    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->threadHandleFind(port, threadHandle) != 0u);
+
+    /* Try to find the thread handle within the OSAL instance registry */
+    const size_t threadId = port->base.ptable->threadHandleFind(port, threadHandle);
+    if ((threadId == 0u) ||
+        (threadId > TEMPLATE_OSAL_THREAD_SLOTS_NUM))
+    {
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid thread handle
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadSuspend -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: thread handle is not registered
+    }
 
     TEMPLATE_OSAL_POSIX_ASSERT(0);
-    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadSuspend -> %d", (int)TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+    osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Portable POSIX thread suspend is not supported
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: portable POSIX thread suspend is not supported
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadSuspend -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Error: portable POSIX thread suspend is not supported
 }
 
 
@@ -3562,23 +3861,43 @@ static Template_osalErr_e template_osalPosixThreadSuspend(void *const osal,
 static Template_osalErr_e template_osalPosixThreadResume(void *const osal,
                                                          const Template_osalThreadHandle_t threadHandle)
 {
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
+
     /* Trace input args */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadResume(%p, %p)", osal, (void *)threadHandle);
 
+    /* Validate input args */
     TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(threadHandle != NULL);
 
     /* Down-casting of the OSAL handle */
     Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
     TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->threadHandleFind != NULL);
-    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->threadHandleFind(port, threadHandle) != 0u);
+
+    /* Try to find the thread handle within the OSAL instance registry */
+    const size_t threadId = port->base.ptable->threadHandleFind(port, threadHandle);
+    if ((threadId == 0u) ||
+        (threadId > TEMPLATE_OSAL_THREAD_SLOTS_NUM))
+    {
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid thread handle
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadResume -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: thread handle is not registered
+    }
 
     TEMPLATE_OSAL_POSIX_ASSERT(0);
-    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadResume -> %d", (int)TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+    osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Portable POSIX thread resume is not supported
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: portable POSIX thread resume is not supported
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadResume -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Error: portable POSIX thread resume is not supported
 }
 
 
@@ -3598,15 +3917,20 @@ static Template_osalErr_e template_osalPosixThreadDelay(void *const osal,
     /* Trace input args */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelay(%p, %u)", osal, (unsigned int)delayMs);
 
+    /* Validate input args */
     TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
 
     /* Down-casting of the OSAL handle */
     Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
     TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
 
     if (delayMs == 0u)
     {
         (void)sched_yield();
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelay -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Success: zero-duration delay yielded execution
@@ -3616,7 +3940,9 @@ static Template_osalErr_e template_osalPosixThreadDelay(void *const osal,
     struct timespec deadline;
     if (clock_gettime(CLOCK_MONOTONIC, &deadline) != 0)
     {
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Monotonic clock query failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelay -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: monotonic clock query failed
@@ -3624,21 +3950,24 @@ static Template_osalErr_e template_osalPosixThreadDelay(void *const osal,
 
     template_osalPosixTimespecAddMs(&deadline, delayMs);
 
-    int nativeStatus = 0;
+    int rc = 0;
 
     do
     {
-        nativeStatus = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &deadline, NULL);
-    } while(nativeStatus == EINTR);
+        rc = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &deadline, NULL);
+    } while(rc == EINTR);
 
-    if (nativeStatus != 0)
+    if (rc != 0)
     {
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: POSIX thread delay failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelay -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: POSIX thread delay failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelay -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: thread delay completed
@@ -3676,12 +4005,16 @@ static Template_osalErr_e template_osalPosixThreadDelayUntil(void *const osal,
 
     /* Down-casting of the OSAL handle */
     Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
     TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
 
     struct timespec now;
     if (clock_gettime(CLOCK_MONOTONIC, &now) != 0)
     {
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Monotonic clock query failed
+
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelayUntil -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: monotonic clock query failed
@@ -3698,16 +4031,18 @@ static Template_osalErr_e template_osalPosixThreadDelayUntil(void *const osal,
         struct timespec deadline = now;
         template_osalPosixTimespecAddMs(&deadline, (Template_osalTimeMs_t)waitMs);
 
-        int nativeStatus = 0;
+        int rc = 0;
 
         do
         {
-            nativeStatus = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &deadline, NULL);
-        } while(nativeStatus == EINTR);
+            rc = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &deadline, NULL);
+        } while(rc == EINTR);
 
-        if (nativeStatus != 0)
+        if (rc != 0)
         {
-            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Periodic POSIX thread delay failed
+
+            /* Trace returned value */
             TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelayUntil -> %d", (int)osalStatus);
 
             return osalStatus;  // Exit: Error: periodic POSIX thread delay failed
@@ -3717,6 +4052,7 @@ static Template_osalErr_e template_osalPosixThreadDelayUntil(void *const osal,
     /* Advance the caller-owned periodic reference even when the deadline was already due */
     *previousWakeTimeMs = nextWakeTimeMs;
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelayUntil -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: periodic delay completed
@@ -3726,7 +4062,7 @@ static Template_osalErr_e template_osalPosixThreadDelayUntil(void *const osal,
 /**
  * \brief Terminate the calling POSIX thread.
  *
- * \details The current registered thread slot is cleared before native thread
+ * \details The current registered thread slot is cleared before POSIX thread
  *          termination. The pthread is detached because no external Delete can
  *          join a resource after ThreadExit has explicitly released its registry ownership.
  *
@@ -3739,6 +4075,7 @@ static void template_osalPosixThreadExit(void *const osal)
     /* Trace input args */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadExit(%p)", osal);
 
+    /* Validate input args */
     if (osal == NULL)
     {
         TEMPLATE_OSAL_POSIX_ASSERT(0);
@@ -3750,6 +4087,8 @@ static void template_osalPosixThreadExit(void *const osal)
     /* Down-casting of the OSAL handle */
     Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
 
+    /* Validate backend state */
+
     if (!template_osalPosixIsValid(port) ||
         (port->base.ptable == NULL) ||
         (port->base.ptable->threadSlotClear == NULL))
@@ -3760,7 +4099,7 @@ static void template_osalPosixThreadExit(void *const osal)
         return;  // Exit: Error: backend invariant is not satisfied
     }
 
-    /* Acquire the resource mutex while locating and unregistering the current thread */
+    /* Lock */
     Template_osalErr_e osalStatus = template_osalPosixResourceLock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
@@ -3771,6 +4110,7 @@ static void template_osalPosixThreadExit(void *const osal)
         return;  // Exit: Error: resource mutex acquisition failed
     }
 
+    /* Find the current thread within the OSAL instance registry */
     const pthread_t currentThread          = pthread_self();
     Template_osalPosixThread_s *currentTcb = NULL;
     size_t currentThreadIdx                = TEMPLATE_OSAL_THREAD_SLOTS_NUM;
@@ -3800,8 +4140,10 @@ static void template_osalPosixThreadExit(void *const osal)
         return;  // Exit: Error: current thread is not registered
     }
 
+    /* Clear the current thread registry slot */
     port->base.ptable->threadSlotClear(port, currentThreadIdx);
 
+    /* Unlock */
     osalStatus = template_osalPosixResourceUnlock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
@@ -3812,7 +4154,7 @@ static void template_osalPosixThreadExit(void *const osal)
         return;  // Exit: Error: resource mutex release failed
     }
 
-    /* Release backend bookkeeping before terminating the calling pthread */
+    /* Release thread bookkeeping before terminating the calling pthread */
     (void)pthread_detach(currentThread);
     free(currentTcb);
 
@@ -3861,6 +4203,7 @@ static bool template_osalPosixThreadAttrValidate(const Template_osalThreadAttr_s
         isValid = false;
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadAttrValidate -> %d", (int)isValid);
 
     return isValid;  // Exit: Success: validation result returned
@@ -3876,17 +4219,20 @@ static bool template_osalPosixThreadAttrValidate(const Template_osalThreadAttr_s
  */
 static void *template_osalPosixThreadThunk(void *const context)
 {
+    /* Trace input args */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadThunk(%p)", context);
 
+    /* Context should be provided for redirecting to OSAL instance thread worker */
     TEMPLATE_OSAL_POSIX_ASSERT(context != NULL);
 
+    /* Extract thread worker from the passed contecxt */
     Template_osalPosixThreadArg_s *const arg = (Template_osalPosixThreadArg_s *)context;
     TEMPLATE_OSAL_POSIX_ASSERT(arg->worker != NULL);
 
-    /* Run the component worker */
+    /* Run the component thread worker */
     arg->worker(arg->workerArgs);
 
-    /* Natural worker return leaves the joinable thread resource registered for Delete/Deinit. */
+    /* Keep the joinable thread registered after a natural worker return */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadThunk -> natural worker return");
 
     return NULL;  // Exit: Success: worker returned naturally
@@ -3908,10 +4254,15 @@ static void *template_osalPosixThreadThunk(void *const context)
  */
 static Template_osalErr_e template_osalPosixCriticalSectionEnter(void *const osal)
 {
+    /* Trace input args */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixCriticalSectionEnter(%p)", osal);
+
+    /* Validate input args and POSIX backend states */
     TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(osal));
     TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+    // ... //
 
     return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: operation is not supported
 }
@@ -4080,11 +4431,13 @@ static Template_osalErr_e template_osalPosixTimeMsGet(void *const osal,
     TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(osTimeMs != NULL);
 
+    /* Validate backend state */
     if (!template_osalPosixIsValid(osal))
     {
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_NOT_INIT_ERR;
+        osalStatus = TEMPLATE_OSAL_NOT_INIT_ERR;  // Error: Backend is not initialized
 
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixTimeMsGet -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: backend is not initialized
@@ -4094,8 +4447,9 @@ static Template_osalErr_e template_osalPosixTimeMsGet(void *const osal,
     if (clock_gettime(CLOCK_MONOTONIC, &now) != 0)
     {
         TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Monotonic clock read failed
 
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixTimeMsGet -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: monotonic clock read failed
@@ -4105,6 +4459,7 @@ static Template_osalErr_e template_osalPosixTimeMsGet(void *const osal,
                             ((uint64_t)now.tv_nsec / 1000000u);
     *osTimeMs = (Template_osalTimeMs_t)timeMs;
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixTimeMsGet -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: monotonic time was read
@@ -4140,6 +4495,8 @@ static Template_osalErr_e template_osalPosixMemAlloc(void *const osal,
 
     /* Down-casting of the OSAL handle */
     Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
     TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->memFreeSlotFind != NULL);
@@ -4151,6 +4508,7 @@ static Template_osalErr_e template_osalPosixMemAlloc(void *const osal,
     osalStatus = template_osalPosixResourceLock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMemAlloc -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex acquisition failed
@@ -4162,26 +4520,28 @@ static Template_osalErr_e template_osalPosixMemAlloc(void *const osal,
         (memoryId > TEMPLATE_OSAL_MEM_SLOTS_NUM))
     {
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_MEM_ALLOCATION_ERR;
+        osalStatus = TEMPLATE_OSAL_MEM_ALLOCATION_ERR;  // Error: No free memory registry slot
 
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMemAlloc -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: no free memory registry slot
     }
 
-    /* Allocate the memory */
+    /* Allocate memory */
     void *const allocatedPtr = malloc(size);
     if (allocatedPtr == NULL)
     {
         (void)template_osalPosixResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_MEM_ALLOCATION_ERR;
+        osalStatus = TEMPLATE_OSAL_MEM_ALLOCATION_ERR;  // Error: Host heap allocation failed
 
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMemAlloc -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: host heap allocation failed
     }
 
-    /* Register the allocated memory pointer */
+    /* Register the memory pointer */
     port->base.memPtr[memoryId - 1u] = allocatedPtr;
     *memPtr                          = allocatedPtr;
 
@@ -4189,11 +4549,13 @@ static Template_osalErr_e template_osalPosixMemAlloc(void *const osal,
     osalStatus = template_osalPosixResourceUnlock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMemAlloc -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex release failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMemAlloc -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: memory block was allocated and registered
@@ -4222,14 +4584,17 @@ static Template_osalErr_e template_osalPosixMemFree(void *const osal,
 
     /* Down-casting of the OSAL handle */
     Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
     TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->memPtrFind != NULL);
 
-    /* Acquire the resource mutex */
+    /* Lock */
     osalStatus = template_osalPosixResourceLock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMemFree -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex acquisition failed
@@ -4241,9 +4606,9 @@ static Template_osalErr_e template_osalPosixMemFree(void *const osal,
         (memoryId > TEMPLATE_OSAL_MEM_SLOTS_NUM))
     {
         (void)template_osalPosixResourceUnlock(port);
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Memory pointer is not registered
 
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMemFree -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: memory pointer is not registered
@@ -4253,15 +4618,17 @@ static Template_osalErr_e template_osalPosixMemFree(void *const osal,
     port->base.memPtr[memoryId - 1u] = NULL;
     free(memPtr);
 
-    /* Release the resource mutex */
+    /* Unlock */
     osalStatus = template_osalPosixResourceUnlock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
+        /* Trace returned value */
         TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMemFree -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex release failed
     }
 
+    /* Trace returned value */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixMemFree -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: memory block was freed and unregistered
@@ -4296,7 +4663,7 @@ static bool template_osalPosixIsValid(const void *const osal)
 /**
  * \brief Acquire the backend-owned POSIX resource mutex.
  *
- * \details This native mutex protects OSAL registry updates only. It is not a
+ * \details This POSIX mutex protects OSAL registry updates only. It is not a
  *          generic Template_osalMutexHandle_t and consumes no user mutex slot.
  *
  * \param osalPosix  POSIX OSAL instance.
@@ -4311,7 +4678,7 @@ static inline Template_osalErr_e template_osalPosixResourceLock(Template_osalPos
     {
         TEMPLATE_OSAL_POSIX_ASSERT(0);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: native resource mutex lock failed
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: POSIX resource mutex lock failed
     }
 
     return TEMPLATE_OSAL_NO_ERR;  // Exit: Success: resource mutex was acquired
@@ -4333,7 +4700,7 @@ static inline Template_osalErr_e template_osalPosixResourceUnlock(Template_osalP
     {
         TEMPLATE_OSAL_POSIX_ASSERT(0);
 
-        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: native resource mutex unlock failed
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: POSIX resource mutex unlock failed
     }
 
     return TEMPLATE_OSAL_NO_ERR;  // Exit: Success: resource mutex was released
@@ -4389,12 +4756,12 @@ static inline bool template_osalPosixRealtimeDeadlineGet(const Template_osalTime
 
 
 /**
- * \brief Wait on a native POSIX semaphore using the generic OSAL timeout semantics.
+ * \brief Wait on a POSIX semaphore using the generic OSAL timeout semantics.
  *
  * \details The helper retries waits interrupted by signals. Immediate waits use
  *          sem_trywait(), infinite waits use sem_wait(), and finite waits use
  *          sem_timedwait() with one absolute CLOCK_REALTIME deadline. Queue and
- *          generic semaphore objects use this helper independently; native sem_t
+ *          generic semaphore objects use this helper independently; POSIX sem_t
  *          objects remain private backend implementation details.
  *
  * \param semaphore  Native POSIX semaphore.
@@ -4417,7 +4784,7 @@ static inline int template_osalPosixSemaphorePendNative(sem_t *const semaphore,
         } while((result != 0) &&
                 (errno == EINTR));
 
-        return result;  // Exit: Success/Error: immediate native semaphore result returned
+        return result;  // Exit: Success/Error: immediate POSIX semaphore result returned
     }
 
     if (timeoutMs == TEMPLATE_OSAL_INFINITY_TOUT)
@@ -4430,7 +4797,7 @@ static inline int template_osalPosixSemaphorePendNative(sem_t *const semaphore,
         } while((result != 0) &&
                 (errno == EINTR));
 
-        return result;  // Exit: Success/Error: infinite native semaphore result returned
+        return result;  // Exit: Success/Error: infinite POSIX semaphore result returned
     }
 
     struct timespec deadline = {0};
@@ -4449,5 +4816,5 @@ static inline int template_osalPosixSemaphorePendNative(sem_t *const semaphore,
     } while((result != 0) &&
             (errno == EINTR));
 
-    return result;  // Exit: Success/Error: timed native semaphore result returned
+    return result;  // Exit: Success/Error: timed POSIX semaphore result returned
 }
