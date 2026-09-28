@@ -3260,18 +3260,27 @@ static Template_osalErr_e template_osalPosixSemaphoreCountGet(void *const osal,
         return osalStatus;  // Exit: Error: POSIX semaphore count query failed
     }
 
+    /*
+     * POSIX permits sem_getvalue() to report a negative value when one or
+     * more threads are blocked in sem_wait(). In that case, the absolute
+     * value may represent the number of waiting threads instead of the
+     * number of available semaphore counts.
+     *
+     * The OSAL API exposes only the number of currently available counts,
+     * therefore any negative POSIX-specific value is normalized to zero.
+     */
     if (semCount < 0)
     {
         semCount = 0;
     }
 
+    /* Return current semaphore count to a caller */
     *semaphoreCount = (Template_osalSemaphoreCount_t)semCount;
 
-    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreCountGet: count = %u",
+    /* Trace returned value and semaphore count */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreCountGet -> %d, count = %u",
+                              (int)osalStatus,
                               (unsigned int)*semaphoreCount);
-
-    /* Trace returned value */
-    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSemaphoreCountGet -> %d", (int)osalStatus);
 
     return osalStatus;  // Exit: Success: semaphore count was returned
 }
@@ -3478,7 +3487,7 @@ static Template_osalErr_e template_osalPosixThreadCreate(void *const osal,
     /* Clear the output value */
     *threadHandle = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
 
-    /* Acquire the resource mutex */
+    /* Lock resource mutex */
     osalStatus = template_osalPosixResourceLock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
@@ -3493,7 +3502,9 @@ static Template_osalErr_e template_osalPosixThreadCreate(void *const osal,
     if ((threadId == 0u) ||
         (threadId > TEMPLATE_OSAL_THREAD_SLOTS_NUM))
     {
+        /* Unlock resource mutex */
         (void)template_osalPosixResourceUnlock(port);
+
         osalStatus = TEMPLATE_OSAL_THREAD_CREATE_ERR;  // Error: No free thread slot
 
         /* Trace returned value */
@@ -3502,13 +3513,15 @@ static Template_osalErr_e template_osalPosixThreadCreate(void *const osal,
         return osalStatus;  // Exit: Error: no free thread slot
     }
 
+    /* Thread registry slot index */
     const size_t threadIdx = threadId - 1u;
 
-    /* Allocate the thread control block */
+    /* Allocate memory for the thread control block */
     Template_osalPosixThread_s *const thread =
         (Template_osalPosixThread_s *)calloc(1u, sizeof(Template_osalPosixThread_s));
     if (thread == NULL)
     {
+        /* Unlock resource mutex */
         (void)template_osalPosixResourceUnlock(port);
         osalStatus = TEMPLATE_OSAL_THREAD_MEM_ALLOCATION_ERR;  // Error: Thread control-block allocation failed
 
@@ -3522,7 +3535,10 @@ static Template_osalErr_e template_osalPosixThreadCreate(void *const osal,
     pthread_attr_t semAttr;
     if (pthread_attr_init(&semAttr) != 0)
     {
+        /* Release thread control block */
         free(thread);
+
+        /* Unlock resource mutex */
         (void)template_osalPosixResourceUnlock(port);
         osalStatus = TEMPLATE_OSAL_THREAD_CREATE_ERR;  // Error: Pthread attributes initialization failed
 
@@ -3543,8 +3559,11 @@ static Template_osalErr_e template_osalPosixThreadCreate(void *const osal,
 
     if (pthread_attr_setstacksize(&semAttr, threadStackSize) != 0)
     {
+        /* Release previously allocated resources */
         (void)pthread_attr_destroy(&semAttr);
         free(thread);
+
+        /* Unlock resource mutex */
         (void)template_osalPosixResourceUnlock(port);
         osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Requested pthread stack size is not supported
 
@@ -3554,7 +3573,7 @@ static Template_osalErr_e template_osalPosixThreadCreate(void *const osal,
         return osalStatus;  // Exit: Error: requested pthread stack size is not supported
     }
 
-    /* Prepare pthread thunk arguments */
+    /* Prepare pthread thunk function arguments */
     thread->arg.worker     = threadAttr.worker;
     thread->arg.workerArgs = threadAttr.args;
 
@@ -3573,7 +3592,10 @@ static Template_osalErr_e template_osalPosixThreadCreate(void *const osal,
     {
         port->base.ptable->threadSlotClear(port, threadIdx);
         free(thread);
+
+        /* Unlock resource mutex */
         (void)template_osalPosixResourceUnlock(port);
+
         osalStatus = TEMPLATE_OSAL_THREAD_CREATE_ERR;  // Error: Pthread creation failed
 
         /* Trace returned value */
@@ -3582,6 +3604,7 @@ static Template_osalErr_e template_osalPosixThreadCreate(void *const osal,
         return osalStatus;  // Exit: Error: pthread creation failed
     }
 
+    /* Casring of POSIX thread control block pointer to the generic thread handle type */
     *threadHandle = (Template_osalThreadHandle_t)thread;
 
     /* Release the resource mutex */
@@ -3596,10 +3619,7 @@ static Template_osalErr_e template_osalPosixThreadCreate(void *const osal,
 
     /* Apply the requested thread priority on a best-effort basis */
     int policy                    = SCHED_OTHER;
-    struct sched_param schedParam =
-    {
-        0
-    };
+    struct sched_param schedParam = {0};
     if (pthread_getschedparam(thread->thread, &policy, &schedParam) == 0)
     {
         const int prioMin = sched_get_priority_min(policy);
@@ -3643,6 +3663,7 @@ static Template_osalErr_e template_osalPosixThreadCreate(void *const osal,
                 }
             }
 
+            /* Apply scheduling parameters */
             const int schedStatus = pthread_setschedparam(thread->thread, policy, &schedParam);
             if (schedStatus != 0)
             {
@@ -3746,7 +3767,7 @@ static Template_osalErr_e template_osalPosixThreadDelete(void *const osal,
         return osalStatus;  // Exit: Error: pthread join failed
     }
 
-    /* Lock */
+    /* Lock resource mutex */
     osalStatus = template_osalPosixResourceLock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
@@ -3761,7 +3782,9 @@ static Template_osalErr_e template_osalPosixThreadDelete(void *const osal,
     if ((currentThreadId == 0u) ||
         (currentThreadId > TEMPLATE_OSAL_THREAD_SLOTS_NUM))
     {
+        /* Unlock resource mutex */
         (void)template_osalPosixResourceUnlock(port);
+
         osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid thread handle
 
         /* Trace returned value */
@@ -3774,7 +3797,7 @@ static Template_osalErr_e template_osalPosixThreadDelete(void *const osal,
     port->base.ptable->threadSlotClear(port, currentThreadId - 1u);
     free(thread);
 
-    /* Unlock */
+    /* Unlock resource mutex */
     osalStatus = template_osalPosixResourceUnlock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
@@ -3836,7 +3859,6 @@ static Template_osalErr_e template_osalPosixThreadSuspend(void *const osal,
         return osalStatus;  // Exit: Error: thread handle is not registered
     }
 
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
     osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Portable POSIX thread suspend is not supported
 
     /* Trace returned value */
@@ -3891,7 +3913,6 @@ static Template_osalErr_e template_osalPosixThreadResume(void *const osal,
         return osalStatus;  // Exit: Error: thread handle is not registered
     }
 
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
     osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Portable POSIX thread resume is not supported
 
     /* Trace returned value */
@@ -3904,6 +3925,11 @@ static Template_osalErr_e template_osalPosixThreadResume(void *const osal,
 /**
  * \brief Delay the calling POSIX thread.
  *
+ * \details A zero delay returns immediately without blocking the calling thread.
+ *          A finite non-zero delay blocks the calling thread for the requested
+ *          interval. TEMPLATE_OSAL_INFINITY_TOUT is not accepted by this
+ *          function.
+ *
  * \param osal     Opaque pointer to the initialized POSIX OSAL instance.
  * \param delayMs  Delay duration in milliseconds.
  *
@@ -3915,7 +3941,8 @@ static Template_osalErr_e template_osalPosixThreadDelay(void *const osal,
     Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
 
     /* Trace input args */
-    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelay(%p, %u)", osal, (unsigned int)delayMs);
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelay(%p, %u)",
+                              osal, (unsigned int)delayMs);
 
     /* Validate input args */
     TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
@@ -3926,14 +3953,26 @@ static Template_osalErr_e template_osalPosixThreadDelay(void *const osal,
     /* Validate backend state */
     TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
 
-    if (delayMs == 0u)
+    /* Reject an infinite delay */
+    if (delayMs == TEMPLATE_OSAL_INFINITY_TOUT)
     {
-        (void)sched_yield();
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Infinite thread delay is not permitted
 
         /* Trace returned value */
-        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelay -> %d", (int)osalStatus);
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelay -> %d",
+                                  (int)osalStatus);
 
-        return osalStatus;  // Exit: Success: zero-duration delay yielded execution
+        return osalStatus;  // Exit: Error: delay duration must be finite
+    }
+
+    /* Return immediately for a zero-duration delay */
+    if (delayMs == 0u)
+    {
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelay -> %d",
+                                  (int)osalStatus);
+
+        return osalStatus;  // Exit: Success: no delay was requested
     }
 
     /* Build an absolute monotonic deadline to avoid accumulated EINTR drift */
@@ -3943,11 +3982,13 @@ static Template_osalErr_e template_osalPosixThreadDelay(void *const osal,
         osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Monotonic clock query failed
 
         /* Trace returned value */
-        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelay -> %d", (int)osalStatus);
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelay -> %d",
+                                  (int)osalStatus);
 
         return osalStatus;  // Exit: Error: monotonic clock query failed
     }
 
+    /* Calculate the deadline time */
     template_osalPosixTimespecAddMs(&deadline, delayMs);
 
     int rc = 0;
@@ -3962,13 +4003,15 @@ static Template_osalErr_e template_osalPosixThreadDelay(void *const osal,
         osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: POSIX thread delay failed
 
         /* Trace returned value */
-        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelay -> %d", (int)osalStatus);
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelay -> %d",
+                                  (int)osalStatus);
 
         return osalStatus;  // Exit: Error: POSIX thread delay failed
     }
 
     /* Trace returned value */
-    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelay -> %d", (int)osalStatus);
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelay -> %d",
+                              (int)osalStatus);
 
     return osalStatus;  // Exit: Success: thread delay completed
 }
@@ -3977,14 +4020,16 @@ static Template_osalErr_e template_osalPosixThreadDelay(void *const osal,
 /**
  * \brief Delay the calling POSIX thread until the next periodic wake-up point.
  *
- * \details The caller-owned wake reference remains in generic 32-bit OSAL
- *          milliseconds. The next reference is calculated arithmetically from
- *          the previous reference, while CLOCK_MONOTONIC and TIMER_ABSTIME are
- *          used for the actual wait so repeated periods do not accumulate drift.
+ * \details A zero period returns immediately without blocking the calling thread
+ *          or modifying the wake-up reference. A finite non-zero period advances
+ *          the caller-owned wake reference arithmetically and uses CLOCK_MONOTONIC
+ *          with TIMER_ABSTIME for the actual wait so repeated periods do not
+ *          accumulate drift. TEMPLATE_OSAL_INFINITY_TOUT is not accepted by this
+ *          function.
  *
  * \param osal                Opaque pointer to the initialized POSIX OSAL instance.
  * \param previousWakeTimeMs  In/out periodic wake reference in OSAL milliseconds.
- * \param periodMs            Period in milliseconds; must be non-zero.
+ * \param periodMs            Period in milliseconds.
  *
  * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
@@ -4001,7 +4046,6 @@ static Template_osalErr_e template_osalPosixThreadDelayUntil(void *const osal,
     /* Validate input args */
     TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(previousWakeTimeMs != NULL);
-    TEMPLATE_OSAL_POSIX_ASSERT(periodMs != 0u);
 
     /* Down-casting of the OSAL handle */
     Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
@@ -4009,13 +4053,36 @@ static Template_osalErr_e template_osalPosixThreadDelayUntil(void *const osal,
     /* Validate backend state */
     TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
 
+    /* Reject an infinite period */
+    if (periodMs == TEMPLATE_OSAL_INFINITY_TOUT)
+    {
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Infinite thread delay period is not permiited
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelayUntil -> %d",
+                                  (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: delay period must be finite
+    }
+
+    /* Return immediately for a zero-duration period */
+    if (periodMs == 0u)
+    {
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelayUntil -> %d",
+                                  (int)osalStatus);
+
+        return osalStatus;  // Exit: Success: no delay was requested
+    }
+
     struct timespec now;
     if (clock_gettime(CLOCK_MONOTONIC, &now) != 0)
     {
         osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Monotonic clock query failed
 
         /* Trace returned value */
-        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelayUntil -> %d", (int)osalStatus);
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelayUntil -> %d",
+                                  (int)osalStatus);
 
         return osalStatus;  // Exit: Error: monotonic clock query failed
     }
@@ -4043,7 +4110,8 @@ static Template_osalErr_e template_osalPosixThreadDelayUntil(void *const osal,
             osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Periodic POSIX thread delay failed
 
             /* Trace returned value */
-            TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelayUntil -> %d", (int)osalStatus);
+            TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelayUntil -> %d",
+                                      (int)osalStatus);
 
             return osalStatus;  // Exit: Error: periodic POSIX thread delay failed
         }
@@ -4053,7 +4121,8 @@ static Template_osalErr_e template_osalPosixThreadDelayUntil(void *const osal,
     *previousWakeTimeMs = nextWakeTimeMs;
 
     /* Trace returned value */
-    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelayUntil -> %d", (int)osalStatus);
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadDelayUntil -> %d",
+                              (int)osalStatus);
 
     return osalStatus;  // Exit: Success: periodic delay completed
 }

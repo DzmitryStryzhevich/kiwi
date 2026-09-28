@@ -4582,6 +4582,11 @@ static Template_osalErr_e template_osalFreertosThreadCreate(void *const osal,
 /**
  * \brief Delete a FreeRTOS task.
  *
+ * \details Deletes a registered task other than the calling task and removes
+ *          its handle from the OSAL thread registry. Self-deletion through this
+ *          function is not permitted; ThreadExit() shall be used to terminate
+ *          the calling task.
+ *
  * \param osal          Opaque pointer to the initialized FreeRTOS OSAL instance.
  * \param threadHandle  Thread handle to delete.
  *
@@ -4595,11 +4600,12 @@ static Template_osalErr_e template_osalFreertosThreadDelete(void *const osal,
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelete(%p, %p)",
                                  osal, (void *)threadHandle);
+
     /* Validate input args */
     TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
     TEMPLATE_OSAL_FREERTOS_ASSERT(threadHandle != NULL);
 
-    /* Downcast the generic OSAL instance to the FreeRTOS-specific type */
+    /* Down-casting of the OSAL handle */
     Template_osalFreertos_s *const port = (Template_osalFreertos_s *)osal;
 
     /* Validate backend state */
@@ -4611,12 +4617,14 @@ static Template_osalErr_e template_osalFreertosThreadDelete(void *const osal,
     /* Validate execution context */
     if (xPortIsInsideInterrupt())
     {
-        /* Report an invariant violation */
+        /* This branch is impossible under normal conditions */
         TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_CALL_FROM_ISR_ERR;
+
+        osalStatus = TEMPLATE_OSAL_CALL_FROM_ISR_ERR;  // Error: Thread deletion from ISR context is not supported
 
         /* Trace returned value */
-        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelete -> %d", (int)osalStatus);
+        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelete -> %d",
+                                     (int)osalStatus);
 
         return osalStatus;  // Exit: Error: ISR context is not supported
     }
@@ -4626,65 +4634,65 @@ static Template_osalErr_e template_osalFreertosThreadDelete(void *const osal,
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
         /* Trace returned value */
-        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelete -> %d", (int)osalStatus);
+        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelete -> %d",
+                                     (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex acquisition failed
     }
 
-    /* Find the thread handle in the registry */
+    /* Try to find the thread handle within the OSAL instance registry */
     const size_t threadId = port->base.ptable->threadHandleFind(port, threadHandle);
     if ((threadId == 0u) ||
         (threadId > TEMPLATE_OSAL_THREAD_SLOTS_NUM))
     {
-        /* Release the resource mutex */
+        /* Unlock */
         (void)template_osalFreertosResourceUnlock(port);
 
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid thread handle
 
         /* Trace returned value */
-        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelete -> %d", (int)osalStatus);
+        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelete -> %d",
+                                     (int)osalStatus);
 
         return osalStatus;  // Exit: Error: thread handle is not registered
     }
 
+    /* Reject self-delete */
+    if ((TaskHandle_t)threadHandle == xTaskGetCurrentTaskHandle())
+    {
+        /* Unlock */
+        (void)template_osalFreertosResourceUnlock(port);
+
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: A thread cannot delete itself; ThreadExit shall be used instead
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelete -> %d",
+                                     (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: self-deletion is not permitted
+    }
+
     const size_t threadIdx = threadId - 1u;
-    const bool deleteSelf  = ((TaskHandle_t)threadHandle == xTaskGetCurrentTaskHandle());
+
+    /* Clear the thread registry slot */
     port->base.ptable->threadSlotClear(port, threadIdx);
 
-    /* Release the resource mutex */
+    /* Unlock */
     osalStatus = template_osalFreertosResourceUnlock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
         /* Trace returned value */
-        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelete -> %d", (int)osalStatus);
+        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelete -> %d",
+                                     (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex release failed
-    }
-
-    if (deleteSelf)
-    {
-        /* Trace returned value */
-        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelete -> no return");
-
-        /* Delete the native FreeRTOS task */
-        vTaskDelete(NULL);
-
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-
-        while (1)
-        {
-            (void)0;
-        }
     }
 
     /* Delete the native FreeRTOS task */
     vTaskDelete((TaskHandle_t)threadHandle);
 
     #ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
-        /* Release the backend-owned stack after an externally deleted restricted task. */
+        /* Release the backend-owned stack */
         if (port->threadStackPtr[threadIdx] != NULL)
         {
             vPortFree(port->threadStackPtr[threadIdx]);
@@ -4693,7 +4701,8 @@ static Template_osalErr_e template_osalFreertosThreadDelete(void *const osal,
     #endif
 
     /* Trace returned value */
-    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelete -> %d", (int)osalStatus);
+    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelete -> %d",
+                                 (int)osalStatus);
 
     return osalStatus;  // Exit: Success: thread was deleted
 }
@@ -4701,6 +4710,12 @@ static Template_osalErr_e template_osalFreertosThreadDelete(void *const osal,
 
 /**
  * \brief Suspend a FreeRTOS task.
+ *
+ * \note This operation is retained for backward compatibility and is not
+ *       recommended for new code. Arbitrary thread suspension may stop a
+ *       thread outside a well-defined synchronization point and preserve
+ *       execution context that can become stale before the thread is resumed.
+ *       Prefer synchronization primitives for controlled thread blocking.
  *
  * \param osal          Opaque pointer to the initialized FreeRTOS OSAL instance.
  * \param threadHandle  Thread handle to suspend.
@@ -4771,6 +4786,11 @@ static Template_osalErr_e template_osalFreertosThreadSuspend(void *const osal,
 /**
  * \brief Resume a FreeRTOS task.
  *
+ * \note This operation is retained for backward compatibility and is not
+ *       recommended for new code. It shall only be used together with
+ *       ThreadSuspend(). Prefer synchronization primitives that resume
+ *       execution from well-defined synchronization points.
+ *
  * \param osal          Opaque pointer to the initialized FreeRTOS OSAL instance.
  * \param threadHandle  Thread handle to resume.
  *
@@ -4840,6 +4860,11 @@ static Template_osalErr_e template_osalFreertosThreadResume(void *const osal,
 /**
  * \brief Delay the calling FreeRTOS task.
  *
+ * \details A zero delay yields execution to the scheduler without blocking
+ *          the calling task. A finite non-zero delay blocks the calling task
+ *          for the requested interval. TEMPLATE_OSAL_INFINITY_TOUT is not
+ *          accepted by this function.
+ *
  * \param osal     Opaque pointer to the initialized FreeRTOS OSAL instance.
  * \param delayMs  Delay duration in milliseconds.
  *
@@ -4853,51 +4878,83 @@ static Template_osalErr_e template_osalFreertosThreadDelay(void *const osal,
     /* Trace input args */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelay(%p, %u)",
                                  osal, (unsigned int)delayMs);
+
     /* Validate input args */
     TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
 
-    /* Downcast the generic OSAL instance to the FreeRTOS-specific type */
+    /* Down-casting of the OSAL handle */
     Template_osalFreertos_s *const port = (Template_osalFreertos_s *)osal;
 
     /* Validate backend state */
-    if (!template_osalFreertosIsValid(port))
-    {
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_NOT_INIT_ERR;
-        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelay -> %d", (int)osalStatus);
-
-        return osalStatus;  // Exit: Error: backend is not initialized
-    }
+    TEMPLATE_OSAL_FREERTOS_ASSERT(template_osalFreertosIsValid(port));
 
     /* Validate execution context */
     if (xPortIsInsideInterrupt())
     {
-        /* Report an invariant violation */
+        /* This branch is impossible under normal conditions */
         TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_CALL_FROM_ISR_ERR;
+
+        osalStatus = TEMPLATE_OSAL_CALL_FROM_ISR_ERR;  // Error: Thread delay from ISR context is not supported
 
         /* Trace returned value */
-        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelay -> %d", (int)osalStatus);
+        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelay -> %d",
+                                     (int)osalStatus);
 
         return osalStatus;  // Exit: Error: ISR context is not supported
     }
 
+    /* Reject an infinite delay */
+    if (delayMs == TEMPLATE_OSAL_INFINITY_TOUT)
+    {
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Infinite thread delay is not permitted
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelay -> %d",
+                                     (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: delay duration must be finite
+    }
+
+    /* Yield execution for a zero-duration delay */
+    if (delayMs == 0u)
+    {
+        taskYIELD();
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelay -> %d",
+                                     (int)osalStatus);
+
+        return osalStatus;  // Exit: Success: execution was yielded
+    }
+
+    /* Convert the delay to FreeRTOS ticks */
+    TickType_t delayTicks = template_osalFreertosTimeMsToTicksConvert(delayMs);
+    if (delayTicks == 0u)
+    {
+        delayTicks = 1u;
+    }
+
     /* Delay the calling FreeRTOS task */
-    vTaskDelay(template_osalFreertosTimeMsToTicksConvert(delayMs));
+    vTaskDelay(delayTicks);
 
     /* Trace returned value */
-    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelay -> %d", (int)osalStatus);
+    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelay -> %d",
+                                 (int)osalStatus);
 
     return osalStatus;  // Exit: Success: thread delay completed
 }
 
-
 /**
  * \brief Delay the calling FreeRTOS task until the next periodic wake-up point.
  *
+ * \details A zero period returns immediately without blocking the calling task
+ *          or modifying the wake-up reference. A finite non-zero period delays
+ *          the calling task until the next periodic wake-up point.
+ *          TEMPLATE_OSAL_INFINITY_TOUT is not accepted by this function.
+ *
  * \param osal                Opaque pointer to the initialized FreeRTOS OSAL instance.
  * \param previousWakeTimeMs  In/out periodic wake-up reference in OSAL milliseconds.
- * \param periodMs            Period in milliseconds; must be non-zero.
+ * \param periodMs            Period in milliseconds.
  *
  * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
@@ -4914,9 +4971,8 @@ static Template_osalErr_e template_osalFreertosThreadDelayUntil(void *const osal
     /* Validate input args */
     TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
     TEMPLATE_OSAL_FREERTOS_ASSERT(previousWakeTimeMs != NULL);
-    TEMPLATE_OSAL_FREERTOS_ASSERT(periodMs != 0u);
 
-    /* Downcast the generic OSAL instance to the FreeRTOS-specific type */
+    /* Down-casting of the OSAL handle */
     Template_osalFreertos_s *const port = (Template_osalFreertos_s *)osal;
 
     /* Validate backend state */
@@ -4925,19 +4981,48 @@ static Template_osalErr_e template_osalFreertosThreadDelayUntil(void *const osal
     /* Validate execution context */
     if (xPortIsInsideInterrupt())
     {
-        /* Report an invariant violation */
+        /* This branch is impossible under normal conditions */
         TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_CALL_FROM_ISR_ERR;
+
+        osalStatus = TEMPLATE_OSAL_CALL_FROM_ISR_ERR;  // Error: Periodic thread delay from ISR context is not permitted
 
         /* Trace returned value */
-        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelayUntil -> %d", (int)osalStatus);
+        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelayUntil -> %d",
+                                     (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: ISR context is not supported
+        return osalStatus;  // Exit: Error: ISR context is not permitted for this operation
+    }
+
+    /* Reject an infinite period */
+    if (periodMs == TEMPLATE_OSAL_INFINITY_TOUT)
+    {
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Infinite thread delay period is not permitted
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelayUntil -> %d",
+                                     (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: delay period must be finite
+    }
+
+    /* Return immediately for a zero-duration period */
+    if (periodMs == 0u)
+    {
+        /* Trace returned value */
+        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelayUntil -> %d",
+                                     (int)osalStatus);
+
+        return osalStatus;  // Exit: Success: no delay was requested
     }
 
     /* Convert the generic OSAL wake reference and period to FreeRTOS ticks */
     TickType_t previousWakeTicks = template_osalFreertosTimeMsToTicksConvert(*previousWakeTimeMs);
-    const TickType_t periodTicks = template_osalFreertosTimeMsToTicksConvert(periodMs);
+    TickType_t periodTicks       = template_osalFreertosTimeMsToTicksConvert(periodMs);
+
+    if (periodTicks == 0u)
+    {
+        periodTicks = 1u;
+    }
 
     /* Delay until the next scheduled wake-up point */
     (void)xTaskDelayUntil(&previousWakeTicks, periodTicks);
@@ -4947,7 +5032,8 @@ static Template_osalErr_e template_osalFreertosThreadDelayUntil(void *const osal
                                                   (uint64_t)configTICK_RATE_HZ);
 
     /* Trace returned value */
-    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelayUntil -> %d", (int)osalStatus);
+    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelayUntil -> %d",
+                                 (int)osalStatus);
 
     return osalStatus;  // Exit: Success: periodic delay completed
 }
@@ -4955,6 +5041,11 @@ static Template_osalErr_e template_osalFreertosThreadDelayUntil(void *const osal
 
 /**
  * \brief Terminate the calling FreeRTOS task.
+ *
+ * \details Terminates the currently executing OSAL-managed task and removes
+ *          its handle from the OSAL thread registry before termination.
+ *          This is the self-termination operation; ThreadDelete() shall be
+ *          used to terminate another task.
  *
  * \param osal  Opaque pointer to the initialized FreeRTOS OSAL instance.
  *
@@ -4966,100 +5057,54 @@ static void template_osalFreertosThreadExit(void *const osal)
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadExit(%p)", osal);
 
     /* Validate input args */
-    if (osal == NULL)
-    {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadExit -> invalid OSAL");
-
-        return;  // Exit: Error: invalid OSAL instance
-    }
+    TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
 
     /* Validate execution context */
     if (xPortIsInsideInterrupt())
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadExit -> ISR context is not supported");
 
         return;  // Exit: Error: ISR context is not supported
     }
 
-    /* Downcast the generic OSAL instance to the FreeRTOS-specific type */
+    /* Down-casting of the OSAL handle */
     Template_osalFreertos_s *const port = (Template_osalFreertos_s *)osal;
 
     /* Validate backend state */
-    if (!template_osalFreertosIsValid(port) ||
-        (port->base.ptable == NULL) ||
-        (port->base.ptable->threadHandleFind == NULL) ||
-        (port->base.ptable->threadSlotClear == NULL))
-    {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadExit -> invalid backend state");
-
-        return;  // Exit: Error: backend invariant is not satisfied
-    }
+    TEMPLATE_OSAL_FREERTOS_ASSERT(template_osalFreertosIsValid(port));
+    TEMPLATE_OSAL_FREERTOS_ASSERT(port->base.ptable != NULL);
+    TEMPLATE_OSAL_FREERTOS_ASSERT(port->base.ptable->threadHandleFind != NULL);
+    TEMPLATE_OSAL_FREERTOS_ASSERT(port->base.ptable->threadSlotClear != NULL);
 
     /* Get the native handle of the calling task */
     const TaskHandle_t currentThread = xTaskGetCurrentTaskHandle();
-    if (currentThread == NULL)
-    {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadExit -> current task is unavailable");
-
-        return;  // Exit: Error: current task handle is unavailable
-    }
+    TEMPLATE_OSAL_FREERTOS_ASSERT(currentThread != NULL);
 
     /* Acquire the resource mutex */
     Template_osalErr_e osalStatus = template_osalFreertosResourceLock(port);
-    if (osalStatus != TEMPLATE_OSAL_NO_ERR)
-    {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadExit -> resource lock failed: %d",
-                                     (int)osalStatus);
-
-        return;  // Exit: Error: resource mutex acquisition failed
-    }
+    TEMPLATE_OSAL_FREERTOS_ASSERT(osalStatus == TEMPLATE_OSAL_NO_ERR);
 
     /* Find the calling task handle in the registry */
     const size_t threadId =
-        port->base.ptable->threadHandleFind(port, (Template_osalThreadHandle_t)currentThread);
-    if ((threadId == 0u) ||
-        (threadId > TEMPLATE_OSAL_THREAD_SLOTS_NUM))
-    {
-        /* Release the resource mutex */
-        (void)template_osalFreertosResourceUnlock(port);
+        port->base.ptable->threadHandleFind(port,
+                                           (Template_osalThreadHandle_t)currentThread);
 
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadExit -> current task is not registered");
+    TEMPLATE_OSAL_FREERTOS_ASSERT(threadId != 0u);
+    TEMPLATE_OSAL_FREERTOS_ASSERT(threadId <= TEMPLATE_OSAL_THREAD_SLOTS_NUM);
 
-        return;  // Exit: Error: current task is not registered
-    }
-
-    /* Clear the thread registry slot before deleting the current task */
+    /* Clear the thread registry slot */
     port->base.ptable->threadSlotClear(port, threadId - 1u);
 
     /* Release the resource mutex */
     osalStatus = template_osalFreertosResourceUnlock(port);
-    if (osalStatus != TEMPLATE_OSAL_NO_ERR)
-    {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadExit -> resource unlock failed: %d",
-                                     (int)osalStatus);
-
-        return;  // Exit: Error: resource mutex release failed
-    }
+    TEMPLATE_OSAL_FREERTOS_ASSERT(osalStatus == TEMPLATE_OSAL_NO_ERR);
 
     /* Delete the calling FreeRTOS task */
     TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadExit -> no return");
+
     vTaskDelete(NULL);
 
-    /* vTaskDelete(NULL) shall not return */
+    /* This branch is impossible under normal conditions */
     TEMPLATE_OSAL_FREERTOS_ASSERT(0);
 
     while (1)

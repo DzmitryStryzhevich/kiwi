@@ -102,7 +102,11 @@
 // END MEMORY
 
 /**
- * \brief Template indefinite timeout definition used by timeout-aware primitives.
+ * \brief Template indefinite timeout definition used by timeout-aware synchronization primitives.
+ *
+ * \details Represents an unbounded wait for operations that wait for an external
+ *          condition or resource. It is not a valid duration for thread delay
+ *          operations.
  */
 #define TEMPLATE_OSAL_INFINITY_TOUT    ((Template_osalTimeMs_t)-1)
 
@@ -855,9 +859,14 @@ typedef struct
                                        Template_osalThreadAttr_s threadAttr);
 
     /**
-     * \brief Delete the thread.
+     * \brief Delete another thread.
      *
-     * \note The operation must be stopped before deleting the thread to avoid system damage.
+     * \details Deletes a registered thread other than the calling thread.
+     *          Self-deletion is not permitted; template_osalThreadExit() shall be
+     *          used to terminate the calling thread.
+     *
+     * \note The caller is responsible for ensuring that external thread termination
+     *       does not leave shared state or owned resources in an inconsistent state.
      *
      * \param osal          Pointer to OSAL instance.
      * \param threadHandle  Handle of the thread being deleted.
@@ -870,6 +879,12 @@ typedef struct
     /**
      * \brief Suspend the thread.
      *
+     * \note This operation is retained for backward compatibility and is not
+     *       recommended for new code. Arbitrary thread suspension may stop a thread
+     *       outside a well-defined synchronization point and preserve execution
+     *       context that can become stale before the thread is resumed. Prefer
+     *       synchronization primitives for controlled thread blocking.
+     *
      * \param osal          Pointer to OSAL instance.
      * \param threadHandle  Handle of the thread to suspend.
      *
@@ -880,6 +895,11 @@ typedef struct
 
     /**
      * \brief Resume the thread.
+     *
+     * \note This operation is retained for backward compatibility and is not
+     *       recommended for new code. It shall only be used together with thread
+     *       suspension. Prefer synchronization primitives that resume execution
+     *       from well-defined synchronization points.
      *
      * \param osal          Pointer to OSAL instance.
      * \param threadHandle  Handle of the thread to resume.
@@ -892,6 +912,11 @@ typedef struct
     /**
      * \brief Delay the execution of the current thread.
      *
+     * \details A zero delay returns immediately without blocking or yielding the
+     *          calling thread. A finite non-zero delay blocks the calling thread
+     *          for the requested interval. TEMPLATE_OSAL_INFINITY_TOUT is not
+     *          accepted and results in TEMPLATE_OSAL_INVALID_ARGS_ERR.
+     *
      * \param osal     Pointer to OSAL instance.
      * \param delayMs  Delay duration in milliseconds.
      *
@@ -903,9 +928,15 @@ typedef struct
     /**
      * \brief Delay the current thread until the next periodic wake-up point.
      *
+     * \details A zero period returns immediately without blocking or yielding the
+     *          calling thread and does not modify previousWakeTimeMs. A finite
+     *          non-zero period delays the calling thread until the next periodic
+     *          wake-up point. TEMPLATE_OSAL_INFINITY_TOUT is not accepted and
+     *          results in TEMPLATE_OSAL_INVALID_ARGS_ERR.
+     *
      * \param osal                OSAL instance pointer.
      * \param previousWakeTimeMs  In/out scheduled wake reference in milliseconds; updated to the next reference point.
-     * \param periodMs            Period in milliseconds; must be non-zero.
+     * \param periodMs            Period in milliseconds.
      *
      * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
      */
@@ -915,6 +946,9 @@ typedef struct
 
     /**
      * \brief Terminate the calling thread (does not return).
+     *
+     * \details This is the thread self-termination operation. ThreadDelete shall
+     *          not be used by a thread to delete itself.
      *
      * \param osal  Pointer to OSAL instance (must be valid).
      *
@@ -1979,9 +2013,14 @@ Template_osalErr_e template_osalThreadCreate(Template_osal_s *const osal,
                                              Template_osalThreadAttr_s threadAttr);
 
 /**
- * \brief Delete the thread.
+ * \brief Delete another thread.
  *
- * \note The operation must be stopped before deleting the thread to avoid system damage.
+ * \details Deletes a registered thread other than the calling thread.
+ *          Self-deletion is not permitted; template_osalThreadExit() shall be
+ *          used to terminate the calling thread.
+ *
+ * \note The caller is responsible for ensuring that external thread termination
+ *       does not leave shared state or owned resources in an inconsistent state.
  *
  * \param osal          Pointer to OSAL instance.
  * \param threadHandle  Handle of the thread being deleted.
@@ -1994,6 +2033,12 @@ Template_osalErr_e template_osalThreadDelete(Template_osal_s *const osal,
 /**
  * \brief Suspend the thread.
  *
+ * \note This operation is retained for backward compatibility and is not
+ *       recommended for new code. Arbitrary thread suspension may stop a thread
+ *       outside a well-defined synchronization point and preserve execution
+ *       context that can become stale before the thread is resumed. Prefer
+ *       synchronization primitives for controlled thread blocking.
+ *
  * \param osal          Pointer to OSAL instance.
  * \param threadHandle  Handle of the thread to suspend.
  *
@@ -2004,6 +2049,11 @@ Template_osalErr_e template_osalThreadSuspend(Template_osal_s *const osal,
 
 /**
  * \brief Resume the thread.
+ *
+ * \note This operation is retained for backward compatibility and is not
+ *       recommended for new code. It shall only be used together with thread
+ *       suspension. Prefer synchronization primitives that resume execution
+ *       from well-defined synchronization points.
  *
  * \param osal          Pointer to OSAL instance.
  * \param threadHandle  Handle of the thread to resume.
@@ -2016,6 +2066,11 @@ Template_osalErr_e template_osalThreadResume(Template_osal_s *const osal,
 /**
  * \brief Delay the execution of the current thread.
  *
+ * \details A zero delay returns immediately without blocking or yielding the
+ *          calling thread. A finite non-zero delay blocks the calling thread
+ *          for the requested interval. TEMPLATE_OSAL_INFINITY_TOUT is not
+ *          accepted and results in TEMPLATE_OSAL_INVALID_ARGS_ERR.
+ *
  * \param osal     Pointer to OSAL instance.
  * \param delayMs  Delay duration in milliseconds.
  *
@@ -2027,9 +2082,15 @@ Template_osalErr_e template_osalThreadDelay(Template_osal_s *const osal,
 /**
  * \brief Delay the current thread until the next periodic wake-up point.
  *
+ * \details A zero period returns immediately without blocking or yielding the
+ *          calling thread and does not modify previousWakeTimeMs. A finite
+ *          non-zero period delays the calling thread until the next periodic
+ *          wake-up point. TEMPLATE_OSAL_INFINITY_TOUT is not accepted and
+ *          results in TEMPLATE_OSAL_INVALID_ARGS_ERR.
+ *
  * \param osal                OSAL instance pointer.
  * \param previousWakeTimeMs  In/out scheduled wake reference in milliseconds; updated to the next reference point.
- * \param periodMs            Period in milliseconds; must be non-zero.
+ * \param periodMs            Period in milliseconds.
  *
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
@@ -2039,6 +2100,9 @@ Template_osalErr_e template_osalThreadDelayUntil(Template_osal_s *const osal,
 
 /**
  * \brief Terminate the calling thread (does not return).
+ *
+ * \details This is the thread self-termination operation. ThreadDelete shall
+ *          not be used by a thread to delete itself.
  *
  * \param osal  Pointer to OSAL instance (must be valid).
  *
