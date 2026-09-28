@@ -723,6 +723,8 @@ Template_osalErr_e template_osalFreertosInit(Template_osalFreertos_s *const osal
     if (osalFreertos == NULL)
     {
         osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+
+        /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosInit -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: invalid args
@@ -731,11 +733,15 @@ Template_osalErr_e template_osalFreertosInit(Template_osalFreertos_s *const osal
     /* Validate execution context */
     if (xPortIsInsideInterrupt())
     {
+        /* Calling from the interrupt context is not permitted */
         TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_CALL_FROM_ISR_ERR;
+
+        osalStatus = TEMPLATE_OSAL_CALL_FROM_ISR_ERR;  // Error: calling from the ISR is not permitted for Init()
+
+        /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosInit -> %d", (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: ISR context is not supported
+        return osalStatus;  // Exit: Error: ISR context is not permitted
     }
 
     /* Initialize the default instance policy */
@@ -745,16 +751,19 @@ Template_osalErr_e template_osalFreertosInit(Template_osalFreertos_s *const osal
     if ((param != NULL) &&
         !template_osalFreertosParamApply(&osalFreertos->param, param))
     {
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid port params
+
+        /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosInit -> %d", (int)osalStatus);
 
-        return osalStatus;  // Exit: Error: invalid instance parameters
+        return osalStatus;  // Exit: Error: Invalid instance parameters
     }
 
     /* Initialize the generic OSAL base */
     osalStatus = template_osalInit(&osalFreertos->base, name, parent);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
+        /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosInit -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: base initialization failed
@@ -781,7 +790,9 @@ Template_osalErr_e template_osalFreertosInit(Template_osalFreertos_s *const osal
         /* Roll back the generic base because backend initialization is atomic. */
         (void)template_osalDeinit(&osalFreertos->base);
 
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Couldn't create resource mutex; no operations with OS objects is possible in thread-safe manner
+
+        /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosInit -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: resource mutex creation failed
@@ -832,7 +843,10 @@ Template_osalErr_e template_osalFreertosDeinit(Template_osalFreertos_s *const os
     if (xPortIsInsideInterrupt())
     {
         TEMPLATE_OSAL_FREERTOS_ASSERT(0);
+
         osalStatus = TEMPLATE_OSAL_CALL_FROM_ISR_ERR;
+
+        /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosDeinit -> %d", (int)osalStatus);
 
         return osalStatus;  // Exit: Error: ISR context is not supported
@@ -1490,8 +1504,6 @@ static Template_osalErr_e template_osalFreertosQueueDelete(void *const osal,
         /* Release the resource mutex */
         (void)template_osalFreertosResourceUnlock(port);
 
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
         osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
 
         /* Trace returned value */
@@ -1561,9 +1573,7 @@ static Template_osalErr_e template_osalFreertosQueueItemPut(void *const osal,
     if ((queueId == 0u) ||
         (queueId > TEMPLATE_OSAL_QUEUE_SLOTS_NUM))
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosQueueItemPut -> %d", (int)osalStatus);
@@ -1660,8 +1670,7 @@ static Template_osalErr_e template_osalFreertosQueueItemPost(void *const osal,
     if ((queueId == 0u) ||
         (queueId > TEMPLATE_OSAL_QUEUE_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosQueueItemPost -> %d", (int)osalStatus);
@@ -1730,8 +1739,7 @@ static Template_osalErr_e template_osalFreertosQueueItemGet(void *const osal,
     if ((queueId == 0u) ||
         (queueId > TEMPLATE_OSAL_QUEUE_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosQueueItemGet -> %d", (int)osalStatus);
@@ -1823,8 +1831,7 @@ static Template_osalErr_e template_osalFreertosQueueItemWait(void *const osal,
     if ((queueId == 0u) ||
         (queueId > TEMPLATE_OSAL_QUEUE_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosQueueItemWait -> %d", (int)osalStatus);
@@ -1890,6 +1897,7 @@ static Template_osalErr_e template_osalFreertosQueueItemPend(void *const osal,
     {
         /* Report an invariant violation */
         TEMPLATE_OSAL_FREERTOS_ASSERT(0);
+
         osalStatus = TEMPLATE_OSAL_CALL_FROM_ISR_ERR;
 
         /* Trace returned value */
@@ -1900,13 +1908,10 @@ static Template_osalErr_e template_osalFreertosQueueItemPend(void *const osal,
 
     /* Find the queue handle in the registry */
     const size_t queueId = port->base.ptable->queueHandleFind(port, queueHandle);
-
     if ((queueId == 0u) ||
         (queueId > TEMPLATE_OSAL_QUEUE_SLOTS_NUM))
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosQueueItemPend -> %d", (int)osalStatus);
@@ -1977,13 +1982,10 @@ static Template_osalErr_e template_osalFreertosQueueReset(void *const osal,
 
     /* Find the queue handle in the registry */
     const size_t queueId = port->base.ptable->queueHandleFind(port, queueHandle);
-
     if ((queueId == 0u) ||
         (queueId > TEMPLATE_OSAL_QUEUE_SLOTS_NUM))
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosQueueReset -> %d", (int)osalStatus);
@@ -2090,7 +2092,8 @@ static Template_osalErr_e template_osalFreertosStreamBufferCreate(void *const os
     {
         /* Release the resource mutex */
         (void)template_osalFreertosResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_STREAM_BUFFER_CREATE_ERR;
+
+        osalStatus = TEMPLATE_OSAL_STREAM_BUFFER_CREATE_ERR;  // Error: couldn't create the stream buffer
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosStreamBufferCreate -> %d", (int)osalStatus);
@@ -2193,9 +2196,7 @@ static Template_osalErr_e template_osalFreertosStreamBufferDelete(void *const os
         /* Release the resource mutex */
         (void)template_osalFreertosResourceUnlock(port);
 
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosStreamBufferDelete -> %d", (int)osalStatus);
@@ -2276,9 +2277,7 @@ static Template_osalErr_e template_osalFreertosStreamBufferPut(void *const osal,
     if ((streamBufferId == 0u) ||
         (streamBufferId > TEMPLATE_OSAL_STREAM_BUFFER_SLOTS_NUM))
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosStreamBufferPut -> %d", (int)osalStatus);
@@ -2391,9 +2390,7 @@ static Template_osalErr_e template_osalFreertosStreamBufferPost(void *const osal
     if ((streamBufferId == 0u) ||
         (streamBufferId > TEMPLATE_OSAL_STREAM_BUFFER_SLOTS_NUM))
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosStreamBufferPost -> %d", (int)osalStatus);
@@ -2477,9 +2474,7 @@ static Template_osalErr_e template_osalFreertosStreamBufferGet(void *const osal,
     if ((streamBufferId == 0u) ||
         (streamBufferId > TEMPLATE_OSAL_STREAM_BUFFER_SLOTS_NUM))
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosStreamBufferGet -> %d", (int)osalStatus);
@@ -2507,7 +2502,7 @@ static Template_osalErr_e template_osalFreertosStreamBufferGet(void *const osal,
 
     if (*bytesGet == 0u)
     {
-        osalStatus = TEMPLATE_OSAL_STREAM_BUFFER_IS_EMPTY_ERR;
+        osalStatus = TEMPLATE_OSAL_STREAM_BUFFER_IS_EMPTY_ERR;  // Error: stream buffer is empty
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosStreamBufferGet -> %d", (int)osalStatus);
@@ -2589,9 +2584,7 @@ static Template_osalErr_e template_osalFreertosStreamBufferWait(void *const osal
     if ((streamBufferId == 0u) ||
         (streamBufferId > TEMPLATE_OSAL_STREAM_BUFFER_SLOTS_NUM))
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosStreamBufferWait -> %d", (int)osalStatus);
@@ -2608,7 +2601,7 @@ static Template_osalErr_e template_osalFreertosStreamBufferWait(void *const osal
     {
         /* An infinite wait failure indicates an invalid FreeRTOS state/configuration. */
         TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_STREAM_BUFFER_IS_EMPTY_ERR;
+        osalStatus = TEMPLATE_OSAL_STREAM_BUFFER_IS_EMPTY_ERR;  // Error: stream buffer is empty
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosStreamBufferWait -> %d", (int)osalStatus);
@@ -2693,9 +2686,7 @@ static Template_osalErr_e template_osalFreertosStreamBufferPend(void *const osal
     if ((streamBufferId == 0u) ||
         (streamBufferId > TEMPLATE_OSAL_STREAM_BUFFER_SLOTS_NUM))
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosStreamBufferPend -> %d", (int)osalStatus);
@@ -2776,9 +2767,7 @@ static Template_osalErr_e template_osalFreertosStreamBufferReset(void *const osa
     if ((streamBufferId == 0u) ||
         (streamBufferId > TEMPLATE_OSAL_STREAM_BUFFER_SLOTS_NUM))
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  //Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosStreamBufferReset -> %d", (int)osalStatus);
@@ -2870,7 +2859,8 @@ static Template_osalErr_e template_osalFreertosMutexCreate(void *const osal,
     {
         /* Release the resource mutex */
         (void)template_osalFreertosResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_MUTEX_CREATE_ERR;
+
+        osalStatus = TEMPLATE_OSAL_MUTEX_CREATE_ERR;  // Error: couldn't create a mutex
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosMutexCreate -> %d", (int)osalStatus);
@@ -2972,9 +2962,7 @@ static Template_osalErr_e template_osalFreertosMutexDelete(void *const osal,
         /* Release the resource mutex */
         (void)template_osalFreertosResourceUnlock(port);
 
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid object handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosMutexDelete -> %d", (int)osalStatus);
@@ -3052,9 +3040,7 @@ static Template_osalErr_e template_osalFreertosMutexLock(void *const osal,
     if ((mutexId == 0u) ||
         (mutexId > TEMPLATE_OSAL_MUTEX_SLOTS_NUM))
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid mutex handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosMutexLock -> %d", (int)osalStatus);
@@ -3129,9 +3115,7 @@ static Template_osalErr_e template_osalFreertosMutexTryLock(void *const osal,
     if ((mutexId == 0u) ||
         (mutexId > TEMPLATE_OSAL_MUTEX_SLOTS_NUM))
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid mutex handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosMutexTryLock -> %d", (int)osalStatus);
@@ -3206,9 +3190,7 @@ static Template_osalErr_e template_osalFreertosMutexPendLock(void *const osal,
     if ((mutexId == 0u) ||
         (mutexId > TEMPLATE_OSAL_MUTEX_SLOTS_NUM))
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid mutex handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosMutexPendLock -> %d", (int)osalStatus);
@@ -3282,9 +3264,7 @@ static Template_osalErr_e template_osalFreertosMutexUnlock(void *const osal,
     if ((mutexId == 0u) ||
         (mutexId > TEMPLATE_OSAL_MUTEX_SLOTS_NUM))
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: invalid mutex handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosMutexUnlock -> %d", (int)osalStatus);
@@ -3295,9 +3275,7 @@ static Template_osalErr_e template_osalFreertosMutexUnlock(void *const osal,
     /* Release the native recursive mutex */
     if (xSemaphoreGiveRecursive((SemaphoreHandle_t)mutexHandle) != pdTRUE)
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: port specific error
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosMutexUnlock -> %d", (int)osalStatus);
@@ -3490,9 +3468,10 @@ static Template_osalErr_e template_osalFreertosSemaphoreDelete(void *const osal,
     if ((semaphoreId == 0u) ||
         (semaphoreId > TEMPLATE_OSAL_SEMAPHORE_SLOTS_NUM))
     {
+        /* Release the resource mutex */
         (void)template_osalFreertosResourceUnlock(port);
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid semaphore handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosSemaphoreDelete -> %d", (int)osalStatus);
@@ -3500,6 +3479,7 @@ static Template_osalErr_e template_osalFreertosSemaphoreDelete(void *const osal,
         return osalStatus;  // Exit: Error: invalid argument or unregistered handle
     }
 
+    /* Delete teh FreeRTOS semaphore */
     vSemaphoreDelete((SemaphoreHandle_t)semaphoreHandle);
     port->base.semaphoreObjHandle[semaphoreId - 1u] = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
 
@@ -3567,9 +3547,7 @@ static Template_osalErr_e template_osalFreertosSemaphoreWait(void *const osal,
     if ((semaphoreId == 0u) ||
         (semaphoreId > TEMPLATE_OSAL_SEMAPHORE_SLOTS_NUM))
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid semaphore handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosSemaphoreWait -> %d", (int)osalStatus);
@@ -3649,8 +3627,7 @@ static Template_osalErr_e template_osalFreertosSemaphorePend(void *const osal,
     if ((semaphoreId == 0u) ||
         (semaphoreId > TEMPLATE_OSAL_SEMAPHORE_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosSemaphorePend -> %d", (int)osalStatus);
@@ -3715,8 +3692,7 @@ static Template_osalErr_e template_osalFreertosSemaphorePost(void *const osal,
     if ((semaphoreId == 0u) ||
         (semaphoreId > TEMPLATE_OSAL_SEMAPHORE_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosSemaphorePost -> %d", (int)osalStatus);
@@ -3807,8 +3783,7 @@ static Template_osalErr_e template_osalFreertosSemaphoreCountGet(void *const osa
     if ((semaphoreId == 0u) ||
         (semaphoreId > TEMPLATE_OSAL_SEMAPHORE_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosSemaphoreCountGet -> %d", (int)osalStatus);
@@ -3910,7 +3885,8 @@ static Template_osalErr_e template_osalFreertosEventFlagsCreate(void *const osal
     {
         /* Release the resource mutex */
         (void)template_osalFreertosResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_EVENT_FLAGS_MEM_ALLOCATION_ERR;
+
+        osalStatus = TEMPLATE_OSAL_EVENT_FLAGS_MEM_ALLOCATION_ERR;  // Error: Couldn't allocate memory for event group control block
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosEventFlagsCreate -> %d", (int)osalStatus);
@@ -3999,9 +3975,7 @@ static Template_osalErr_e template_osalFreertosEventFlagsDelete(void *const osal
         /* Release the resource mutex */
         (void)template_osalFreertosResourceUnlock(port);
 
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosEventFlagsDelete -> %d", (int)osalStatus);
@@ -4082,9 +4056,7 @@ static Template_osalErr_e template_osalFreertosEventFlagsSet(void *const osal,
     if ((eventFlagsId == 0u) ||
         (eventFlagsId > TEMPLATE_OSAL_EVENT_FLAGS_SLOTS_NUM))
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosEventFlagsSet -> %d", (int)osalStatus);
@@ -4156,9 +4128,7 @@ static Template_osalErr_e template_osalFreertosEventFlagsClear(void *const osal,
     if ((eventFlagsId == 0u) ||
         (eventFlagsId > TEMPLATE_OSAL_EVENT_FLAGS_SLOTS_NUM))
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosEventFlagsClear -> %d", (int)osalStatus);
@@ -4226,9 +4196,7 @@ static Template_osalErr_e template_osalFreertosEventFlagsGet(void *const osal,
     if ((eventFlagsId == 0u) ||
         (eventFlagsId > TEMPLATE_OSAL_EVENT_FLAGS_SLOTS_NUM))
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosEventFlagsGet -> %d", (int)osalStatus);
@@ -4318,9 +4286,7 @@ static Template_osalErr_e template_osalFreertosEventFlagsWait(void *const osal,
     if ((eventFlagsId == 0u) ||
         (eventFlagsId > TEMPLATE_OSAL_EVENT_FLAGS_SLOTS_NUM))
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosEventFlagsWait -> %d", (int)osalStatus);
@@ -4400,7 +4366,7 @@ static Template_osalErr_e template_osalFreertosThreadCreate(void *const osal,
     TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
     TEMPLATE_OSAL_FREERTOS_ASSERT(threadHandle != NULL);
 
-    /* Downcast the generic OSAL instance to the FreeRTOS-specific type */
+    /* Down-casting of the OSAL handle */
     Template_osalFreertos_s *const port = (Template_osalFreertos_s *)osal;
 
     /* Validate backend state */
@@ -4411,9 +4377,8 @@ static Template_osalErr_e template_osalFreertosThreadCreate(void *const osal,
     /* Validate execution context */
     if (xPortIsInsideInterrupt())
     {
-        /* Report an invariant violation */
         TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_CALL_FROM_ISR_ERR;
+        osalStatus = TEMPLATE_OSAL_CALL_FROM_ISR_ERR;  // Error: Thread creation from ISR context is not supported
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadCreate -> %d", (int)osalStatus);
@@ -4423,7 +4388,7 @@ static Template_osalErr_e template_osalFreertosThreadCreate(void *const osal,
 
     if (!template_osalFreertosThreadAttrValidate(&threadAttr))
     {
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid thread attributes
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadCreate -> %d", (int)osalStatus);
@@ -4434,7 +4399,7 @@ static Template_osalErr_e template_osalFreertosThreadCreate(void *const osal,
     /* Clear the output value */
     *threadHandle = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
 
-    /* Acquire the resource mutex */
+    /* Lock */
     osalStatus = template_osalFreertosResourceLock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
@@ -4444,14 +4409,14 @@ static Template_osalErr_e template_osalFreertosThreadCreate(void *const osal,
         return osalStatus;  // Exit: Error: resource mutex acquisition failed
     }
 
-    /* Find a free thread registry slot */
+    /* Try to find a free thread slot within the OSAL instance registry */
     const size_t threadId = port->base.ptable->threadFreeSlotFind(port);
     if ((threadId == 0u) ||
         (threadId > TEMPLATE_OSAL_THREAD_SLOTS_NUM))
     {
-        /* Release the resource mutex */
+        /* Unlock */
         (void)template_osalFreertosResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_THREAD_CREATE_ERR;
+        osalStatus = TEMPLATE_OSAL_THREAD_CREATE_ERR;  // Error: No free thread registry slot
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadCreate -> %d", (int)osalStatus);
@@ -4468,7 +4433,7 @@ static Template_osalErr_e template_osalFreertosThreadCreate(void *const osal,
     TaskHandle_t nativeThread = NULL;
     BaseType_t rc             = pdFAIL;
 
-    /* Create the native FreeRTOS task using the normalized instance policy */
+    /* Create the native FreeRTOS task */
     #ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU
         /* Release a retained stack from a task that previously deleted itself in this slot. */
         if (port->threadStackPtr[threadIdx] != NULL)
@@ -4481,9 +4446,9 @@ static Template_osalErr_e template_osalFreertosThreadCreate(void *const osal,
         StackType_t *const stackPtr = (StackType_t *)pvPortMalloc(stackSizeBytes);
         if (stackPtr == NULL)
         {
-            /* Release the resource mutex */
+            /* Unlock */
             (void)template_osalFreertosResourceUnlock(port);
-            osalStatus = TEMPLATE_OSAL_THREAD_MEM_ALLOCATION_ERR;
+            osalStatus = TEMPLATE_OSAL_THREAD_MEM_ALLOCATION_ERR;  // Error: Native FreeRTOS task resource allocation failed
 
             /* Trace returned value */
             TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadCreate -> %d", (int)osalStatus);
@@ -4519,7 +4484,7 @@ static Template_osalErr_e template_osalFreertosThreadCreate(void *const osal,
         #else
             rc = xTaskCreateRestricted(&taskParam, &nativeThread);
         #endif
-    #else  /* ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU */
+    #else /* ifdef TEMPLATE_OSAL_FREERTOS_USE_MPU */
         #ifdef TEMPLATE_OSAL_FREERTOS_USE_SMP
             rc = xTaskCreateAffinitySet((TaskFunction_t)threadAttr.worker,
                                         threadAttr.name,
@@ -4546,9 +4511,9 @@ static Template_osalErr_e template_osalFreertosThreadCreate(void *const osal,
             port->threadStackPtr[threadIdx] = NULL;
         #endif
 
-        /* Release the resource mutex */
+        /* Unlock */
         (void)template_osalFreertosResourceUnlock(port);
-        osalStatus = TEMPLATE_OSAL_THREAD_MEM_ALLOCATION_ERR;
+        osalStatus = TEMPLATE_OSAL_THREAD_MEM_ALLOCATION_ERR;  // Error: Native FreeRTOS task resource allocation failed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadCreate -> %d", (int)osalStatus);
@@ -4558,11 +4523,11 @@ static Template_osalErr_e template_osalFreertosThreadCreate(void *const osal,
 
     port->base.threadObjHandle[threadIdx].attr = threadAttr;
 
-    /* Register the created thread */
+    /* Register the thread handle */
     port->base.threadObjHandle[threadIdx].handle = (Template_osalThreadHandle_t)nativeThread;
     *threadHandle                                = (Template_osalThreadHandle_t)nativeThread;
 
-    /* Release the resource mutex */
+    /* Unlock */
     osalStatus = template_osalFreertosResourceUnlock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
@@ -4629,7 +4594,7 @@ static Template_osalErr_e template_osalFreertosThreadDelete(void *const osal,
         return osalStatus;  // Exit: Error: ISR context is not supported
     }
 
-    /* Acquire the resource mutex */
+    /* Lock */
     osalStatus = template_osalFreertosResourceLock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
@@ -4648,7 +4613,7 @@ static Template_osalErr_e template_osalFreertosThreadDelete(void *const osal,
         /* Unlock */
         (void)template_osalFreertosResourceUnlock(port);
 
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid thread handle
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid thread handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelete -> %d",
@@ -4735,7 +4700,7 @@ static Template_osalErr_e template_osalFreertosThreadSuspend(void *const osal,
     TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
     TEMPLATE_OSAL_FREERTOS_ASSERT(threadHandle != NULL);
 
-    /* Downcast the generic OSAL instance to the FreeRTOS-specific type */
+    /* Down-casting of the OSAL handle */
     Template_osalFreertos_s *const port = (Template_osalFreertos_s *)osal;
 
     /* Validate backend state */
@@ -4747,9 +4712,8 @@ static Template_osalErr_e template_osalFreertosThreadSuspend(void *const osal,
     /* Validate execution context */
     if (xPortIsInsideInterrupt())
     {
-        /* Report an invariant violation */
         TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_CALL_FROM_ISR_ERR;
+        osalStatus = TEMPLATE_OSAL_CALL_FROM_ISR_ERR;  // Error: Thread suspension from ISR context is not supported
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadSuspend -> %d", (int)osalStatus);
@@ -4757,15 +4721,13 @@ static Template_osalErr_e template_osalFreertosThreadSuspend(void *const osal,
         return osalStatus;  // Exit: Error: ISR context is not supported
     }
 
-    /* Find the thread handle in the registry */
+    /* Try to find the thread handle within the OSAL instance registry */
     const size_t threadId = port->base.ptable->threadHandleFind(port, threadHandle);
 
     if ((threadId == 0u) ||
         (threadId > TEMPLATE_OSAL_THREAD_SLOTS_NUM))
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid thread handle
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadSuspend -> %d", (int)osalStatus);
@@ -4809,7 +4771,7 @@ static Template_osalErr_e template_osalFreertosThreadResume(void *const osal,
     TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
     TEMPLATE_OSAL_FREERTOS_ASSERT(threadHandle != NULL);
 
-    /* Downcast the generic OSAL instance to the FreeRTOS-specific type */
+    /* Down-casting of the OSAL handle */
     Template_osalFreertos_s *const port = (Template_osalFreertos_s *)osal;
 
     /* Validate backend state */
@@ -4821,9 +4783,8 @@ static Template_osalErr_e template_osalFreertosThreadResume(void *const osal,
     /* Validate execution context */
     if (xPortIsInsideInterrupt())
     {
-        /* Report an invariant violation */
         TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_CALL_FROM_ISR_ERR;
+        osalStatus = TEMPLATE_OSAL_CALL_FROM_ISR_ERR;  // Error: Thread resumption from ISR context is not supported
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadResume -> %d", (int)osalStatus);
@@ -4831,15 +4792,13 @@ static Template_osalErr_e template_osalFreertosThreadResume(void *const osal,
         return osalStatus;  // Exit: Error: ISR context is not supported
     }
 
-    /* Find the thread handle in the registry */
+    /* Try to find the thread handle within the OSAL instance registry */
     const size_t threadId = port->base.ptable->threadHandleFind(port, threadHandle);
 
     if ((threadId == 0u) ||
         (threadId > TEMPLATE_OSAL_THREAD_SLOTS_NUM))
     {
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid thread handle
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadResume -> %d", (int)osalStatus);
@@ -5044,8 +5003,8 @@ static Template_osalErr_e template_osalFreertosThreadDelayUntil(void *const osal
  *
  * \details Terminates the currently executing OSAL-managed task and removes
  *          its handle from the OSAL thread registry before termination.
- *          This is the self-termination operation; ThreadDelete() shall be
- *          used to terminate another task.
+ *          This operation is intended for thread self-termination; ThreadDelete()
+ *          shall be used to terminate another task.
  *
  * \param osal  Opaque pointer to the initialized FreeRTOS OSAL instance.
  *
@@ -5080,14 +5039,14 @@ static void template_osalFreertosThreadExit(void *const osal)
     const TaskHandle_t currentThread = xTaskGetCurrentTaskHandle();
     TEMPLATE_OSAL_FREERTOS_ASSERT(currentThread != NULL);
 
-    /* Acquire the resource mutex */
+    /* Lock */
     Template_osalErr_e osalStatus = template_osalFreertosResourceLock(port);
     TEMPLATE_OSAL_FREERTOS_ASSERT(osalStatus == TEMPLATE_OSAL_NO_ERR);
 
-    /* Find the calling task handle in the registry */
+    /* Try to find the calling task handle within the OSAL instance registry */
     const size_t threadId =
         port->base.ptable->threadHandleFind(port,
-                                           (Template_osalThreadHandle_t)currentThread);
+                                            (Template_osalThreadHandle_t)currentThread);
 
     TEMPLATE_OSAL_FREERTOS_ASSERT(threadId != 0u);
     TEMPLATE_OSAL_FREERTOS_ASSERT(threadId <= TEMPLATE_OSAL_THREAD_SLOTS_NUM);
@@ -5095,7 +5054,7 @@ static void template_osalFreertosThreadExit(void *const osal)
     /* Clear the thread registry slot */
     port->base.ptable->threadSlotClear(port, threadId - 1u);
 
-    /* Release the resource mutex */
+    /* Unlock */
     osalStatus = template_osalFreertosResourceUnlock(port);
     TEMPLATE_OSAL_FREERTOS_ASSERT(osalStatus == TEMPLATE_OSAL_NO_ERR);
 
@@ -5343,6 +5302,7 @@ static Template_osalErr_e template_osalFreertosSoftwareTimerCreate(void *const o
         (timerId > TEMPLATE_OSAL_SOFTWARE_TIMER_SLOTS_NUM))
     {
         (void)template_osalFreertosResourceUnlock(port);
+
         osalStatus = TEMPLATE_OSAL_SOFTWARE_TIMER_CREATE_ERR;
 
         /* Trace returned value */
@@ -5458,8 +5418,8 @@ static Template_osalErr_e template_osalFreertosSoftwareTimerDelete(void *const o
         (timerId > TEMPLATE_OSAL_SOFTWARE_TIMER_SLOTS_NUM))
     {
         (void)template_osalFreertosResourceUnlock(port);
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosSoftwareTimerDelete -> %d", (int)osalStatus);
@@ -5542,8 +5502,7 @@ static Template_osalErr_e template_osalFreertosSoftwareTimerStart(void *const os
     if ((timerId == 0u) ||
         (timerId > TEMPLATE_OSAL_SOFTWARE_TIMER_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosSoftwareTimerStart -> %d", (int)osalStatus);
@@ -5619,8 +5578,7 @@ static Template_osalErr_e template_osalFreertosSoftwareTimerStop(void *const osa
     if ((timerId == 0u) ||
         (timerId > TEMPLATE_OSAL_SOFTWARE_TIMER_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosSoftwareTimerStop -> %d", (int)osalStatus);
@@ -5696,8 +5654,7 @@ static Template_osalErr_e template_osalFreertosSoftwareTimerReset(void *const os
     if ((timerId == 0u) ||
         (timerId > TEMPLATE_OSAL_SOFTWARE_TIMER_SLOTS_NUM))
     {
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosSoftwareTimerReset -> %d", (int)osalStatus);
@@ -5858,6 +5815,7 @@ static inline TickType_t template_osalFreertosTimeMsToTicksConvert(const Templat
     if (timeMs == TEMPLATE_OSAL_INFINITY_TOUT)
     {
         tickCount = portMAX_DELAY;
+
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosTimeMsToTicksConvert -> %lu",
                                      (unsigned long)tickCount);
@@ -6049,9 +6007,7 @@ static Template_osalErr_e template_osalFreertosMemFree(void *const osal,
         /* Release the resource mutex */
         (void)template_osalFreertosResourceUnlock(port);
 
-        /* Report an invariant violation */
-        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid handle was passed
 
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosMemFree -> %d", (int)osalStatus);

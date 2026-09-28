@@ -3084,7 +3084,7 @@ static Template_osalErr_e template_osalPosixSemaphorePend(void *const osal,
         return osalStatus;  // Exit: Error: counting-semaphore handle is not registered
     }
 
-    /* Down-casting of the semaphore handle */
+    /* Casting of the semaphore handle */
     Template_osalPosixSemaphore_s *const semaphore =
         (Template_osalPosixSemaphore_s *)semaphoreHandle;
 
