@@ -428,6 +428,11 @@ static Template_osalErr_e template_osalFreertosThreadResume(void *const osal,
                                                             const Template_osalThreadHandle_t threadHandle);
 
 /**
+ * \brief Yield execution of the calling FreeRTOS task.
+ */
+static Template_osalErr_e template_osalFreertosThreadYield(void *const osal);
+
+/**
  * \brief Delay the calling FreeRTOS task.
  */
 static Template_osalErr_e template_osalFreertosThreadDelay(void *const osal,
@@ -647,6 +652,7 @@ static const Template_osalVtable_s template_osalFreertosVtable =
     .threadDelete     = template_osalFreertosThreadDelete,
     .threadSuspend    = template_osalFreertosThreadSuspend,
     .threadResume     = template_osalFreertosThreadResume,
+    .threadYield      = template_osalFreertosThreadYield,
     .threadDelay      = template_osalFreertosThreadDelay,
     .threadDelayUntil = template_osalFreertosThreadDelayUntil,
     .threadExit       = template_osalFreertosThreadExit,
@@ -4817,10 +4823,59 @@ static Template_osalErr_e template_osalFreertosThreadResume(void *const osal,
 
 
 /**
+ * \brief Yield execution of the calling FreeRTOS task.
+ *
+ * \param osal  Opaque pointer to the initialized FreeRTOS OSAL instance.
+ *
+ * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+ */
+static Template_osalErr_e template_osalFreertosThreadYield(void *const osal)
+{
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
+
+    /* Trace input args */
+    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadYield(%p)", osal);
+
+    /* Validate input args */
+    TEMPLATE_OSAL_FREERTOS_ASSERT(osal != NULL);
+
+    /* Down-casting of the OSAL handle */
+    Template_osalFreertos_s *const port = (Template_osalFreertos_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_FREERTOS_ASSERT(template_osalFreertosIsValid(port));
+
+    /* Validate execution context */
+    if (xPortIsInsideInterrupt())
+    {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_FREERTOS_ASSERT(0);
+
+        osalStatus = TEMPLATE_OSAL_CALL_FROM_ISR_ERR;  // Error: Thread yield from ISR context is not supported
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadYield -> %d",
+                                     (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: ISR context is not supported
+    }
+
+    /* Yield execution to the scheduler */
+    taskYIELD();
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadYield -> %d",
+                                 (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: execution was yielded
+}
+
+
+/**
  * \brief Delay the calling FreeRTOS task.
  *
- * \details A zero delay yields execution to the scheduler without blocking
- *          the calling task. A finite non-zero delay blocks the calling task
+ * \details A zero delay returns immediately without blocking or yielding the
+ *          calling task. A finite non-zero delay blocks the calling task
  *          for the requested interval. TEMPLATE_OSAL_INFINITY_TOUT is not
  *          accepted by this function.
  *
@@ -4874,16 +4929,14 @@ static Template_osalErr_e template_osalFreertosThreadDelay(void *const osal,
         return osalStatus;  // Exit: Error: delay duration must be finite
     }
 
-    /* Yield execution for a zero-duration delay */
+    /* Return immediately for a zero-duration delay */
     if (delayMs == 0u)
     {
-        taskYIELD();
-
         /* Trace returned value */
         TEMPLATE_OSAL_FREERTOS_TRACE("template_osalFreertosThreadDelay -> %d",
                                      (int)osalStatus);
 
-        return osalStatus;  // Exit: Success: execution was yielded
+        return osalStatus;  // Exit: Success: no delay was requested
     }
 
     /* Convert the delay to FreeRTOS ticks */
@@ -5130,10 +5183,11 @@ static bool template_osalFreertosThreadAttrValidate(const Template_osalThreadAtt
 /*------------------------------- Critical section ------------------------*/
 
 /**
- * \brief Enter a FreeRTOS critical section from task context.
+ * \brief Enter a system-level FreeRTOS critical section from task context.
  *
- * \details This primitive does not allocate a registry-backed object; it maps
- *          the unified OSAL critical-section contract to the FreeRTOS backend.
+ * \details This primitive does not allocate a registry-backed object. It maps
+ *          the deprecated system-level OSAL critical-section contract to the
+ *          native FreeRTOS interrupt-masking semantics.
  *
  * \param osal  Opaque pointer to the initialized FreeRTOS OSAL instance.
  *
@@ -5178,10 +5232,11 @@ static Template_osalErr_e template_osalFreertosCriticalSectionEnter(void *const 
 
 
 /**
- * \brief Exit a previously entered FreeRTOS critical section from task context.
+ * \brief Exit a previously entered system-level FreeRTOS critical section from task context.
  *
- * \details This primitive does not allocate a registry-backed object; it maps
- *          the unified OSAL critical-section contract to the FreeRTOS backend.
+ * \details This primitive does not allocate a registry-backed object. It maps
+ *          the deprecated system-level OSAL critical-section contract to the
+ *          native FreeRTOS interrupt-masking semantics.
  *
  * \param osal  Opaque pointer to the initialized FreeRTOS OSAL instance.
  *

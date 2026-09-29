@@ -1,6 +1,6 @@
 # KIWI Testing
 
-KIWI now has a basic GitHub Actions verification pipeline. It intentionally starts with a small set of high-value checks: the generator itself must build and run, a full-set OSAL must be generated, the generated C sources must compile, and the generated sources must pass static analysis. More focused unit and integration tests remain planned.
+KIWI has a GitHub Actions verification pipeline built around a small set of high-value checks: the generator itself must build and run, a full-set OSAL must be generated for both implemented ports, the generated C sources must compile and link, and the generated sources must pass static analysis. More focused unit and integration tests remain planned.
 
 
 ## GitHub Actions pipeline
@@ -20,7 +20,7 @@ build-generated
 static-analysis
 ```
 
-The `generate-full-set` stage enables every currently implemented OSAL primitive group:
+The `generate-full-set` stage generates both FreeRTOS and POSIX ports and enables every currently exposed OSAL primitive group:
 
 - queue;
 - stream buffer;
@@ -33,11 +33,11 @@ The `generate-full-set` stage enables every currently implemented OSAL primitive
 - time;
 - memory.
 
-The generated source tree is passed between jobs as a workflow artifact. The build stage checks out the official `FreeRTOS/FreeRTOS-Kernel` repository at the pinned `V11.3.1` tag and builds the generated full-set OSAL against the real `GCC_POSIX` FreeRTOS simulator port. A CI-only `FreeRTOSConfig.h` supplies the kernel configuration required by the generated API set, while the FreeRTOS kernel itself, its POSIX port, heap implementation, queue/event/stream-buffer/timer code and native headers all come from the upstream FreeRTOS release.
+The generated source tree is passed between jobs as a workflow artifact. The build stage checks out the official `FreeRTOS/FreeRTOS-Kernel` repository at the pinned `V11.3.1` tag and builds the generated FreeRTOS backend against the real `GCC_POSIX` simulator port. A CI-only `FreeRTOSConfig.h` supplies the kernel configuration required by the generated API set, while the FreeRTOS kernel itself, its POSIX port, heap implementation, queue/event/stream-buffer/timer code and native headers all come from the upstream FreeRTOS release. The same build also compiles and links the generated native POSIX backend against the host pthread/POSIX facilities.
 
-The build uses CMake and links a small host executable against both generated OSAL libraries and the real FreeRTOS kernel. This intentionally goes beyond syntax-only compilation: unresolved FreeRTOS symbols in the generated port become link failures. The generated targets are compiled with `-Wall -Wextra -Werror`.
+The build uses CMake and links separate small host executables against the generated FreeRTOS and POSIX libraries. This intentionally goes beyond syntax-only compilation: unresolved native dependencies in either backend become link failures. The native POSIX smoke executable is also run and checks initialization/deinitialization, explicit thread yield, and the expected runtime-unsupported result for the deprecated system-level critical-section primitive. The generated targets are compiled with `-Wall -Wextra -Werror`.
 
-The static-analysis stage checks the same generated full-set sources against the real FreeRTOS headers from the pinned POSIX port. It currently runs GCC `-fanalyzer` and `cppcheck`. MPU and SMP are not enabled in this host build because the FreeRTOS POSIX simulator is neither an MPU port nor an SMP target; their port-specific validation remains covered at source-contract level rather than being faked by CI-only FreeRTOS stubs.
+The static-analysis stage checks the generic source plus both generated backends. It runs GCC `-fanalyzer` for the generic, FreeRTOS and POSIX translation units and runs `cppcheck` across the same generated source set. MPU and SMP are not enabled in the host FreeRTOS build because the FreeRTOS POSIX simulator is neither an MPU port nor an SMP target; their port-specific validation remains covered at source-contract level rather than being faked by CI-only FreeRTOS stubs.
 
 ## Why component-scoped OSAL is test-friendly
 

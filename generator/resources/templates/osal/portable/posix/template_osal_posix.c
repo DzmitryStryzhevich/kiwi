@@ -554,6 +554,11 @@ static Template_osalErr_e template_osalPosixThreadResume(void *const osal,
                                                          const Template_osalThreadHandle_t threadHandle);
 
 /**
+ * \brief Yield execution of the calling POSIX thread.
+ */
+static Template_osalErr_e template_osalPosixThreadYield(void *const osal);
+
+/**
  * \brief Delay the calling POSIX thread.
  */
 static Template_osalErr_e template_osalPosixThreadDelay(void *const osal,
@@ -633,8 +638,13 @@ static Template_osalErr_e template_osalPosixSoftwareTimerReset(void *const osal,
 /**
  * \brief Arm a native POSIX software timer using the configured OSAL period.
  */
-static int template_osalPosixSoftwareTimerArm(const Template_osalPosixSoftwareTimer_s *const timer,
-                                              const Template_osalSoftwareTimerAttr_s *const timerAttr);
+static inline int template_osalPosixSoftwareTimerArm(const Template_osalPosixSoftwareTimer_s *const timer,
+                                                     const Template_osalSoftwareTimerAttr_s *const timerAttr);
+
+/**
+ * \brief Disarm a native POSIX software timer.
+ */
+static inline int template_osalPosixSoftwareTimerDisarm(const Template_osalPosixSoftwareTimer_s *const timer);
 
 /**
  * \brief Dispatch a POSIX SIGEV_THREAD notification to the component callback.
@@ -773,6 +783,7 @@ static const Template_osalVtable_s template_osalPosixVtable =
     .threadDelete     = template_osalPosixThreadDelete,
     .threadSuspend    = template_osalPosixThreadSuspend,
     .threadResume     = template_osalPosixThreadResume,
+    .threadYield      = template_osalPosixThreadYield,
     .threadDelay      = template_osalPosixThreadDelay,
     .threadDelayUntil = template_osalPosixThreadDelayUntil,
     .threadExit       = template_osalPosixThreadExit,
@@ -6182,6 +6193,49 @@ static Template_osalErr_e template_osalPosixThreadResume(void *const osal,
 
 
 /**
+ * \brief Yield execution of the calling POSIX thread.
+ *
+ * \param osal  Opaque pointer to the initialized POSIX OSAL instance.
+ *
+ * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+ */
+static Template_osalErr_e template_osalPosixThreadYield(void *const osal)
+{
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
+
+    /* Trace input args */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadYield(%p)", osal);
+
+    /* Validate input args */
+    TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
+
+    /* Down-casting of the OSAL handle */
+    Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
+
+    /* Yield execution to the scheduler */
+    if (sched_yield() != 0)
+    {
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: POSIX scheduler yield failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadYield -> %d",
+                                  (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: POSIX scheduler yield failed
+    }
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixThreadYield -> %d",
+                              (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: execution was yielded
+}
+
+
+/**
  * \brief Delay the calling POSIX thread.
  *
  * \details A zero delay returns immediately without blocking the calling thread.
@@ -6571,46 +6625,65 @@ static void *template_osalPosixThreadThunk(void *const context)
 // BEGIN CRITICAL_SECTION
 /*------------------------------- Critical section ------------------------*/
 
-#error "KIWI POSIX backend: critical-section API is not supported"
-
 /**
- * \brief Enter a POSIX critical section.
+ * \brief Report that system-level critical sections are unavailable on the POSIX backend.
+ *
+ * \details Portable POSIX user space cannot provide the interrupt-masking semantics
+ *          represented by the generic deprecated critical-section primitive.
  *
  * \param osal  Opaque pointer to the initialized POSIX OSAL instance.
  *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+ * \return TEMPLATE_OSAL_PORT_SPECIFIC_ERR because the operation is unsupported.
  */
 static Template_osalErr_e template_osalPosixCriticalSectionEnter(void *const osal)
 {
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
+
     /* Trace input args */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixCriticalSectionEnter(%p)", osal);
 
-    /* Validate input args and POSIX backend states */
+    /* Validate input args and POSIX backend state */
     TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(osal));
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
 
-    // ... //
+    osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: System-level critical sections are not supported by the POSIX backend
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: operation is not supported
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixCriticalSectionEnter -> %d",
+                              (int)osalStatus);
+
+    return osalStatus;  // Exit: Error: system-level critical sections are not supported
 }
 
 
 /**
- * \brief Exit a POSIX critical section.
+ * \brief Report that system-level critical sections are unavailable on the POSIX backend.
+ *
+ * \details Portable POSIX user space cannot provide the interrupt-masking semantics
+ *          represented by the generic deprecated critical-section primitive.
  *
  * \param osal  Opaque pointer to the initialized POSIX OSAL instance.
  *
- * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
+ * \return TEMPLATE_OSAL_PORT_SPECIFIC_ERR because the operation is unsupported.
  */
 static Template_osalErr_e template_osalPosixCriticalSectionExit(void *const osal)
 {
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
+
+    /* Trace input args */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixCriticalSectionExit(%p)", osal);
+
+    /* Validate input args and POSIX backend state */
     TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(osal));
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: operation is not supported
+    osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: System-level critical sections are not supported by the POSIX backend
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixCriticalSectionExit -> %d",
+                              (int)osalStatus);
+
+    return osalStatus;  // Exit: Error: system-level critical sections are not supported
 }
 // END CRITICAL_SECTION
 
@@ -6970,10 +7043,8 @@ static Template_osalErr_e template_osalPosixSoftwareTimerStop(void *const osal,
     Template_osalPosixSoftwareTimer_s *const timer =
         (Template_osalPosixSoftwareTimer_s *)timerHandle;
 
-    struct itimerspec timerSpec = {0};
-
     /* Disarm the native POSIX timer */
-    if (timer_settime(timer->nativeTimer, 0, &timerSpec, NULL) != 0)
+    if (template_osalPosixSoftwareTimerDisarm(timer) != 0)
     {
         osalStatus = TEMPLATE_OSAL_SOFTWARE_TIMER_STOP_ERR;  // Error: Native POSIX timer stop failed
 
@@ -7065,8 +7136,8 @@ static Template_osalErr_e template_osalPosixSoftwareTimerReset(void *const osal,
  *
  * \return Zero on success; otherwise -1 with errno preserved from timer_settime().
  */
-static int template_osalPosixSoftwareTimerArm(const Template_osalPosixSoftwareTimer_s *const timer,
-                                              const Template_osalSoftwareTimerAttr_s *const timerAttr)
+static inline int template_osalPosixSoftwareTimerArm(const Template_osalPosixSoftwareTimer_s *const timer,
+                                                     const Template_osalSoftwareTimerAttr_s *const timerAttr)
 {
     TEMPLATE_OSAL_POSIX_ASSERT(timer != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(timerAttr != NULL);
@@ -7081,6 +7152,23 @@ static int template_osalPosixSoftwareTimerArm(const Template_osalPosixSoftwareTi
     {
         timerSpec.it_interval = timerSpec.it_value;
     }
+
+    return timer_settime(timer->nativeTimer, 0, &timerSpec, NULL);
+}
+
+
+/**
+ * \brief Disarm a native POSIX software timer.
+ *
+ * \param timer  POSIX software-timer control block.
+ *
+ * \return Zero on success; otherwise -1 with errno preserved from timer_settime().
+ */
+static inline int template_osalPosixSoftwareTimerDisarm(const Template_osalPosixSoftwareTimer_s *const timer)
+{
+    TEMPLATE_OSAL_POSIX_ASSERT(timer != NULL);
+
+    const struct itimerspec timerSpec = {0};
 
     return timer_settime(timer->nativeTimer, 0, &timerSpec, NULL);
 }

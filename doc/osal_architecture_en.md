@@ -229,7 +229,7 @@ The direction of dependency is important: application logic depends on the gener
 
 KIWI is not merely a set of OS abstraction interfaces. It is an **OSAL code generator that specializes the system contract for a particular software component**.
 
-This is a core architectural property. Most components do not need every system service that could possibly exist. A driver may need only a queue and a mutex; a communication stack may require threads, queues, timers, and memory; a small service may use only time and critical sections. The generator allows each component to receive the contract it actually needs instead of forcing all components through one maximum-size OSAL.
+This is a core architectural property. Most components do not need every system service that could possibly exist. A driver may need only a queue and a mutex; a communication stack may require threads, queues, timers, and memory; a small service may use only time and a mutex. The generator allows each component to receive the contract it actually needs instead of forcing all components through one maximum-size OSAL.
 
 ### 6.1 What the generator does
 
@@ -812,7 +812,7 @@ A single hand-maintained library is sufficient when every component needs the sa
 
 ## 21. Current KIWI OSAL primitive groups
 
-The current generator and FreeRTOS implementation support the following groups:
+The current generator exposes the following primitive groups. Backend support may differ where an operating system cannot provide equivalent semantics:
 
 | Group | Main operations |
 | --- | --- |
@@ -821,11 +821,15 @@ The current generator and FreeRTOS implementation support the following groups:
 | Mutex | `Create`, `Delete`, `TryLock`, `Lock`, `PendLock`, `Unlock`, `HandleGet` |
 | Counting semaphore | `Create`, `Delete`, `Wait`, `Pend`, `Post`, `CountGet`, `HandleGet` |
 | Event flags | `Create`, `Delete`, `Set`, `Clear`, `Get`, `Wait`, `HandleGet` |
-| Thread | `Create`, `Delete`, `Suspend`, `Resume`, `Delay`, `DelayUntil`, `Exit`, `HandleGet` |
-| Critical section | `Enter`, `Exit` |
+| Thread | `Create`, `Delete`, `Suspend`, `Resume`, `Yield`, `Delay`, `DelayUntil`, `Exit`, `HandleGet` |
+| Critical section | `Enter`, `Exit` (deprecated system-level primitive) |
 | Software timer | `Create`, `Delete`, `Start`, `Stop`, `Reset`, `HandleGet` |
 | Time | `TimeMsGet` |
 | Memory | `Malloc`, `Free`, `MemPtrGet` |
+
+`ThreadYield` is an explicit scheduler hint: it voluntarily yields the current execution opportunity but does not guarantee that another thread will run before the caller is scheduled again. `ThreadDelay(0)` remains a no-op and is deliberately distinct from `ThreadYield`.
+
+The critical-section group is retained for backward compatibility but is deprecated for new component code. It represents backend-specific system-level interrupt or scheduler masking and can affect execution outside the calling component. Component-scoped mutual exclusion should use mutexes instead. The POSIX backend therefore leaves this operation runtime-unsupported because portable user space cannot provide equivalent interrupt-masking semantics. Portable POSIX thread suspend/resume are likewise unsupported.
 
 The generic thread-priority model has four fixed levels:
 

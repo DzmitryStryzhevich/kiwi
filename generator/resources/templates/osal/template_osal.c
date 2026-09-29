@@ -3158,6 +3158,56 @@ Template_osalErr_e template_osalThreadResume(Template_osal_s *const osal,
 
 
 /**
+ * \brief Yield execution of the current thread to the scheduler.
+ *
+ * \param osal  Pointer to OSAL instance.
+ *
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalThreadYield(Template_osal_s *const osal)
+{
+    /* Trace input args */
+    TEMPLATE_OSAL_TRACE("template_osalThreadYield(%p)", (void *)osal);
+
+    /* Validate parameters */
+    if (osal == NULL)
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalThreadYield -> %d",
+                            TEMPLATE_OSAL_INVALID_ARGS_ERR);
+
+        return TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Exit: Error: invalid args
+    }
+
+    if ((osal->validFlag != true) ||
+        (osal->vtable == NULL))
+    {
+        TEMPLATE_OSAL_TRACE("template_osalThreadYield -> %d",
+                            TEMPLATE_OSAL_NOT_INIT_ERR);
+
+        return TEMPLATE_OSAL_NOT_INIT_ERR;  // Exit: Error: not initialized
+    }
+
+    if (osal->vtable->threadYield == NULL)
+    {
+        /* Trace: returned value */
+        TEMPLATE_OSAL_TRACE("template_osalThreadYield -> %d",
+                            TEMPLATE_OSAL_PORT_SPECIFIC_ERR);
+
+        return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: backend-specific operation failed
+    }
+
+    /* Yield execution of the current thread */
+    const Template_osalErr_e retStatus = osal->vtable->threadYield(osal);
+
+    /* Trace: returned value */
+    TEMPLATE_OSAL_TRACE("template_osalThreadYield -> %d", retStatus);
+
+    return retStatus;  // Exit: Success: backend status returned
+}
+
+
+/**
  * \brief Delay the execution of the current thread.
  *
  * \param osal     Pointer to OSAL instance.
@@ -3356,7 +3406,13 @@ Template_osalErr_e template_osalThreadHandleGet(Template_osal_s *const osal,
 // BEGIN CRITICAL_SECTION
 /*------------------------------- Critical section -------------------------------*/
 /**
- * \brief Enter a short OS critical section.
+ * \brief Enter a system-level OS critical section.
+ *
+ * \deprecated Prefer component-scoped synchronization primitives such as mutexes
+ *             for new code.
+ *
+ * \warning This operation may affect execution outside the calling component and
+ *          may be unsupported by backends without equivalent system-level semantics.
  *
  * \param osal  OSAL instance pointer.
  *
@@ -3409,7 +3465,13 @@ Template_osalErr_e template_osalCriticalSectionEnter(Template_osal_s *const osal
 
 
 /**
- * \brief Exit a previously entered OS critical section.
+ * \brief Exit a previously entered system-level OS critical section.
+ *
+ * \deprecated Prefer component-scoped synchronization primitives such as mutexes
+ *             for new code.
+ *
+ * \warning This operation is paired with template_osalCriticalSectionEnter() and
+ *          inherits its backend-specific system-level side effects and limitations.
  *
  * \param osal  OSAL instance pointer.
  *

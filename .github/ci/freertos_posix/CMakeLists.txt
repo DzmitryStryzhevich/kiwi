@@ -47,6 +47,8 @@ add_subdirectory("${FREERTOS_KERNEL_DIR}" "${CMAKE_BINARY_DIR}/freertos-kernel")
 add_subdirectory("${GENERATED_OSAL_DIR}" "${CMAKE_BINARY_DIR}/generated-osal")
 add_subdirectory("${GENERATED_OSAL_DIR}/portable/freertos"
                  "${CMAKE_BINARY_DIR}/generated-osal-freertos")
+add_subdirectory("${GENERATED_OSAL_DIR}/portable/posix"
+                 "${CMAKE_BINARY_DIR}/generated-osal-posix")
 
 target_link_libraries(ci_osal_osal_freertos
     PUBLIC
@@ -62,6 +64,13 @@ target_compile_options(ci_osal_osal
 )
 
 target_compile_options(ci_osal_osal_freertos
+    PRIVATE
+        -Wall
+        -Wextra
+        -Werror
+)
+
+target_compile_options(ci_osal_osal_posix
     PRIVATE
         -Wall
         -Wextra
@@ -86,6 +95,29 @@ target_link_libraries(ci_osal_freertos_link_check
 )
 
 target_compile_options(ci_osal_freertos_link_check
+    PRIVATE
+        -Wall
+        -Wextra
+        -Werror
+)
+
+add_executable(ci_osal_posix_link_check
+    ${CMAKE_CURRENT_LIST_DIR}/smoke_posix_main.c
+)
+
+target_include_directories(ci_osal_posix_link_check
+    PRIVATE
+        ${GENERATED_OSAL_DIR}
+        ${GENERATED_OSAL_DIR}/portable/posix
+)
+
+target_link_libraries(ci_osal_posix_link_check
+    PRIVATE
+        ci_osal_osal_posix
+        Threads::Threads
+)
+
+target_compile_options(ci_osal_posix_link_check
     PRIVATE
         -Wall
         -Wextra

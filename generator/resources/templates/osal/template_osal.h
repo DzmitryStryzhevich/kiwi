@@ -910,6 +910,19 @@ typedef struct
                                        const Template_osalThreadHandle_t threadHandle);
 
     /**
+     * \brief Yield execution of the current thread to the scheduler.
+     *
+     * \details The operation voluntarily yields the current execution opportunity.
+     *          It does not guarantee that another thread will run before the calling
+     *          thread becomes scheduled again.
+     *
+     * \param osal  Pointer to OSAL instance.
+     *
+     * \return Template_osalErr_e error code, non-zero indicates error.
+     */
+    Template_osalErr_e (*threadYield)(void *const osal);
+
+    /**
      * \brief Delay the execution of the current thread.
      *
      * \details A zero delay returns immediately without blocking or yielding the
@@ -961,7 +974,15 @@ typedef struct
     /*------------------------------- Critical section ------------------------------*/
 
     /**
-     * \brief Enter a short OS critical section.
+     * \brief Enter a system-level OS critical section.
+     *
+     * \deprecated Prefer component-scoped synchronization primitives such as
+     *             mutexes for new code.
+     *
+     * \warning This operation may affect execution outside the calling component
+     *          through backend-specific interrupt or scheduler masking semantics.
+     *          It may be unsupported by backends that cannot provide equivalent
+     *          system-level behavior.
      *
      * \param osal  OSAL instance pointer.
      *
@@ -970,7 +991,13 @@ typedef struct
     Template_osalErr_e (*criticalSectionEnter)(void *const osal);
 
     /**
-     * \brief Exit a previously entered OS critical section.
+     * \brief Exit a previously entered system-level OS critical section.
+     *
+     * \deprecated Prefer component-scoped synchronization primitives such as
+     *             mutexes for new code.
+     *
+     * \warning This operation is paired with criticalSectionEnter() and inherits
+     *          its backend-specific system-level side effects and limitations.
      *
      * \param osal  OSAL instance pointer.
      *
@@ -2064,6 +2091,19 @@ Template_osalErr_e template_osalThreadResume(Template_osal_s *const osal,
                                              const Template_osalThreadHandle_t threadHandle);
 
 /**
+ * \brief Yield execution of the current thread to the scheduler.
+ *
+ * \details The operation voluntarily yields the current execution opportunity.
+ *          It does not guarantee that another thread will run before the calling
+ *          thread becomes scheduled again.
+ *
+ * \param osal  Pointer to OSAL instance.
+ *
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalThreadYield(Template_osal_s *const osal);
+
+/**
  * \brief Delay the execution of the current thread.
  *
  * \details A zero delay returns immediately without blocking or yielding the
@@ -2128,7 +2168,15 @@ Template_osalErr_e template_osalThreadHandleGet(Template_osal_s *const osal,
 /*------------------------------- Critical section ----------------------------*/
 
 /**
- * \brief Enter a short OS critical section.
+ * \brief Enter a system-level OS critical section.
+ *
+ * \deprecated Prefer component-scoped synchronization primitives such as mutexes
+ *             for new code.
+ *
+ * \warning This operation may affect execution outside the calling component
+ *          through backend-specific interrupt or scheduler masking semantics.
+ *          It may be unsupported by backends that cannot provide equivalent
+ *          system-level behavior.
  *
  * \param osal  OSAL instance pointer.
  *
@@ -2137,7 +2185,13 @@ Template_osalErr_e template_osalThreadHandleGet(Template_osal_s *const osal,
 Template_osalErr_e template_osalCriticalSectionEnter(Template_osal_s *const osal);
 
 /**
- * \brief Exit a previously entered OS critical section.
+ * \brief Exit a previously entered system-level OS critical section.
+ *
+ * \deprecated Prefer component-scoped synchronization primitives such as mutexes
+ *             for new code.
+ *
+ * \warning This operation is paired with template_osalCriticalSectionEnter() and
+ *          inherits its backend-specific system-level side effects and limitations.
  *
  * \param osal  OSAL instance pointer.
  *
