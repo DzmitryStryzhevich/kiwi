@@ -5223,8 +5223,6 @@ static Template_osalErr_e template_osalFreertosCriticalSectionExit(void *const o
 
     return osalStatus;  // Exit: Success: critical section was exited
 }
-
-
 // END CRITICAL_SECTION
 
 // BEGIN SOFTWARE_TIMER
