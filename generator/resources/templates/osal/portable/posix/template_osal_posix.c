@@ -109,6 +109,50 @@ typedef struct
 } Template_osalPosixSemaphore_s;
 // END SEMAPHORE
 
+// BEGIN EVENT_FLAGS
+/**
+ * \struct  Template_osalPosixEventFlagsAwaiter_s
+ * \brief   POSIX event-flags awaiter descriptor.
+ * \details The descriptor belongs to the waiting thread and remains linked to
+ *          the event-flags object only while the wait operation is pending.
+ */
+typedef struct Template_osalPosixEventFlagsAwaiter_s
+{
+    struct Template_osalPosixEventFlagsAwaiter_s *next;         /*!< Next pending awaiter. */
+    uint32_t                                     flags;        /*!< Requested event flags. */
+    uint32_t                                     actualFlags;  /*!< Snapshot that satisfied the wait. */
+    bool                                         waitAll;      /*!< true when all requested flags are required. */
+    bool                                         noClear;      /*!< true when requested flags shall remain set. */
+    bool                                         satisfied;    /*!< true when the wait condition has been satisfied. */
+} Template_osalPosixEventFlagsAwaiter_s;
+
+/**
+ * \struct  Template_osalPosixEventFlags_s
+ * \brief   POSIX event-flags control block.
+ * \details The current flag state and awaiter list are protected by a native
+ *          POSIX mutex. A condition variable wakes threads after their wait
+ *          condition has been evaluated as satisfied.
+ */
+typedef struct
+{
+    pthread_mutex_t                       mutex;    /*!< Native event-flags protection mutex. */
+    pthread_cond_t                        cond;     /*!< Native awaiter notification condition. */
+    uint32_t                              flags;    /*!< Currently set event flags. */
+    //
+    Template_osalPosixEventFlagsAwaiter_s *awaiter;  /*!< Pending awaiter list. */
+} Template_osalPosixEventFlags_s;
+
+/**
+ * \struct  Template_osalPosixEventFlagsWaitCleanup_s
+ * \brief   Cleanup context used when a waiting POSIX thread is cancelled.
+ */
+typedef struct
+{
+    Template_osalPosixEventFlags_s        *eventFlags;  /*!< Event-flags object owning the awaiter list. */
+    Template_osalPosixEventFlagsAwaiter_s *awaiter;     /*!< Awaiter descriptor owned by the calling thread. */
+} Template_osalPosixEventFlagsWaitCleanup_s;
+// END EVENT_FLAGS
+
 // BEGIN THREAD
 /**
  * \struct  Template_osalPosixThreadArg_s
@@ -395,6 +439,24 @@ static Template_osalErr_e template_osalPosixEventFlagsWait(void *const osal,
                                                            const Template_osalEventFlagsOptions_e options,
                                                            const Template_osalTimeMs_t timeoutMs,
                                                            uint32_t *const actualFlags);
+
+/**
+ * \brief Check whether an event-flags snapshot satisfies one wait condition.
+ */
+static inline bool template_osalPosixEventFlagsConditionCheck(const uint32_t currentFlags,
+                                                              const uint32_t requestedFlags,
+                                                              const bool waitAll);
+
+/**
+ * \brief Remove one awaiter descriptor from an event-flags awaiter list.
+ */
+static void template_osalPosixEventFlagsAwaiterRemove(Template_osalPosixEventFlags_s *const eventFlags,
+                                                      Template_osalPosixEventFlagsAwaiter_s *const awaiter);
+
+/**
+ * \brief Remove a cancelled awaiter and release the native event-flags mutex.
+ */
+static void template_osalPosixEventFlagsWaitCleanup(void *const context);
 // END EVENT_FLAGS
 
 // BEGIN THREAD
@@ -844,6 +906,19 @@ Template_osalErr_e template_osalPosixDeinit(Template_osalPosix_s *const osalPosi
     }
 
 // END SEMAPHORE
+
+// BEGIN EVENT_FLAGS
+    /* Delete registered event-flags objects */
+    for (size_t i = 0u; i < TEMPLATE_OSAL_EVENT_FLAGS_SLOTS_NUM; ++i)
+    {
+        if (osalPosix->base.eventFlagsObjHandle[i] != NULL)
+        {
+            (void)template_osalPosixEventFlagsDelete(osalPosix,
+                                                     osalPosix->base.eventFlagsObjHandle[i]);
+        }
+    }
+
+// END EVENT_FLAGS
 
 // BEGIN MEMORY
     /* Free registered memory blocks */
@@ -3290,10 +3365,12 @@ static Template_osalErr_e template_osalPosixSemaphoreCountGet(void *const osal,
 // BEGIN EVENT_FLAGS
 /*-------------------------------- Event flags ------------------------------*/
 
-#error "KIWI POSIX backend: event-flags API is not supported"
-
 /**
  * \brief Create a POSIX event-flags object and register it in the OSAL instance.
+ *
+ * \details The event-flags state is protected by a backend-private POSIX mutex.
+ *          A backend-private condition variable is used to block and wake
+ *          threads waiting for event-flag conditions.
  *
  * \param osal              Opaque pointer to the initialized POSIX OSAL instance.
  * \param eventFlagsHandle  Output pointer receiving the event-flags handle.
@@ -3303,16 +3380,132 @@ static Template_osalErr_e template_osalPosixSemaphoreCountGet(void *const osal,
 static Template_osalErr_e template_osalPosixEventFlagsCreate(void *const osal,
                                                              Template_osalEventFlagsHandle_t *const eventFlagsHandle)
 {
-    (void)osal;
-    (void)eventFlagsHandle;
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: POSIX event flags are not supported
+    /* Trace input args */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsCreate(%p, %p)",
+                              osal, (void *)eventFlagsHandle);
+
+    /* Validate input args */
+    TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(eventFlagsHandle != NULL);
+
+    /* Down-casting of the OSAL handle */
+    Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->eventFlagsFreeSlotFind != NULL);
+
+    /* Clear the output value before any operations */
+    *eventFlagsHandle = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
+
+    /* Lock resource mutex */
+    osalStatus = template_osalPosixResourceLock(port);
+    if (osalStatus != TEMPLATE_OSAL_NO_ERR)
+    {
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsCreate -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: resource mutex acquisition failed
+    }
+
+    /* Try to find a free event-flags slot within the OSAL instance registry */
+    const size_t eventFlagsId = port->base.ptable->eventFlagsFreeSlotFind(port);
+    if ((eventFlagsId == 0u) ||
+        (eventFlagsId > TEMPLATE_OSAL_EVENT_FLAGS_SLOTS_NUM))
+    {
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+
+        osalStatus = TEMPLATE_OSAL_EVENT_FLAGS_CREATE_ERR;  // Error: No free event-flags registry slot
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsCreate -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: no free event-flags registry slot
+    }
+
+    /* Allocate the event-flags control block */
+    Template_osalPosixEventFlags_s *const eventFlags =
+        (Template_osalPosixEventFlags_s *)calloc(1u, sizeof(Template_osalPosixEventFlags_s));
+    if (eventFlags == NULL)
+    {
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+
+        osalStatus = TEMPLATE_OSAL_EVENT_FLAGS_MEM_ALLOCATION_ERR;  // Error: Event-flags control-block allocation failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsCreate -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: event-flags control-block allocation failed
+    }
+
+    /* Initialize the native event-flags mutex */
+    int rc = pthread_mutex_init(&eventFlags->mutex, NULL);
+    if (rc != 0)
+    {
+        /* Release acquired resources */
+        free(eventFlags);
+
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+        osalStatus = TEMPLATE_OSAL_EVENT_FLAGS_CREATE_ERR;  // Error: event-flags mutex initialization failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsCreate -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: event-flags mutex initialization failed
+    }
+
+    /* Initialize the awaiter condition variable */
+    rc = pthread_cond_init(&eventFlags->cond, NULL);
+    if (rc != 0)
+    {
+        /* Release acquired resources */
+        (void)pthread_mutex_destroy(&eventFlags->mutex);
+        free(eventFlags);
+
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+        osalStatus = TEMPLATE_OSAL_EVENT_FLAGS_CREATE_ERR;  // Error: event-flags condition initialization failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsCreate -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: event-flags condition initialization failed
+    }
+
+    /* Register the event-flags handle in the OSAL registry */
+    port->base.eventFlagsObjHandle[eventFlagsId - 1u] = (Template_osalEventFlagsHandle_t)eventFlags;
+    *eventFlagsHandle                                 = (Template_osalEventFlagsHandle_t)eventFlags;
+
+    /* Unlock resource mutex */
+    osalStatus = template_osalPosixResourceUnlock(port);
+    if (osalStatus != TEMPLATE_OSAL_NO_ERR)
+    {
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsCreate -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: resource mutex release failed
+    }
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsCreate -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: event-flags object was created and registered
 }
 
 
 /**
  * \brief Delete a registered POSIX event-flags object.
+ *
+ * \details The caller is responsible for object lifetime and shall ensure that
+ *          no ordinary operation uses the object concurrently with deletion.
+ *          Deletion is additionally rejected while one or more threads are
+ *          awaiting an event-flags condition on the object.
  *
  * \param osal              Opaque pointer to the initialized POSIX OSAL instance.
  * \param eventFlagsHandle  Registered event-flags handle.
@@ -3322,20 +3515,156 @@ static Template_osalErr_e template_osalPosixEventFlagsCreate(void *const osal,
 static Template_osalErr_e template_osalPosixEventFlagsDelete(void *const osal,
                                                              const Template_osalEventFlagsHandle_t eventFlagsHandle)
 {
-    (void)osal;
-    (void)eventFlagsHandle;
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: POSIX event flags are not supported
+    /* Trace input args */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsDelete(%p, %p)",
+                              osal, (void *)eventFlagsHandle);
+
+    /* Validate input args */
+    TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(eventFlagsHandle != NULL);
+
+    /* Down-casting of the OSAL handle */
+    Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->eventFlagsHandleFind != NULL);
+
+    /* Lock resource mutex */
+    osalStatus = template_osalPosixResourceLock(port);
+    if (osalStatus != TEMPLATE_OSAL_NO_ERR)
+    {
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsDelete -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: resource mutex acquisition failed
+    }
+
+    /* Try to find the event-flags handle within the OSAL instance registry */
+    const size_t eventFlagsId = port->base.ptable->eventFlagsHandleFind(port, eventFlagsHandle);
+    if ((eventFlagsId == 0u) ||
+        (eventFlagsId > TEMPLATE_OSAL_EVENT_FLAGS_SLOTS_NUM))
+    {
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid event-flags handle
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsDelete -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: event-flags handle is not registered
+    }
+
+    /* Down-casting of the event-flags handle */
+    Template_osalPosixEventFlags_s *const eventFlags =
+        (Template_osalPosixEventFlags_s *)eventFlagsHandle;
+
+    /* Lock internally used event flags mutex */
+    int rc = pthread_mutex_lock(&eventFlags->mutex);
+    if (rc != 0)
+    {
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Native event-flags mutex locking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsDelete -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: native event-flags mutex locking failed
+    }
+
+    /* Reject deletion while awaiters are still linked to the object */
+    if (eventFlags->awaiter != NULL)
+    {
+        /* Unlock internally used event flags mutex */
+        (void)pthread_mutex_unlock(&eventFlags->mutex);
+
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Event-flags object still has active awaiters
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsDelete -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: event-flags object still has active awaiters
+    }
+
+    /* Unlock internally used event flags mutex */
+    rc = pthread_mutex_unlock(&eventFlags->mutex);
+    if (rc != 0)
+    {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Native event-flags mutex unlocking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsDelete -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: native event-flags mutex unlocking failed
+    }
+
+    /* Destroy backend-private synchronization resources */
+    const int condRc  = pthread_cond_destroy(&eventFlags->cond);
+    const int mutexRc = pthread_mutex_destroy(&eventFlags->mutex);
+    if ((condRc != 0) ||
+        (mutexRc != 0))
+    {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        /* Release acquired resources */
+        free(eventFlags);
+        port->base.eventFlagsObjHandle[eventFlagsId - 1u] = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
+
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Native event-flags synchronization teardown failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsDelete -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: native event-flags synchronization teardown failed
+    }
+
+    /* Release memory and clear the registry slot */
+    free(eventFlags);
+    port->base.eventFlagsObjHandle[eventFlagsId - 1u] = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
+
+    /* Unlock resource mutex */
+    osalStatus = template_osalPosixResourceUnlock(port);
+    if (osalStatus != TEMPLATE_OSAL_NO_ERR)
+    {
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsDelete -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: resource mutex release failed
+    }
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsDelete -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: event-flags object was deleted and unregistered
 }
 
 
 /**
- * \brief Set bits in a registered POSIX event-flags object.
+ * \brief Set one or more bits in a registered POSIX event-flags object.
+ *
+ * \details All pending wait conditions are evaluated against the same flag
+ *          snapshot before any clear-on-exit bits are removed. Therefore one
+ *          Set operation may satisfy multiple waiting threads.
  *
  * \param osal              Opaque pointer to the initialized POSIX OSAL instance.
  * \param eventFlagsHandle  Registered event-flags handle.
- * \param flags             Bit mask to set.
+ * \param flags             Non-zero bit mask to set.
  *
  * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
@@ -3343,21 +3672,134 @@ static Template_osalErr_e template_osalPosixEventFlagsSet(void *const osal,
                                                           const Template_osalEventFlagsHandle_t eventFlagsHandle,
                                                           const uint32_t flags)
 {
-    (void)osal;
-    (void)eventFlagsHandle;
-    (void)flags;
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: POSIX event flags are not supported
+    /* Trace input args */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsSet(%p, %p, 0x%08lX)",
+                              osal, (void *)eventFlagsHandle, (unsigned long)flags);
+
+    /* Validate input args */
+    TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(eventFlagsHandle != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(flags != 0u);
+
+    /* Down-casting of the OSAL handle */
+    Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->eventFlagsHandleFind != NULL);
+
+
+    /* Try to find the event-flags handle within the OSAL instance registry */
+    const size_t eventFlagsId = port->base.ptable->eventFlagsHandleFind(port, eventFlagsHandle);
+    if ((eventFlagsId == 0u) ||
+        (eventFlagsId > TEMPLATE_OSAL_EVENT_FLAGS_SLOTS_NUM))
+    {
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid event-flags handle
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsSet -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: event-flags handle is not registered
+    }
+
+    /* Down-casting of the event-flags handle */
+    Template_osalPosixEventFlags_s *const eventFlags =
+        (Template_osalPosixEventFlags_s *)eventFlagsHandle;
+
+    /* Lock internally used event flags mutex */
+    int rc = pthread_mutex_lock(&eventFlags->mutex);
+    if (rc != 0)
+    {
+        /* This branch is considered as very unlikelly */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        osalStatus = TEMPLATE_OSAL_EVENT_FLAGS_SET_ERR;  // Error: Native event-flags mutex locking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsSet -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: native event-flags mutex locking failed
+    }
+
+    /* Set the requested event bits */
+    eventFlags->flags |= flags;
+
+    const uint32_t eventSnapshot = eventFlags->flags;
+    uint32_t clearMask           = 0u;
+    bool wakeRequired            = false;
+
+    /* Evaluate every pending awaiter against the same pre-clear snapshot */
+    for (Template_osalPosixEventFlagsAwaiter_s *awaiter = eventFlags->awaiter;
+         awaiter != NULL;
+         awaiter = awaiter->next)
+    {
+        if (!awaiter->satisfied &&
+            template_osalPosixEventFlagsConditionCheck(eventSnapshot,
+                                                       awaiter->flags,
+                                                       awaiter->waitAll))
+        {
+            awaiter->actualFlags = eventSnapshot;
+            awaiter->satisfied   = true;
+            wakeRequired         = true;
+
+            if (!awaiter->noClear)
+            {
+                clearMask |= awaiter->flags;
+            }
+        }
+    }
+
+    /* Apply clear-on-exit only after all awaiters have observed the same snapshot */
+    eventFlags->flags &= ~clearMask;
+
+    if (wakeRequired)
+    {
+        rc = pthread_cond_broadcast(&eventFlags->cond);
+        if (rc != 0)
+        {
+            /* Unlock internally used event flags mutex */
+            (void)pthread_mutex_unlock(&eventFlags->mutex);
+
+            osalStatus = TEMPLATE_OSAL_EVENT_FLAGS_SET_ERR;  // Error: event-flags awaiter notification failed
+
+            /* Trace returned value */
+            TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsSet -> %d", (int)osalStatus);
+
+            return osalStatus;  // Exit: Error: awaiter notification failed
+        }
+    }
+
+    /* Unlock internally used event flags mutex */
+    rc = pthread_mutex_unlock(&eventFlags->mutex);
+    if (rc != 0)
+    {
+        /* This branch is considered as very unlikelly */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        osalStatus = TEMPLATE_OSAL_EVENT_FLAGS_SET_ERR;  // Error: event-flags mutex unlocking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsSet -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: event-flags mutex unlocking failed
+    }
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsSet -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: event flags were set
 }
 
 
 /**
- * \brief Clear bits in a registered POSIX event-flags object.
+ * \brief Clear one or more bits in a registered POSIX event-flags object.
  *
  * \param osal              Opaque pointer to the initialized POSIX OSAL instance.
  * \param eventFlagsHandle  Registered event-flags handle.
- * \param flags             Bit mask to clear.
+ * \param flags             Non-zero bit mask to clear.
  *
  * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
@@ -3365,12 +3807,77 @@ static Template_osalErr_e template_osalPosixEventFlagsClear(void *const osal,
                                                             const Template_osalEventFlagsHandle_t eventFlagsHandle,
                                                             const uint32_t flags)
 {
-    (void)osal;
-    (void)eventFlagsHandle;
-    (void)flags;
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: POSIX event flags are not supported
+    /* Trace input args */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsClear(%p, %p, 0x%08lX)",
+                              osal, (void *)eventFlagsHandle, (unsigned long)flags);
+
+    /* Validate input args */
+    TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(eventFlagsHandle != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(flags != 0u);
+
+    /* Down-casting of the OSAL handle */
+    Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->eventFlagsHandleFind != NULL);
+
+
+    /* Try to find the event-flags handle within the OSAL instance registry */
+    const size_t eventFlagsId = port->base.ptable->eventFlagsHandleFind(port, eventFlagsHandle);
+    if ((eventFlagsId == 0u) ||
+        (eventFlagsId > TEMPLATE_OSAL_EVENT_FLAGS_SLOTS_NUM))
+    {
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid event-flags handle
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsClear -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: event-flags handle is not registered
+    }
+
+    /* Down-casting of the event-flags handle */
+    Template_osalPosixEventFlags_s *const eventFlags =
+        (Template_osalPosixEventFlags_s *)eventFlagsHandle;
+
+    /* Lock internally used event flags mutex */
+    int rc = pthread_mutex_lock(&eventFlags->mutex);
+    if (rc != 0)
+    {
+        osalStatus = TEMPLATE_OSAL_EVENT_FLAGS_CLEAR_ERR;  // Error: Native event-flags mutex locking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsClear -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: event-flags mutex locking failed
+    }
+
+    /* Clear the requested event bits */
+    eventFlags->flags &= ~flags;
+
+    /* Unlock internally used event flags mutex */
+    rc = pthread_mutex_unlock(&eventFlags->mutex);
+    if (rc != 0)
+    {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        osalStatus = TEMPLATE_OSAL_EVENT_FLAGS_CLEAR_ERR;  // Error: Native event-flags mutex unlocking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsClear -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: event-flags mutex unlocking failed
+    }
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsClear -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: event flags were cleared
 }
 
 
@@ -3387,24 +3894,102 @@ static Template_osalErr_e template_osalPosixEventFlagsGet(void *const osal,
                                                           const Template_osalEventFlagsHandle_t eventFlagsHandle,
                                                           uint32_t *const flags)
 {
-    (void)osal;
-    (void)eventFlagsHandle;
-    (void)flags;
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: POSIX event flags are not supported
+    /* Trace input args */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsGet(%p, %p, %p)",
+                              osal, (void *)eventFlagsHandle, (void *)flags);
+
+    /* Validate input args */
+    TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(eventFlagsHandle != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(flags != NULL);
+
+    /* Clear the output value */
+    *flags = 0u;
+
+    /* Down-casting of the OSAL handle */
+    Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->eventFlagsHandleFind != NULL);
+
+
+    /* Try to find the event-flags handle within the OSAL instance registry */
+    const size_t eventFlagsId = port->base.ptable->eventFlagsHandleFind(port, eventFlagsHandle);
+    if ((eventFlagsId == 0u) ||
+        (eventFlagsId > TEMPLATE_OSAL_EVENT_FLAGS_SLOTS_NUM))
+    {
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid event-flags handle
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsGet -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: event-flags handle is not registered
+    }
+
+    /* Down-casting of the event-flags handle */
+    Template_osalPosixEventFlags_s *const eventFlags =
+        (Template_osalPosixEventFlags_s *)eventFlagsHandle;
+
+    /* Lock internally used event flags mutex */
+    int rc = pthread_mutex_lock(&eventFlags->mutex);
+    if (rc != 0)
+    {
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Native event-flags mutex locking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsGet -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: event-flags mutex locking failed
+    }
+
+    /* Read the current event-flags snapshot */
+    *flags = eventFlags->flags;
+
+    /* Unlock internally used event flags mutex */
+    rc = pthread_mutex_unlock(&eventFlags->mutex);
+    if (rc != 0)
+    {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Native event-flags mutex unlocking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsGet -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: event-flags mutex unlocking failed
+    }
+
+    /* Trace output value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsGet: flags = 0x%08lX",
+                              (unsigned long)*flags);
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsGet -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: event flags were read
 }
 
 
 /**
- * \brief Wait for a condition on a registered POSIX event-flags object.
+ * \brief Wait for any or all requested bits in a registered POSIX event-flags object.
+ *
+ * \details A zero timeout checks the current flag state without blocking.
+ *          TEMPLATE_OSAL_INFINITY_TOUT waits indefinitely. Finite waits use one
+ *          absolute timeout so spurious wake-ups do not extend the requested wait.
+ *          When a Set operation satisfies multiple awaiters, each awaiter receives
+ *          the same pre-clear event snapshot.
  *
  * \param osal              Opaque pointer to the initialized POSIX OSAL instance.
  * \param eventFlagsHandle  Registered event-flags handle.
- * \param flags             Bit mask participating in the wait condition.
- * \param options           Event-flags wait options.
+ * \param flags             Non-zero bit mask to wait for.
+ * \param options           WAIT_ANY/WAIT_ALL and optional NO_CLEAR behavior.
  * \param timeoutMs         Maximum wait time in milliseconds.
- * \param actualFlags       Output pointer receiving the observed flags.
+ * \param actualFlags       Output pointer receiving the observed flags snapshot.
  *
  * \return Template_osalErr_e, zero value means success, otherwise an error has occurred.
  */
@@ -3415,15 +4000,312 @@ static Template_osalErr_e template_osalPosixEventFlagsWait(void *const osal,
                                                            const Template_osalTimeMs_t timeoutMs,
                                                            uint32_t *const actualFlags)
 {
-    (void)osal;
-    (void)eventFlagsHandle;
-    (void)flags;
-    (void)options;
-    (void)timeoutMs;
-    (void)actualFlags;
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
+    const uint32_t validOptions   = (uint32_t)TEMPLATE_OSAL_EVENT_FLAGS_WAIT_ALL |
+                                    (uint32_t)TEMPLATE_OSAL_EVENT_FLAGS_NO_CLEAR;
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: POSIX event flags are not supported
+    /* Trace input args */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsWait(%p, %p, 0x%08lX, 0x%08lX, %u, %p)",
+                              osal,
+                              (void *)eventFlagsHandle,
+                              (unsigned long)flags,
+                              (unsigned long)options,
+                              (unsigned int)timeoutMs,
+                              (void *)actualFlags);
+
+    /* Validate input args */
+    TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(eventFlagsHandle != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(flags != 0u);
+    TEMPLATE_OSAL_POSIX_ASSERT(actualFlags != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(((uint32_t)options & ~validOptions) == 0u);
+
+    /* Clear the output value */
+    *actualFlags = 0u;
+
+    /* Down-casting of the OSAL handle */
+    Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->eventFlagsHandleFind != NULL);
+
+
+    /* Try to find the event-flags handle within the OSAL instance registry */
+    const size_t eventFlagsId = port->base.ptable->eventFlagsHandleFind(port, eventFlagsHandle);
+    if ((eventFlagsId == 0u) ||
+        (eventFlagsId > TEMPLATE_OSAL_EVENT_FLAGS_SLOTS_NUM))
+    {
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid event-flags handle
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsWait -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: event-flags handle is not registered
+    }
+
+    /* Down-casting of the event-flags handle */
+    Template_osalPosixEventFlags_s *const eventFlags =
+        (Template_osalPosixEventFlags_s *)eventFlagsHandle;
+
+    /* Lock internally used event flags mutex */
+    int rc = pthread_mutex_lock(&eventFlags->mutex);
+    if (rc != 0)
+    {
+        osalStatus = TEMPLATE_OSAL_EVENT_FLAGS_WAIT_ERR;  // Error: Native event-flags mutex locking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsWait -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: event-flags mutex locking failed
+    }
+
+    const bool waitAll = (((uint32_t)options & (uint32_t)TEMPLATE_OSAL_EVENT_FLAGS_WAIT_ALL) != 0u);
+    const bool noClear = (((uint32_t)options & (uint32_t)TEMPLATE_OSAL_EVENT_FLAGS_NO_CLEAR) != 0u);
+
+    /* Check whether the wait condition is already satisfied */
+    if (template_osalPosixEventFlagsConditionCheck(eventFlags->flags, flags, waitAll))
+    {
+        *actualFlags = eventFlags->flags;
+
+        if (!noClear)
+        {
+            eventFlags->flags &= ~flags;
+        }
+
+        /* Unlock internally used event flags mutex */
+        rc = pthread_mutex_unlock(&eventFlags->mutex);
+        if (rc != 0)
+        {
+            /* This branch is impossible under normal conditions */
+            TEMPLATE_OSAL_POSIX_ASSERT(0);
+            osalStatus = TEMPLATE_OSAL_EVENT_FLAGS_WAIT_ERR;  // Error: Native event-flags mutex unlocking failed
+
+            /* Trace returned value */
+            TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsWait -> %d", (int)osalStatus);
+
+            return osalStatus;  // Exit: Error: event-flags mutex unlocking failed
+        }
+
+        /* Trace output value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsWait: actualFlags = 0x%08lX",
+                                  (unsigned long)*actualFlags);
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsWait -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Success: event-flags condition was already satisfied
+    }
+
+    /* Return immediately when no blocking time was requested */
+    if (timeoutMs == 0u)
+    {
+        *actualFlags = eventFlags->flags;
+        /* Unlock internally used event flags mutex */
+        (void)pthread_mutex_unlock(&eventFlags->mutex);
+        osalStatus = TEMPLATE_OSAL_EVENT_FLAGS_WAIT_ERR;  // Error: Event-flags condition was not satisfied
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsWait -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: event-flags condition was not immediately satisfied
+    }
+
+    struct timespec deadline = {0};
+    if ((timeoutMs != TEMPLATE_OSAL_INFINITY_TOUT) &&
+        !template_osalPosixRealtimeDeadlineGet(timeoutMs, &deadline))
+    {
+        /* Unlock internally used event flags mutex */
+        (void)pthread_mutex_unlock(&eventFlags->mutex);
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Event-flags wait deadline creation failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsWait -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: event-flags wait deadline creation failed
+    }
+
+    /* Link the caller-owned awaiter while holding the event-flags mutex */
+    Template_osalPosixEventFlagsAwaiter_s awaiter =
+    {
+        .next        = eventFlags->awaiter,
+        .flags       = flags,
+        .actualFlags = 0u,
+        .waitAll     = waitAll,
+        .noClear     = noClear,
+        .satisfied   = false
+    };
+    eventFlags->awaiter = &awaiter;
+
+    Template_osalPosixEventFlagsWaitCleanup_s cleanup =
+    {
+        .eventFlags = eventFlags,
+        .awaiter    = &awaiter
+    };
+
+    int waitRc   = 0;
+    int unlockRc = 0;
+
+    /* Remove the awaiter and unlock the object if the POSIX thread is cancelled */
+    pthread_cleanup_push(template_osalPosixEventFlagsWaitCleanup, &cleanup);
+
+    while (!awaiter.satisfied)
+    {
+        if (timeoutMs == TEMPLATE_OSAL_INFINITY_TOUT)
+        {
+            waitRc = pthread_cond_wait(&eventFlags->cond, &eventFlags->mutex);
+        }
+        else
+        {
+            waitRc = pthread_cond_timedwait(&eventFlags->cond,
+                                            &eventFlags->mutex,
+                                            &deadline);
+        }
+
+        if ((waitRc != 0) &&
+            (waitRc != ETIMEDOUT))
+        {
+            break;
+        }
+
+        if (waitRc == ETIMEDOUT)
+        {
+            break;
+        }
+    }
+
+    if (awaiter.satisfied)
+    {
+        *actualFlags = awaiter.actualFlags;
+        osalStatus   = TEMPLATE_OSAL_NO_ERR;
+    }
+    else
+    {
+        *actualFlags = eventFlags->flags;
+
+        if (waitRc == ETIMEDOUT)
+        {
+            osalStatus = TEMPLATE_OSAL_EVENT_FLAGS_WAIT_ERR;  // Error: Event-flags wait timed out
+        }
+        else
+        {
+            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Native event-flags wait failed
+        }
+    }
+
+    /* Unlink the caller-owned awaiter before releasing the event-flags mutex */
+    template_osalPosixEventFlagsAwaiterRemove(eventFlags, &awaiter);
+
+    /* Unlock internally used event flags mutex */
+    unlockRc = pthread_mutex_unlock(&eventFlags->mutex);
+    if (unlockRc != 0)
+    {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Native event-flags mutex unlocking failed
+    }
+
+    pthread_cleanup_pop(0);
+
+    if (osalStatus != TEMPLATE_OSAL_NO_ERR)
+    {
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsWait -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: event-flags wait did not complete successfully
+    }
+
+    /* Trace output value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsWait: actualFlags = 0x%08lX",
+                              (unsigned long)*actualFlags);
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixEventFlagsWait -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: event-flags condition was satisfied
+}
+
+
+/**
+ * \brief Check whether an event-flags snapshot satisfies one wait condition.
+ *
+ * \param currentFlags    Current event-flags snapshot.
+ * \param requestedFlags  Requested non-zero event-flags mask.
+ * \param waitAll         true to require all requested bits; false to require any bit.
+ *
+ * \return true when the requested wait condition is satisfied; false otherwise.
+ */
+static inline bool template_osalPosixEventFlagsConditionCheck(const uint32_t currentFlags,
+                                                              const uint32_t requestedFlags,
+                                                              const bool waitAll)
+{
+    TEMPLATE_OSAL_POSIX_ASSERT(requestedFlags != 0u);
+
+    return waitAll
+         ? ((currentFlags & requestedFlags) == requestedFlags)
+         : ((currentFlags & requestedFlags) != 0u);
+}
+
+
+/**
+ * \brief Remove one awaiter descriptor from an event-flags awaiter list.
+ *
+ * \details The caller shall hold the event-flags mutex while modifying
+ *          the awaiter list.
+ *
+ * \param eventFlags  Event-flags object owning the awaiter list.
+ * \param awaiter      Awaiter descriptor to remove.
+ */
+static void template_osalPosixEventFlagsAwaiterRemove(Template_osalPosixEventFlags_s *const eventFlags,
+                                                      Template_osalPosixEventFlagsAwaiter_s *const awaiter)
+{
+    TEMPLATE_OSAL_POSIX_ASSERT(eventFlags != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(awaiter != NULL);
+
+    Template_osalPosixEventFlagsAwaiter_s **awaiterLink = &eventFlags->awaiter;
+
+    while ((*awaiterLink != NULL) &&
+           (*awaiterLink != awaiter))
+    {
+        awaiterLink = &(*awaiterLink)->next;
+    }
+
+    /* The awaiter must remain linked until its wait operation completes */
+    TEMPLATE_OSAL_POSIX_ASSERT(*awaiterLink == awaiter);
+
+    if (*awaiterLink == awaiter)
+    {
+        *awaiterLink  = awaiter->next;
+        awaiter->next = NULL;
+    }
+}
+
+
+/**
+ * \brief Remove a cancelled awaiter and release the event-flags mutex.
+ *
+ * \details POSIX condition waits reacquire the supplied mutex before executing
+ *          cancellation cleanup handlers. The awaiter is therefore removed while
+ *          the awaiter list is still protected, then the mutex is released.
+ *
+ * \param context  Pointer to Template_osalPosixEventFlagsWaitCleanup_s.
+ */
+static void template_osalPosixEventFlagsWaitCleanup(void *const context)
+{
+    TEMPLATE_OSAL_POSIX_ASSERT(context != NULL);
+
+    Template_osalPosixEventFlagsWaitCleanup_s *const cleanup =
+        (Template_osalPosixEventFlagsWaitCleanup_s *)context;
+
+    TEMPLATE_OSAL_POSIX_ASSERT(cleanup->eventFlags != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(cleanup->awaiter != NULL);
+
+    template_osalPosixEventFlagsAwaiterRemove(cleanup->eventFlags, cleanup->awaiter);
+
+    /* Unlock internally used event flags mutex */
+    const int rc = pthread_mutex_unlock(&cleanup->eventFlags->mutex);
+    TEMPLATE_OSAL_POSIX_ASSERT(rc == 0);
 }
 
 // END EVENT_FLAGS
@@ -4743,8 +5625,10 @@ static inline Template_osalErr_e template_osalPosixResourceLock(Template_osalPos
 {
     TEMPLATE_OSAL_POSIX_ASSERT(osalPosix != NULL);
 
+    /* Lock internal OSAL insatnce resource mutex */
     if (pthread_mutex_lock(&osalPosix->resourceMutex) != 0)
     {
+        /* This branch is unlikely under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
 
         return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: POSIX resource mutex lock failed
@@ -4765,8 +5649,10 @@ static inline Template_osalErr_e template_osalPosixResourceUnlock(Template_osalP
 {
     TEMPLATE_OSAL_POSIX_ASSERT(osalPosix != NULL);
 
+    /* Unlock internal OSAL insatnce resource mutex */
     if (pthread_mutex_unlock(&osalPosix->resourceMutex) != 0)
     {
+        /* This branch is unlikely under normal conditions */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
 
         return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: POSIX resource mutex unlock failed
