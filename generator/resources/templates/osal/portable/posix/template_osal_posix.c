@@ -19,6 +19,7 @@
 #include <pthread.h>
 #include <sched.h>
 #include <semaphore.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -209,6 +210,17 @@ typedef struct
     Template_osalPosixThreadArg_s arg;      /*!< Embedded pthread thunk argument pack. */
 } Template_osalPosixThread_s;
 // END THREAD
+
+// BEGIN SOFTWARE_TIMER
+/**
+ * \struct  Template_osalPosixSoftwareTimer_s
+ * \brief   POSIX software-timer control block.
+ */
+typedef struct
+{
+    timer_t nativeTimer; /*!< Native POSIX per-process timer identifier. */
+} Template_osalPosixSoftwareTimer_s;
+// END SOFTWARE_TIMER
 
 //===============================================================[ INTERNAL FUNCTIONS AND OBJECTS DECLARATION ]=====================================================================
 
@@ -617,6 +629,17 @@ static Template_osalErr_e template_osalPosixSoftwareTimerStop(void *const osal,
  */
 static Template_osalErr_e template_osalPosixSoftwareTimerReset(void *const osal,
                                                                const Template_osalSoftwareTimerHandle_t timerHandle);
+
+/**
+ * \brief Arm a native POSIX software timer using the configured OSAL period.
+ */
+static int template_osalPosixSoftwareTimerArm(const Template_osalPosixSoftwareTimer_s *const timer,
+                                              const Template_osalSoftwareTimerAttr_s *const timerAttr);
+
+/**
+ * \brief Dispatch a POSIX SIGEV_THREAD notification to the component callback.
+ */
+static void template_osalPosixSoftwareTimerCallback(union sigval value);
 // END SOFTWARE_TIMER
 
 // BEGIN TIME
@@ -908,6 +931,19 @@ Template_osalErr_e template_osalPosixDeinit(Template_osalPosix_s *const osalPosi
 
         return osalStatus;  // Exit: Error: backend is not initialized
     }
+
+// BEGIN SOFTWARE_TIMER
+    /* Delete registered software timers */
+    for (size_t i = 0u; i < TEMPLATE_OSAL_SOFTWARE_TIMER_SLOTS_NUM; ++i)
+    {
+        if (osalPosix->base.softwareTimerObj[i].handle != NULL)
+        {
+            (void)template_osalPosixSoftwareTimerDelete(osalPosix,
+                                                        osalPosix->base.softwareTimerObj[i].handle);
+        }
+    }
+
+// END SOFTWARE_TIMER
 
 // BEGIN THREAD
     /* Delete registered threads */
@@ -5371,7 +5407,6 @@ static Template_osalErr_e template_osalPosixEventFlagsWait(void *const osal,
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->eventFlagsHandleFind != NULL);
 
-
     /* Try to find the event-flags handle within the OSAL instance registry */
     const size_t eventFlagsId = port->base.ptable->eventFlagsHandleFind(port, eventFlagsHandle);
     if ((eventFlagsId == 0u) ||
@@ -6580,10 +6615,12 @@ static Template_osalErr_e template_osalPosixCriticalSectionExit(void *const osal
 // BEGIN SOFTWARE_TIMER
 /*------------------------------- Software timers -------------------------*/
 
-#error "KIWI POSIX backend: software-timer API is currently not supported"
-
 /**
  * \brief Create a POSIX software timer and register it in the OSAL instance.
+ *
+ * \details The native timer uses CLOCK_MONOTONIC and SIGEV_THREAD notification.
+ *          The timer is created disarmed. Start or Reset arms it using the
+ *          configured period and auto-reload mode.
  *
  * \param osal         Opaque pointer to the initialized POSIX OSAL instance.
  * \param timerHandle  Output pointer receiving the software-timer handle.
@@ -6595,15 +6632,128 @@ static Template_osalErr_e template_osalPosixSoftwareTimerCreate(void *const osal
                                                                 Template_osalSoftwareTimerHandle_t *const timerHandle,
                                                                 Template_osalSoftwareTimerAttr_s timerAttr)
 {
-    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerCreate(%p, %p)",
-                              osal, (void *)timerHandle);
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
+
+    /* Trace input args */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerCreate(%p, %p, {%s, %p, %p, %d, %u})",
+                              osal,
+                              (void *)timerHandle,
+                              (timerAttr.name != NULL) ? timerAttr.name : "(null)",
+                              timerAttr.timerParam,
+                              (void *)(uintptr_t)timerAttr.timerExpiredCb,
+                              (int)timerAttr.autoReload,
+                              (unsigned int)timerAttr.periodMs);
+
+    /* Validate input args */
     TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(timerHandle != NULL);
-    (void)timerAttr;
-    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(osal));
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
+    TEMPLATE_OSAL_POSIX_ASSERT(timerAttr.timerExpiredCb != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(timerAttr.periodMs != 0u);
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: operation is not supported
+    /* Clear the output value */
+    *timerHandle = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
+
+    /* Down-casting of the OSAL handle */
+    Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->softwareTimerFreeSlotFind != NULL);
+
+    /* Lock resource mutex */
+    osalStatus = template_osalPosixResourceLock(port);
+    if (osalStatus != TEMPLATE_OSAL_NO_ERR)
+    {
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerCreate -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: resource mutex acquisition failed
+    }
+
+    /* Find a free software-timer registry slot */
+    const size_t timerId = port->base.ptable->softwareTimerFreeSlotFind(port);
+    if ((timerId == 0u) ||
+        (timerId > TEMPLATE_OSAL_SOFTWARE_TIMER_SLOTS_NUM))
+    {
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+
+        osalStatus = TEMPLATE_OSAL_SOFTWARE_TIMER_CREATE_ERR;  // Error: No free software-timer slot
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerCreate -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: no free software-timer slot
+    }
+
+    /* Allocate the software-timer control block */
+    Template_osalPosixSoftwareTimer_s *const timer =
+        (Template_osalPosixSoftwareTimer_s *)calloc(1u, sizeof(Template_osalPosixSoftwareTimer_s));
+    if (timer == NULL)
+    {
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+
+        osalStatus = TEMPLATE_OSAL_SOFTWARE_TIMER_MEM_ALLOCATION_ERR;  // Error: Software-timer control-block allocation failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerCreate -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: software-timer control-block allocation failed
+    }
+
+    Template_osalSoftwareTimer_s *const timerObj = &port->base.softwareTimerObj[timerId - 1u];
+    timerObj->attr = timerAttr;
+
+    struct sigevent event = {0};
+    event.sigev_notify            = SIGEV_THREAD;
+    event.sigev_value.sival_ptr   = timerObj;
+    event.sigev_notify_function   = template_osalPosixSoftwareTimerCallback;
+    event.sigev_notify_attributes = NULL;
+
+    /* Create the native POSIX timer in the disarmed state */
+    if (timer_create(CLOCK_MONOTONIC, &event, &timer->nativeTimer) != 0)
+    {
+        const int createErr = errno;
+
+        timerObj->attr.name           = NULL;
+        timerObj->attr.timerParam     = NULL;
+        timerObj->attr.timerExpiredCb = NULL;
+        timerObj->attr.autoReload     = false;
+        timerObj->attr.periodMs       = 0u;
+        free(timer);
+        (void)template_osalPosixResourceUnlock(port);
+
+        osalStatus = ((createErr == EAGAIN) ||
+                      (createErr == ENOMEM)) ?
+                     TEMPLATE_OSAL_SOFTWARE_TIMER_MEM_ALLOCATION_ERR :
+                     TEMPLATE_OSAL_SOFTWARE_TIMER_CREATE_ERR;  // Error: Native POSIX timer creation failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerCreate -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: native POSIX timer creation failed
+    }
+
+    /* Register the software-timer handle */
+    timerObj->handle = (Template_osalSoftwareTimerHandle_t)timer;
+    *timerHandle     = (Template_osalSoftwareTimerHandle_t)timer;
+
+    /* Unlock resource mutex */
+    osalStatus = template_osalPosixResourceUnlock(port);
+    if (osalStatus != TEMPLATE_OSAL_NO_ERR)
+    {
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerCreate -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: resource mutex release failed
+    }
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerCreate -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: software timer was created and registered
 }
 
 
@@ -6618,14 +6768,92 @@ static Template_osalErr_e template_osalPosixSoftwareTimerCreate(void *const osal
 static Template_osalErr_e template_osalPosixSoftwareTimerDelete(void *const osal,
                                                                 const Template_osalSoftwareTimerHandle_t timerHandle)
 {
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
+
+    /* Trace input args */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerDelete(%p, %p)",
                               osal, (void *)timerHandle);
+
+    /* Validate input args */
     TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(timerHandle != NULL);
-    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(osal));
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: operation is not supported
+    /* Down-casting of the OSAL handle */
+    Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->softwareTimerHandleFind != NULL);
+
+    /* Lock resource mutex */
+    osalStatus = template_osalPosixResourceLock(port);
+    if (osalStatus != TEMPLATE_OSAL_NO_ERR)
+    {
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerDelete -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: resource mutex acquisition failed
+    }
+
+    /* Try to find the software-timer handle within the OSAL instance registry */
+    const size_t timerId = port->base.ptable->softwareTimerHandleFind(port, timerHandle);
+    if ((timerId == 0u) ||
+        (timerId > TEMPLATE_OSAL_SOFTWARE_TIMER_SLOTS_NUM))
+    {
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid software-timer handle
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerDelete -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: software-timer handle is not registered
+    }
+
+    /* Down-casting of the software-timer handle */
+    Template_osalPosixSoftwareTimer_s *const timer =
+        (Template_osalPosixSoftwareTimer_s *)timerHandle;
+
+    /* Delete the native POSIX timer */
+    if (timer_delete(timer->nativeTimer) != 0)
+    {
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Native POSIX timer deletion failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerDelete -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: native POSIX timer deletion failed
+    }
+
+    Template_osalSoftwareTimer_s *const timerObj = &port->base.softwareTimerObj[timerId - 1u];
+    timerObj->handle              = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
+    timerObj->attr.name           = NULL;
+    timerObj->attr.timerParam     = NULL;
+    timerObj->attr.timerExpiredCb = NULL;
+    timerObj->attr.autoReload     = false;
+    timerObj->attr.periodMs       = 0u;
+
+    free(timer);
+
+    /* Unlock resource mutex */
+    osalStatus = template_osalPosixResourceUnlock(port);
+    if (osalStatus != TEMPLATE_OSAL_NO_ERR)
+    {
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerDelete -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: resource mutex release failed
+    }
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerDelete -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: software timer was deleted and unregistered
 }
 
 
@@ -6640,14 +6868,57 @@ static Template_osalErr_e template_osalPosixSoftwareTimerDelete(void *const osal
 static Template_osalErr_e template_osalPosixSoftwareTimerStart(void *const osal,
                                                                const Template_osalSoftwareTimerHandle_t timerHandle)
 {
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
+
+    /* Trace input args */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerStart(%p, %p)",
                               osal, (void *)timerHandle);
+
+    /* Validate input args */
     TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(timerHandle != NULL);
-    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(osal));
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: operation is not supported
+    /* Down-casting of the OSAL handle */
+    Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->softwareTimerHandleFind != NULL);
+
+    /* Try to find the software-timer handle within the OSAL instance registry */
+    const size_t timerId = port->base.ptable->softwareTimerHandleFind(port, timerHandle);
+    if ((timerId == 0u) ||
+        (timerId > TEMPLATE_OSAL_SOFTWARE_TIMER_SLOTS_NUM))
+    {
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid software-timer handle
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerStart -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: software-timer handle is not registered
+    }
+
+    /* Down-casting of the software-timer handle */
+    Template_osalPosixSoftwareTimer_s *const timer =
+        (Template_osalPosixSoftwareTimer_s *)timerHandle;
+    Template_osalSoftwareTimer_s *const timerObj = &port->base.softwareTimerObj[timerId - 1u];
+
+    /* Arm the native POSIX timer */
+    if (template_osalPosixSoftwareTimerArm(timer, &timerObj->attr) != 0)
+    {
+        osalStatus = TEMPLATE_OSAL_SOFTWARE_TIMER_START_ERR;  // Error: Native POSIX timer start failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerStart -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: native POSIX timer start failed
+    }
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerStart -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: software timer was started
 }
 
 
@@ -6662,19 +6933,65 @@ static Template_osalErr_e template_osalPosixSoftwareTimerStart(void *const osal,
 static Template_osalErr_e template_osalPosixSoftwareTimerStop(void *const osal,
                                                               const Template_osalSoftwareTimerHandle_t timerHandle)
 {
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
+
+    /* Trace input args */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerStop(%p, %p)",
                               osal, (void *)timerHandle);
+
+    /* Validate input args */
     TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(timerHandle != NULL);
-    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(osal));
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: operation is not supported
+    /* Down-casting of the OSAL handle */
+    Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->softwareTimerHandleFind != NULL);
+
+    /* Try to find the software-timer handle within the OSAL instance registry */
+    const size_t timerId = port->base.ptable->softwareTimerHandleFind(port, timerHandle);
+    if ((timerId == 0u) ||
+        (timerId > TEMPLATE_OSAL_SOFTWARE_TIMER_SLOTS_NUM))
+    {
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid software-timer handle
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerStop -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: software-timer handle is not registered
+    }
+
+    /* Down-casting of the software-timer handle */
+    Template_osalPosixSoftwareTimer_s *const timer =
+        (Template_osalPosixSoftwareTimer_s *)timerHandle;
+
+    struct itimerspec timerSpec = {0};
+
+    /* Disarm the native POSIX timer */
+    if (timer_settime(timer->nativeTimer, 0, &timerSpec, NULL) != 0)
+    {
+        osalStatus = TEMPLATE_OSAL_SOFTWARE_TIMER_STOP_ERR;  // Error: Native POSIX timer stop failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerStop -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: native POSIX timer stop failed
+    }
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerStop -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: software timer was stopped
 }
 
 
 /**
  * \brief Reset a registered POSIX software timer.
+ *
+ * \details The configured period is restarted from the time of this call.
  *
  * \param osal         Opaque pointer to the initialized POSIX OSAL instance.
  * \param timerHandle  Registered software-timer handle.
@@ -6684,15 +7001,124 @@ static Template_osalErr_e template_osalPosixSoftwareTimerStop(void *const osal,
 static Template_osalErr_e template_osalPosixSoftwareTimerReset(void *const osal,
                                                                const Template_osalSoftwareTimerHandle_t timerHandle)
 {
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
+
+    /* Trace input args */
     TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerReset(%p, %p)",
                               osal, (void *)timerHandle);
+
+    /* Validate input args */
     TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(timerHandle != NULL);
-    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(osal));
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: operation is not supported
+    /* Down-casting of the OSAL handle */
+    Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->softwareTimerHandleFind != NULL);
+
+    /* Try to find the software-timer handle within the OSAL instance registry */
+    const size_t timerId = port->base.ptable->softwareTimerHandleFind(port, timerHandle);
+    if ((timerId == 0u) ||
+        (timerId > TEMPLATE_OSAL_SOFTWARE_TIMER_SLOTS_NUM))
+    {
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid software-timer handle
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerReset -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: software-timer handle is not registered
+    }
+
+    /* Down-casting of the software-timer handle */
+    Template_osalPosixSoftwareTimer_s *const timer =
+        (Template_osalPosixSoftwareTimer_s *)timerHandle;
+    Template_osalSoftwareTimer_s *const timerObj = &port->base.softwareTimerObj[timerId - 1u];
+
+    /* Restart the native POSIX timer period */
+    if (template_osalPosixSoftwareTimerArm(timer, &timerObj->attr) != 0)
+    {
+        osalStatus = TEMPLATE_OSAL_SOFTWARE_TIMER_RESET_ERR;  // Error: Native POSIX timer reset failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerReset -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: native POSIX timer reset failed
+    }
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerReset -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: software timer was reset
 }
+
+
+/**
+ * \brief Arm a native POSIX software timer using the configured OSAL period.
+ *
+ * \param timer      POSIX software-timer control block.
+ * \param timerAttr  Software-timer attributes.
+ *
+ * \return Zero on success; otherwise -1 with errno preserved from timer_settime().
+ */
+static int template_osalPosixSoftwareTimerArm(const Template_osalPosixSoftwareTimer_s *const timer,
+                                              const Template_osalSoftwareTimerAttr_s *const timerAttr)
+{
+    TEMPLATE_OSAL_POSIX_ASSERT(timer != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(timerAttr != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(timerAttr->periodMs != 0u);
+
+    struct itimerspec timerSpec = {0};
+
+    timerSpec.it_value.tv_sec  = (time_t)(timerAttr->periodMs / 1000u);
+    timerSpec.it_value.tv_nsec = (long)((timerAttr->periodMs % 1000u) * 1000000u);
+
+    if (timerAttr->autoReload)
+    {
+        timerSpec.it_interval = timerSpec.it_value;
+    }
+
+    return timer_settime(timer->nativeTimer, 0, &timerSpec, NULL);
+}
+
+
+/**
+ * \brief Dispatch a POSIX SIGEV_THREAD notification to the component callback.
+ *
+ * \param value  POSIX notification value carrying the generic software-timer object.
+ */
+static void template_osalPosixSoftwareTimerCallback(union sigval value)
+{
+    /* Trace input args */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerCallback(%p)", value.sival_ptr);
+
+    Template_osalSoftwareTimer_s *const timerObj =
+        (Template_osalSoftwareTimer_s *)value.sival_ptr;
+
+    TEMPLATE_OSAL_POSIX_ASSERT(timerObj != NULL);
+    if (timerObj == NULL)
+    {
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerCallback -> invalid timer object");
+
+        return;  // Exit: Error: timer callback object is invalid
+    }
+
+    TEMPLATE_OSAL_POSIX_ASSERT(timerObj->attr.timerExpiredCb != NULL);
+    if (timerObj->attr.timerExpiredCb == NULL)
+    {
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerCallback -> invalid timer state");
+
+        return;  // Exit: Error: timer callback state is invalid
+    }
+
+    timerObj->attr.timerExpiredCb(timerObj->attr.timerParam);
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixSoftwareTimerCallback -> ok");
+}
+
 // END SOFTWARE_TIMER
 
 // BEGIN TIME
@@ -6716,28 +7142,24 @@ static Template_osalErr_e template_osalPosixTimeMsGet(void *const osal,
     Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
 
     /* Trace input args */
-    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixTimeMsGet(%p, %p)", osal, (void *)osTimeMs);
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixTimeMsGet(%p, %p)",
+                              osal, (void *)osTimeMs);
 
     /* Validate input args */
     TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(osTimeMs != NULL);
 
     /* Validate backend state */
-    if (!template_osalPosixIsValid(osal))
-    {
-        TEMPLATE_OSAL_POSIX_ASSERT(0);
-        osalStatus = TEMPLATE_OSAL_NOT_INIT_ERR;  // Error: Backend is not initialized
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(osal));
+    (void)osal;
 
-        /* Trace returned value */
-        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixTimeMsGet -> %d", (int)osalStatus);
-
-        return osalStatus;  // Exit: Error: backend is not initialized
-    }
-
+    /* Get the current monotonic time */
     struct timespec now = {0};
     if (clock_gettime(CLOCK_MONOTONIC, &now) != 0)
     {
+        /* This branch is considered as very unlikely */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
+
         osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Monotonic clock read failed
 
         /* Trace returned value */
@@ -6810,7 +7232,9 @@ static Template_osalErr_e template_osalPosixMemAlloc(void *const osal,
     if ((memoryId == 0u) ||
         (memoryId > TEMPLATE_OSAL_MEM_SLOTS_NUM))
     {
+        /* Unlock resource mutex */
         (void)template_osalPosixResourceUnlock(port);
+
         osalStatus = TEMPLATE_OSAL_MEM_ALLOCATION_ERR;  // Error: No free memory registry slot
 
         /* Trace returned value */
@@ -6823,7 +7247,9 @@ static Template_osalErr_e template_osalPosixMemAlloc(void *const osal,
     void *const allocatedPtr = malloc(size);
     if (allocatedPtr == NULL)
     {
+        /* Unlock resource mutex */
         (void)template_osalPosixResourceUnlock(port);
+
         osalStatus = TEMPLATE_OSAL_MEM_ALLOCATION_ERR;  // Error: Host heap allocation failed
 
         /* Trace returned value */
@@ -6881,7 +7307,7 @@ static Template_osalErr_e template_osalPosixMemFree(void *const osal,
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->memPtrFind != NULL);
 
-    /* Lock */
+    /* Lock resource mutex */
     osalStatus = template_osalPosixResourceLock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
@@ -6896,7 +7322,9 @@ static Template_osalErr_e template_osalPosixMemFree(void *const osal,
     if ((memoryId == 0u) ||
         (memoryId > TEMPLATE_OSAL_MEM_SLOTS_NUM))
     {
+        /* Unlock resource mutex */
         (void)template_osalPosixResourceUnlock(port);
+
         osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Memory pointer is not registered
 
         /* Trace returned value */
@@ -6909,7 +7337,7 @@ static Template_osalErr_e template_osalPosixMemFree(void *const osal,
     port->base.memPtr[memoryId - 1u] = NULL;
     free(memPtr);
 
-    /* Unlock */
+    /* Unlock resource mutex */
     osalStatus = template_osalPosixResourceUnlock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
