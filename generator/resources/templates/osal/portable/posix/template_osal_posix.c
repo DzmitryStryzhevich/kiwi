@@ -82,6 +82,41 @@ typedef struct
 } Template_osalPosixQueue_s;
 // END QUEUE
 
+// BEGIN STREAM_BUFFER
+/**
+ * \struct  Template_osalPosixStreamBuffer_s
+ * \brief   POSIX byte stream-buffer control block.
+ * \details The byte ring buffer is protected by an internal POSIX mutex.
+ *          Separate condition variables notify blocked readers and writers
+ *          when the configured receive trigger or required free capacity
+ *          can be satisfied.
+ */
+typedef struct
+{
+    size_t          capacity;           /*!< Stream-buffer capacity in bytes. */
+    size_t          triggerLevel;       /*!< Receive trigger level in bytes. */
+    size_t          readIdx;            /*!< Next ring-buffer read index. */
+    size_t          writeIdx;           /*!< Next ring-buffer write index. */
+    size_t          dataCount;          /*!< Number of bytes currently stored. */
+    size_t          readAwaiterCount;   /*!< Number of readers currently blocked for data. */
+    size_t          writeAwaiterCount;  /*!< Number of writers currently blocked for capacity. */
+    uint8_t         *buffer;            /*!< Byte ring-buffer storage. */
+    pthread_mutex_t mutex;              /*!< Internal POSIX mutex protecting stream-buffer state. */
+    pthread_cond_t  readCond;           /*!< POSIX condition variable used to notify blocked readers. */
+    pthread_cond_t  writeCond;          /*!< POSIX condition variable used to notify blocked writers. */
+} Template_osalPosixStreamBuffer_s;
+
+/**
+ * \struct  Template_osalPosixStreamBufferWaitCleanup_s
+ * \brief   Cleanup context used when a blocked POSIX stream-buffer thread is cancelled.
+ */
+typedef struct
+{
+    Template_osalPosixStreamBuffer_s *streamBuffer; /*!< Stream-buffer object owning the blocked operation. */
+    bool                             writeAwaiter;   /*!< true for a blocked writer; false for a blocked reader. */
+} Template_osalPosixStreamBufferWaitCleanup_s;
+// END STREAM_BUFFER
+
 // BEGIN MUTEX
 /**
  * \struct  Template_osalPosixMutex_s
@@ -307,6 +342,25 @@ static Template_osalErr_e template_osalPosixStreamBufferPend(void *const osal,
  */
 static Template_osalErr_e template_osalPosixStreamBufferReset(void *const osal,
                                                               const Template_osalStreamBufferHandle_t streamBufferHandle);
+
+/**
+ * \brief Copy bytes into a stream buffer while its internal mutex is held.
+ */
+static size_t template_osalPosixStreamBufferDataWrite(Template_osalPosixStreamBuffer_s *const streamBuffer,
+                                                      const void *const data,
+                                                      const size_t dataLengthBytes);
+
+/**
+ * \brief Copy bytes from a stream buffer while its internal mutex is held.
+ */
+static size_t template_osalPosixStreamBufferDataRead(Template_osalPosixStreamBuffer_s *const streamBuffer,
+                                                     void *const data,
+                                                     const size_t dataLengthBytes);
+
+/**
+ * \brief Release a cancelled blocked stream-buffer operation and unlock its internal mutex.
+ */
+static void template_osalPosixStreamBufferWaitCleanup(void *const context);
 // END STREAM_BUFFER
 
 // BEGIN MUTEX
@@ -880,6 +934,19 @@ Template_osalErr_e template_osalPosixDeinit(Template_osalPosix_s *const osalPosi
     }
 
 // END QUEUE
+
+// BEGIN STREAM_BUFFER
+    /* Delete registered stream buffers */
+    for (size_t i = 0u; i < TEMPLATE_OSAL_STREAM_BUFFER_SLOTS_NUM; ++i)
+    {
+        if (osalPosix->base.streamBufferObjHandle[i] != NULL)
+        {
+            (void)template_osalPosixStreamBufferDelete(osalPosix,
+                                                       osalPosix->base.streamBufferObjHandle[i]);
+        }
+    }
+
+// END STREAM_BUFFER
 
 // BEGIN MUTEX
     /* Delete registered mutexes */
@@ -2046,8 +2113,6 @@ static Template_osalErr_e template_osalPosixQueueReset(void *const osal,
 // BEGIN STREAM_BUFFER
 /*----------------------------- Stream buffers -----------------------------*/
 
-#error "KIWI POSIX backend: stream-buffer API is not supported"
-
 /**
  * \brief Create a POSIX stream buffer and register it in the OSAL instance.
  *
@@ -2063,18 +2128,190 @@ static Template_osalErr_e template_osalPosixStreamBufferCreate(void *const osal,
                                                                const size_t triggerLevelBytes,
                                                                Template_osalStreamBufferHandle_t *const streamBufferHandle)
 {
-    (void)osal;
-    (void)bufferSizeBytes;
-    (void)triggerLevelBytes;
-    (void)streamBufferHandle;
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: POSIX stream buffers are not supported
+    /* Trace input args */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferCreate(%p, %lu, %lu, %p)",
+                              osal,
+                              (unsigned long)bufferSizeBytes,
+                              (unsigned long)triggerLevelBytes,
+                              (void *)streamBufferHandle);
+
+    /* Validate input args */
+    TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(streamBufferHandle != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(bufferSizeBytes != 0u);
+    TEMPLATE_OSAL_POSIX_ASSERT(triggerLevelBytes != 0u);
+    TEMPLATE_OSAL_POSIX_ASSERT(triggerLevelBytes <= bufferSizeBytes);
+
+    /* Down-casting of the OSAL handle */
+    Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->streamBufferFreeSlotFind != NULL);
+
+    /* Clear the output value */
+    *streamBufferHandle = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
+
+    /* Lock resource mutex */
+    osalStatus = template_osalPosixResourceLock(port);
+    if (osalStatus != TEMPLATE_OSAL_NO_ERR)
+    {
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferCreate -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: resource mutex acquisition failed
+    }
+
+    /* Try to find a free stream-buffer slot within the OSAL instance registry */
+    const size_t streamBufferId = port->base.ptable->streamBufferFreeSlotFind(port);
+    if ((streamBufferId == 0u) ||
+        (streamBufferId > TEMPLATE_OSAL_STREAM_BUFFER_SLOTS_NUM))
+    {
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+
+        osalStatus = TEMPLATE_OSAL_STREAM_BUFFER_CREATE_ERR;  // Error: No free stream-buffer registry slot
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferCreate -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: no free stream-buffer registry slot
+    }
+
+    /* Allocate the stream-buffer control block */
+    Template_osalPosixStreamBuffer_s *const streamBuffer =
+        (Template_osalPosixStreamBuffer_s *)calloc(1u, sizeof(Template_osalPosixStreamBuffer_s));
+    if (streamBuffer == NULL)
+    {
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+
+        osalStatus = TEMPLATE_OSAL_STREAM_BUFFER_MEM_ALLOCATION_ERR;  // Error: Stream-buffer control-block allocation failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferCreate -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer control-block allocation failed
+    }
+
+    /* Allocate byte ring-buffer storage */
+    streamBuffer->buffer = (uint8_t *)calloc(bufferSizeBytes, sizeof(uint8_t));
+    if (streamBuffer->buffer == NULL)
+    {
+        /* Release acquired resources */
+        free(streamBuffer);
+
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+
+        osalStatus = TEMPLATE_OSAL_STREAM_BUFFER_MEM_ALLOCATION_ERR;  // Error: Stream-buffer storage allocation failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferCreate -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer storage allocation failed
+    }
+
+    /* Initialize the stream-buffer control block */
+    streamBuffer->capacity          = bufferSizeBytes;
+    streamBuffer->triggerLevel      = triggerLevelBytes;
+    streamBuffer->readIdx           = 0u;
+    streamBuffer->writeIdx          = 0u;
+    streamBuffer->dataCount         = 0u;
+    streamBuffer->readAwaiterCount  = 0u;
+    streamBuffer->writeAwaiterCount = 0u;
+
+    /* Initialize the internally used stream buffer mutex */
+    int rc = pthread_mutex_init(&streamBuffer->mutex, NULL);
+    if (rc != 0)
+    {
+        /* Release acquired resources */
+        free(streamBuffer->buffer);
+        free(streamBuffer);
+
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+
+        osalStatus = TEMPLATE_OSAL_STREAM_BUFFER_CREATE_ERR;  // Error: Stream-buffer mutex initialization failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferCreate -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer mutex initialization failed
+    }
+
+    /* Initialize the reader condition variable */
+    rc = pthread_cond_init(&streamBuffer->readCond, NULL);
+    if (rc != 0)
+    {
+        /* Release acquired resources */
+        (void)pthread_mutex_destroy(&streamBuffer->mutex);
+        free(streamBuffer->buffer);
+        free(streamBuffer);
+
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+
+        osalStatus = TEMPLATE_OSAL_STREAM_BUFFER_CREATE_ERR;  // Error: Reader condition initialization failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferCreate -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: reader condition initialization failed
+    }
+
+    /* Initialize the writer condition variable */
+    rc = pthread_cond_init(&streamBuffer->writeCond, NULL);
+    if (rc != 0)
+    {
+        /* Release acquired resources */
+        (void)pthread_cond_destroy(&streamBuffer->readCond);
+        (void)pthread_mutex_destroy(&streamBuffer->mutex);
+        free(streamBuffer->buffer);
+        free(streamBuffer);
+
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+
+        osalStatus = TEMPLATE_OSAL_STREAM_BUFFER_CREATE_ERR;  // Error: Writer condition initialization failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferCreate -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: writer condition initialization failed
+    }
+
+    /* Register the stream-buffer handle in the OSAL registry */
+    port->base.streamBufferObjHandle[streamBufferId - 1u] = (Template_osalStreamBufferHandle_t)streamBuffer;
+    *streamBufferHandle                                   = (Template_osalStreamBufferHandle_t)streamBuffer;
+
+    /* Unlock resource mutex */
+    osalStatus = template_osalPosixResourceUnlock(port);
+    if (osalStatus != TEMPLATE_OSAL_NO_ERR)
+    {
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferCreate -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: resource mutex release failed
+    }
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferCreate -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: stream buffer was created and registered
 }
 
 
 /**
  * \brief Delete a registered POSIX stream buffer.
+ *
+ * \details The caller is responsible for object lifetime and shall ensure that
+ *          no ordinary operation uses the object concurrently with deletion.
+ *          Deletion is additionally rejected while one or more threads are
+ *          blocked waiting for data or free capacity.
  *
  * \param osal                Opaque pointer to the initialized POSIX OSAL instance.
  * \param streamBufferHandle  Registered stream-buffer handle.
@@ -2084,11 +2321,151 @@ static Template_osalErr_e template_osalPosixStreamBufferCreate(void *const osal,
 static Template_osalErr_e template_osalPosixStreamBufferDelete(void *const osal,
                                                                const Template_osalStreamBufferHandle_t streamBufferHandle)
 {
-    (void)osal;
-    (void)streamBufferHandle;
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: POSIX stream buffers are not supported
+    /* Trace input args */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferDelete(%p, %p)",
+                              osal, (void *)streamBufferHandle);
+
+    /* Validate input args */
+    TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(streamBufferHandle != NULL);
+
+    /* Down-casting of the OSAL handle */
+    Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->streamBufferHandleFind != NULL);
+
+    /* Lock resource mutex */
+    osalStatus = template_osalPosixResourceLock(port);
+    if (osalStatus != TEMPLATE_OSAL_NO_ERR)
+    {
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferDelete -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: resource mutex acquisition failed
+    }
+
+    /* Try to find the stream-buffer handle within the OSAL instance registry */
+    const size_t streamBufferId = port->base.ptable->streamBufferHandleFind(port, streamBufferHandle);
+    if ((streamBufferId == 0u) ||
+        (streamBufferId > TEMPLATE_OSAL_STREAM_BUFFER_SLOTS_NUM))
+    {
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid stream-buffer handle
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferDelete -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer handle is not registered
+    }
+
+    /* Down-casting of the stream-buffer handle */
+    Template_osalPosixStreamBuffer_s *const streamBuffer =
+        (Template_osalPosixStreamBuffer_s *)streamBufferHandle;
+
+    /* Lock internally used stream buffer mutex */
+    int rc = pthread_mutex_lock(&streamBuffer->mutex);
+    if (rc != 0)
+    {
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Stream-buffer mutex locking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferDelete -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer mutex locking failed
+    }
+
+    /* Reject deletion while blocked operations still use the object */
+    if ((streamBuffer->readAwaiterCount != 0u) ||
+        (streamBuffer->writeAwaiterCount != 0u))
+    {
+        /* Unlock internally used stream buffer mutex */
+        (void)pthread_mutex_unlock(&streamBuffer->mutex);
+
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Stream-buffer object still has active awaiters
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferDelete -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer object still has active awaiters
+    }
+
+    /* Unlock internally used stream buffer mutex */
+    rc = pthread_mutex_unlock(&streamBuffer->mutex);
+    if (rc != 0)
+    {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Stream-buffer mutex unlocking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferDelete -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer mutex unlocking failed
+    }
+
+    /* Destroy backend-private synchronization resources */
+    const int readCondRc  = pthread_cond_destroy(&streamBuffer->readCond);
+    const int writeCondRc = pthread_cond_destroy(&streamBuffer->writeCond);
+    const int mutexRc     = pthread_mutex_destroy(&streamBuffer->mutex);
+    if ((readCondRc != 0) ||
+        (writeCondRc != 0) ||
+        (mutexRc != 0))
+    {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        /* Release acquired resources */
+        free(streamBuffer->buffer);
+        free(streamBuffer);
+        port->base.streamBufferObjHandle[streamBufferId - 1u] = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
+
+        /* Unlock resource mutex */
+        (void)template_osalPosixResourceUnlock(port);
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Stream-buffer synchronization teardown failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferDelete -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer synchronization teardown failed
+    }
+
+    /* Release memory and clear the registry slot */
+    free(streamBuffer->buffer);
+    free(streamBuffer);
+    port->base.streamBufferObjHandle[streamBufferId - 1u] = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
+
+    /* Unlock resource mutex */
+    osalStatus = template_osalPosixResourceUnlock(port);
+    if (osalStatus != TEMPLATE_OSAL_NO_ERR)
+    {
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferDelete -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: resource mutex release failed
+    }
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferDelete -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: stream buffer was deleted and unregistered
 }
 
 
@@ -2109,14 +2486,116 @@ static Template_osalErr_e template_osalPosixStreamBufferPut(void *const osal,
                                                             const size_t dataLengthBytes,
                                                             size_t *const bytesPut)
 {
-    (void)osal;
-    (void)streamBufferHandle;
-    (void)data;
-    (void)dataLengthBytes;
-    (void)bytesPut;
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: POSIX stream buffers are not supported
+    /* Trace input args */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPut(%p, %p, %p, %lu, %p)",
+                              osal,
+                              (void *)streamBufferHandle,
+                              data,
+                              (unsigned long)dataLengthBytes,
+                              (void *)bytesPut);
+
+    /* Validate input args */
+    TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(streamBufferHandle != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(data != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(dataLengthBytes != 0u);
+    TEMPLATE_OSAL_POSIX_ASSERT(bytesPut != NULL);
+
+    /* Clear the output value */
+    *bytesPut = 0u;
+
+    /* Down-casting of the OSAL handle */
+    Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->streamBufferHandleFind != NULL);
+
+    /* Try to find the stream-buffer handle within the OSAL instance registry */
+    const size_t streamBufferId = port->base.ptable->streamBufferHandleFind(port, streamBufferHandle);
+    if ((streamBufferId == 0u) ||
+        (streamBufferId > TEMPLATE_OSAL_STREAM_BUFFER_SLOTS_NUM))
+    {
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid stream-buffer handle
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPut -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer handle is not registered
+    }
+
+    /* Down-casting of the stream-buffer handle */
+    Template_osalPosixStreamBuffer_s *const streamBuffer =
+        (Template_osalPosixStreamBuffer_s *)streamBufferHandle;
+
+    /* Lock internally used stream buffer mutex */
+    int rc = pthread_mutex_lock(&streamBuffer->mutex);
+    if (rc != 0)
+    {
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Stream-buffer mutex locking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPut -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer mutex locking failed
+    }
+
+    /* Put as many bytes as current free capacity allows */
+    *bytesPut = template_osalPosixStreamBufferDataWrite(streamBuffer, data, dataLengthBytes);
+    if ((*bytesPut != 0u) &&
+        (streamBuffer->dataCount >= streamBuffer->triggerLevel))
+    {
+        rc = pthread_cond_broadcast(&streamBuffer->readCond);
+        if (rc != 0)
+        {
+            /* Unlock internally used stream buffer mutex */
+            (void)pthread_mutex_unlock(&streamBuffer->mutex);
+
+            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Reader condition notification failed
+
+            /* Trace returned value */
+            TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPut -> %d", (int)osalStatus);
+
+            return osalStatus;  // Exit: Error: reader condition notification failed
+        }
+    }
+
+    /* Unlock internally used stream buffer mutex */
+    rc = pthread_mutex_unlock(&streamBuffer->mutex);
+    if (rc != 0)
+    {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Stream-buffer mutex unlocking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPut -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer mutex unlocking failed
+    }
+
+    if (*bytesPut == 0u)
+    {
+        osalStatus = TEMPLATE_OSAL_STREAM_BUFFER_IS_FULL_ERR;  // Error: Stream buffer is full
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPut -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: no stream-buffer capacity was available
+    }
+
+    /* Trace output value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPut: bytesPut = %lu",
+                              (unsigned long)*bytesPut);
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPut -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: stream-buffer data was put
 }
 
 
@@ -2139,15 +2618,199 @@ static Template_osalErr_e template_osalPosixStreamBufferPost(void *const osal,
                                                              const Template_osalTimeMs_t timeoutMs,
                                                              size_t *const bytesPut)
 {
-    (void)osal;
-    (void)streamBufferHandle;
-    (void)data;
-    (void)dataLengthBytes;
-    (void)timeoutMs;
-    (void)bytesPut;
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: POSIX stream buffers are not supported
+    /* Trace input args */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPost(%p, %p, %p, %lu, %u, %p)",
+                              osal,
+                              (void *)streamBufferHandle,
+                              data,
+                              (unsigned long)dataLengthBytes,
+                              (unsigned int)timeoutMs,
+                              (void *)bytesPut);
+
+    /* Validate input args */
+    TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(streamBufferHandle != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(data != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(dataLengthBytes != 0u);
+    TEMPLATE_OSAL_POSIX_ASSERT(bytesPut != NULL);
+
+    /* Clear the output value */
+    *bytesPut = 0u;
+
+    /* Down-casting of the OSAL handle */
+    Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->streamBufferHandleFind != NULL);
+
+    /* Try to find the stream-buffer handle within the OSAL instance registry */
+    const size_t streamBufferId = port->base.ptable->streamBufferHandleFind(port, streamBufferHandle);
+    if ((streamBufferId == 0u) ||
+        (streamBufferId > TEMPLATE_OSAL_STREAM_BUFFER_SLOTS_NUM))
+    {
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid stream-buffer handle
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPost -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer handle is not registered
+    }
+
+    /* Down-casting of the stream-buffer handle */
+    Template_osalPosixStreamBuffer_s *const streamBuffer =
+        (Template_osalPosixStreamBuffer_s *)streamBufferHandle;
+
+    /* Lock internally used stream buffer mutex */
+    int rc = pthread_mutex_lock(&streamBuffer->mutex);
+    if (rc != 0)
+    {
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Stream-buffer mutex locking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPost -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer mutex locking failed
+    }
+
+    const size_t requiredSpace =
+        (dataLengthBytes < streamBuffer->capacity) ? dataLengthBytes : streamBuffer->capacity;
+
+    size_t freeSpace = streamBuffer->capacity - streamBuffer->dataCount;
+    int waitRc       = 0;
+    int unlockRc     = 0;
+
+    if ((timeoutMs != 0u) &&
+        (freeSpace < requiredSpace))
+    {
+        struct timespec deadline = {0};
+        if ((timeoutMs != TEMPLATE_OSAL_INFINITY_TOUT) &&
+            !template_osalPosixRealtimeDeadlineGet(timeoutMs, &deadline))
+        {
+            /* Unlock internally used stream buffer mutex */
+            (void)pthread_mutex_unlock(&streamBuffer->mutex);
+
+            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Stream-buffer post deadline creation failed
+
+            /* Trace returned value */
+            TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPost -> %d", (int)osalStatus);
+
+            return osalStatus;  // Exit: Error: stream-buffer post deadline creation failed
+        }
+
+        ++streamBuffer->writeAwaiterCount;
+
+        Template_osalPosixStreamBufferWaitCleanup_s cleanup =
+        {
+            .streamBuffer = streamBuffer,
+            .writeAwaiter = true
+        };
+
+        /* Release blocked writer state and unlock the object if the POSIX thread is cancelled */
+        pthread_cleanup_push(template_osalPosixStreamBufferWaitCleanup, &cleanup);
+
+        while ((streamBuffer->capacity - streamBuffer->dataCount) < requiredSpace)
+        {
+            if (timeoutMs == TEMPLATE_OSAL_INFINITY_TOUT)
+            {
+                waitRc = pthread_cond_wait(&streamBuffer->writeCond, &streamBuffer->mutex);
+            }
+            else
+            {
+                waitRc = pthread_cond_timedwait(&streamBuffer->writeCond,
+                                                &streamBuffer->mutex,
+                                                &deadline);
+            }
+
+            if ((waitRc != 0) &&
+                (waitRc != ETIMEDOUT))
+            {
+                break;
+            }
+
+            if (waitRc == ETIMEDOUT)
+            {
+                break;
+            }
+        }
+
+        TEMPLATE_OSAL_POSIX_ASSERT(streamBuffer->writeAwaiterCount > 0u);
+        --streamBuffer->writeAwaiterCount;
+
+        pthread_cleanup_pop(0);
+
+        if ((waitRc != 0) &&
+            (waitRc != ETIMEDOUT))
+        {
+            /* Unlock internally used stream buffer mutex */
+            (void)pthread_mutex_unlock(&streamBuffer->mutex);
+
+            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Writer condition wait failed
+
+            /* Trace returned value */
+            TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPost -> %d", (int)osalStatus);
+
+            return osalStatus;  // Exit: Error: writer condition wait failed
+        }
+    }
+
+    /* Put as many bytes as current free capacity allows */
+    *bytesPut = template_osalPosixStreamBufferDataWrite(streamBuffer, data, dataLengthBytes);
+
+    if ((*bytesPut != 0u) &&
+        (streamBuffer->dataCount >= streamBuffer->triggerLevel))
+    {
+        rc = pthread_cond_broadcast(&streamBuffer->readCond);
+        if (rc != 0)
+        {
+            /* Unlock internally used stream buffer mutex */
+            (void)pthread_mutex_unlock(&streamBuffer->mutex);
+
+            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Reader condition notification failed
+
+            /* Trace returned value */
+            TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPost -> %d", (int)osalStatus);
+
+            return osalStatus;  // Exit: Error: reader condition notification failed
+        }
+    }
+
+    /* Unlock internally used stream buffer mutex */
+    unlockRc = pthread_mutex_unlock(&streamBuffer->mutex);
+    if (unlockRc != 0)
+    {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Stream-buffer mutex unlocking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPost -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer mutex unlocking failed
+    }
+
+    if (*bytesPut == 0u)
+    {
+        osalStatus = TEMPLATE_OSAL_STREAM_BUFFER_IS_FULL_ERR;  // Error: Stream buffer is full
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPost -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: no stream-buffer data was put before timeout
+    }
+
+    /* Trace output value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPost: bytesPut = %lu",
+                              (unsigned long)*bytesPut);
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPost -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: stream-buffer data was put
 }
 
 
@@ -2168,19 +2831,128 @@ static Template_osalErr_e template_osalPosixStreamBufferGet(void *const osal,
                                                             const size_t dataLengthBytes,
                                                             size_t *const bytesGet)
 {
-    (void)osal;
-    (void)streamBufferHandle;
-    (void)data;
-    (void)dataLengthBytes;
-    (void)bytesGet;
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: POSIX stream buffers are not supported
+    /* Trace input args */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferGet(%p, %p, %p, %lu, %p)",
+                              osal,
+                              (void *)streamBufferHandle,
+                              data,
+                              (unsigned long)dataLengthBytes,
+                              (void *)bytesGet);
+
+    /* Validate input args */
+    TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(streamBufferHandle != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(data != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(dataLengthBytes != 0u);
+    TEMPLATE_OSAL_POSIX_ASSERT(bytesGet != NULL);
+
+    /* Clear the output value */
+    *bytesGet = 0u;
+
+    /* Down-casting of the OSAL handle */
+    Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->streamBufferHandleFind != NULL);
+
+    /* Try to find the stream-buffer handle within the OSAL instance registry */
+    const size_t streamBufferId = port->base.ptable->streamBufferHandleFind(port, streamBufferHandle);
+    if ((streamBufferId == 0u) ||
+        (streamBufferId > TEMPLATE_OSAL_STREAM_BUFFER_SLOTS_NUM))
+    {
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid stream-buffer handle
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferGet -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer handle is not registered
+    }
+
+    /* Down-casting of the stream-buffer handle */
+    Template_osalPosixStreamBuffer_s *const streamBuffer =
+        (Template_osalPosixStreamBuffer_s *)streamBufferHandle;
+
+    /* Lock internally used stream buffer mutex */
+    int rc = pthread_mutex_lock(&streamBuffer->mutex);
+    if (rc != 0)
+    {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Stream-buffer mutex locking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferGet -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer mutex locking failed
+    }
+
+    /* Get as many currently available bytes as the destination can hold */
+    *bytesGet = template_osalPosixStreamBufferDataRead(streamBuffer, data, dataLengthBytes);
+
+    if (*bytesGet != 0u)
+    {
+        rc = pthread_cond_broadcast(&streamBuffer->writeCond);
+        if (rc != 0)
+        {
+            /* Unlock internally used stream buffer mutex */
+            (void)pthread_mutex_unlock(&streamBuffer->mutex);
+
+            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Writer condition notification failed
+
+            /* Trace returned value */
+            TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferGet -> %d", (int)osalStatus);
+
+            return osalStatus;  // Exit: Error: writer condition notification failed
+        }
+    }
+
+    /* Unlock internally used stream buffer mutex */
+    rc = pthread_mutex_unlock(&streamBuffer->mutex);
+    if (rc != 0)
+    {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Stream-buffer mutex unlocking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferGet -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer mutex unlocking failed
+    }
+
+    if (*bytesGet == 0u)
+    {
+        osalStatus = TEMPLATE_OSAL_STREAM_BUFFER_IS_EMPTY_ERR;  // Error: Stream buffer is empty
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferGet -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: no stream-buffer data was available
+    }
+
+    /* Trace output value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferGet: bytesGet = %lu",
+                              (unsigned long)*bytesGet);
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferGet -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: stream-buffer data was retrieved
 }
 
 
 /**
  * \brief Wait indefinitely for bytes from a registered POSIX stream buffer.
+ *
+ * \details The configured trigger level is used only when the stream buffer is
+ *          empty when this operation begins. Already available data is returned
+ *          immediately,
  *
  * \param osal                Opaque pointer to the initialized POSIX OSAL instance.
  * \param streamBufferHandle  Registered stream-buffer handle.
@@ -2196,19 +2968,175 @@ static Template_osalErr_e template_osalPosixStreamBufferWait(void *const osal,
                                                              const size_t dataLengthBytes,
                                                              size_t *const bytesGet)
 {
-    (void)osal;
-    (void)streamBufferHandle;
-    (void)data;
-    (void)dataLengthBytes;
-    (void)bytesGet;
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: POSIX stream buffers are not supported
+    /* Trace input args */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferWait(%p, %p, %p, %lu, %p)",
+                              osal,
+                              (void *)streamBufferHandle,
+                              data,
+                              (unsigned long)dataLengthBytes,
+                              (void *)bytesGet);
+
+    /* Validate input args */
+    TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(streamBufferHandle != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(data != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(dataLengthBytes != 0u);
+    TEMPLATE_OSAL_POSIX_ASSERT(bytesGet != NULL);
+
+    /* Clear the output value */
+    *bytesGet = 0u;
+
+    /* Down-casting of the OSAL handle */
+    Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->streamBufferHandleFind != NULL);
+
+    /* Try to find the stream-buffer handle within the OSAL instance registry */
+    const size_t streamBufferId = port->base.ptable->streamBufferHandleFind(port, streamBufferHandle);
+    if ((streamBufferId == 0u) ||
+        (streamBufferId > TEMPLATE_OSAL_STREAM_BUFFER_SLOTS_NUM))
+    {
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid stream-buffer handle
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferWait -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer handle is not registered
+    }
+
+    /* Down-casting of the stream-buffer handle */
+    Template_osalPosixStreamBuffer_s *const streamBuffer =
+        (Template_osalPosixStreamBuffer_s *)streamBufferHandle;
+
+    /* Lock internally used stream buffer mutex */
+    int rc = pthread_mutex_lock(&streamBuffer->mutex);
+    if (rc != 0)
+    {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Stream-buffer mutex locking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferWait -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer mutex locking failed
+    }
+
+    int waitRc   = 0;
+    int unlockRc = 0;
+
+    if (streamBuffer->dataCount == 0u)
+    {
+        ++streamBuffer->readAwaiterCount;
+
+        Template_osalPosixStreamBufferWaitCleanup_s cleanup =
+        {
+            .streamBuffer = streamBuffer,
+            .writeAwaiter = false
+        };
+
+        /* Release blocked reader state and unlock the object if the POSIX thread is cancelled */
+        pthread_cleanup_push(template_osalPosixStreamBufferWaitCleanup, &cleanup);
+
+        while (streamBuffer->dataCount < streamBuffer->triggerLevel)
+        {
+            waitRc = pthread_cond_wait(&streamBuffer->readCond, &streamBuffer->mutex);
+            if (waitRc != 0)
+            {
+                break;
+            }
+        }
+
+        TEMPLATE_OSAL_POSIX_ASSERT(streamBuffer->readAwaiterCount > 0u);
+        --streamBuffer->readAwaiterCount;
+
+        pthread_cleanup_pop(0);
+
+        if (waitRc != 0)
+        {
+            /* Unlock internally used stream buffer mutex */
+            (void)pthread_mutex_unlock(&streamBuffer->mutex);
+
+            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Reader condition wait failed
+
+            /* Trace returned value */
+            TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferWait -> %d", (int)osalStatus);
+
+            return osalStatus;  // Exit: Error: reader condition wait failed
+        }
+    }
+
+    /* Get as many available bytes as the destination can hold */
+    *bytesGet = template_osalPosixStreamBufferDataRead(streamBuffer, data, dataLengthBytes);
+
+    if (*bytesGet != 0u)
+    {
+        rc = pthread_cond_broadcast(&streamBuffer->writeCond);
+        if (rc != 0)
+        {
+            /* Unlock internally used stream buffer mutex */
+            (void)pthread_mutex_unlock(&streamBuffer->mutex);
+
+            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Writer condition notification failed
+
+            /* Trace returned value */
+            TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferWait -> %d", (int)osalStatus);
+
+            return osalStatus;  // Exit: Error: writer condition notification failed
+        }
+    }
+
+    /* Unlock internally used stream buffer mutex */
+    unlockRc = pthread_mutex_unlock(&streamBuffer->mutex);
+    if (unlockRc != 0)
+    {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Stream-buffer mutex unlocking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferWait -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer mutex unlocking failed
+    }
+
+    if (*bytesGet == 0u)
+    {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        osalStatus = TEMPLATE_OSAL_STREAM_BUFFER_IS_EMPTY_ERR;  // Error: Stream-buffer wait completed without data
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferWait -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer wait completed without data
+    }
+
+    /* Trace output value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferWait: bytesGet = %lu",
+                              (unsigned long)*bytesGet);
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferWait -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: stream-buffer data was retrieved
 }
 
 
 /**
  * \brief Get bytes from a registered POSIX stream buffer using the requested timeout.
+ *
+ * \details The configured trigger level is used only when the stream buffer is
+ *          empty when this operation begins. When the timeout expires before the
+ *          trigger level is reached, already accumulated bytes are still returned.
  *
  * \param osal                Opaque pointer to the initialized POSIX OSAL instance.
  * \param streamBufferHandle  Registered stream-buffer handle.
@@ -2226,20 +3154,205 @@ static Template_osalErr_e template_osalPosixStreamBufferPend(void *const osal,
                                                              const Template_osalTimeMs_t timeoutMs,
                                                              size_t *const bytesGet)
 {
-    (void)osal;
-    (void)streamBufferHandle;
-    (void)data;
-    (void)dataLengthBytes;
-    (void)timeoutMs;
-    (void)bytesGet;
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: POSIX stream buffers are not supported
+    /* Trace input args */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPend(%p, %p, %p, %lu, %u, %p)",
+                              osal,
+                              (void *)streamBufferHandle,
+                              data,
+                              (unsigned long)dataLengthBytes,
+                              (unsigned int)timeoutMs,
+                              (void *)bytesGet);
+
+    /* Validate input args */
+    TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(streamBufferHandle != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(data != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(dataLengthBytes != 0u);
+    TEMPLATE_OSAL_POSIX_ASSERT(bytesGet != NULL);
+
+    /* Clear the output value */
+    *bytesGet = 0u;
+
+    /* Down-casting of the OSAL handle */
+    Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->streamBufferHandleFind != NULL);
+
+    /* Try to find the stream-buffer handle within the OSAL instance registry */
+    const size_t streamBufferId = port->base.ptable->streamBufferHandleFind(port, streamBufferHandle);
+    if ((streamBufferId == 0u) ||
+        (streamBufferId > TEMPLATE_OSAL_STREAM_BUFFER_SLOTS_NUM))
+    {
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid stream-buffer handle
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPend -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer handle is not registered
+    }
+
+    /* Down-casting of the stream-buffer handle */
+    Template_osalPosixStreamBuffer_s *const streamBuffer =
+        (Template_osalPosixStreamBuffer_s *)streamBufferHandle;
+
+    /* Lock internally used stream buffer mutex */
+    int rc = pthread_mutex_lock(&streamBuffer->mutex);
+    if (rc != 0)
+    {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Stream-buffer mutex locking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPend -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer mutex locking failed
+    }
+
+    int waitRc   = 0;
+    int unlockRc = 0;
+
+    if ((streamBuffer->dataCount == 0u) &&
+        (timeoutMs != 0u))
+    {
+        struct timespec deadline = {0};
+        if ((timeoutMs != TEMPLATE_OSAL_INFINITY_TOUT) &&
+            !template_osalPosixRealtimeDeadlineGet(timeoutMs, &deadline))
+        {
+            /* Unlock internally used stream buffer mutex */
+            (void)pthread_mutex_unlock(&streamBuffer->mutex);
+
+            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Stream-buffer pend deadline creation failed
+
+            /* Trace returned value */
+            TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPend -> %d", (int)osalStatus);
+
+            return osalStatus;  // Exit: Error: stream-buffer pend deadline creation failed
+        }
+
+        ++streamBuffer->readAwaiterCount;
+
+        Template_osalPosixStreamBufferWaitCleanup_s cleanup =
+        {
+            .streamBuffer = streamBuffer,
+            .writeAwaiter = false
+        };
+
+        /* Release blocked reader state and unlock the object if the POSIX thread is cancelled */
+        pthread_cleanup_push(template_osalPosixStreamBufferWaitCleanup, &cleanup);
+
+        while (streamBuffer->dataCount < streamBuffer->triggerLevel)
+        {
+            if (timeoutMs == TEMPLATE_OSAL_INFINITY_TOUT)
+            {
+                waitRc = pthread_cond_wait(&streamBuffer->readCond, &streamBuffer->mutex);
+            }
+            else
+            {
+                waitRc = pthread_cond_timedwait(&streamBuffer->readCond,
+                                                &streamBuffer->mutex,
+                                                &deadline);
+            }
+
+            if ((waitRc != 0) &&
+                (waitRc != ETIMEDOUT))
+            {
+                break;
+            }
+
+            if (waitRc == ETIMEDOUT)
+            {
+                break;
+            }
+        }
+
+        TEMPLATE_OSAL_POSIX_ASSERT(streamBuffer->readAwaiterCount > 0u);
+        --streamBuffer->readAwaiterCount;
+
+        pthread_cleanup_pop(0);
+
+        if ((waitRc != 0) &&
+            (waitRc != ETIMEDOUT))
+        {
+            /* Unlock internally used stream buffer mutex */
+            (void)pthread_mutex_unlock(&streamBuffer->mutex);
+
+            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Reader condition wait failed
+
+            /* Trace returned value */
+            TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPend -> %d", (int)osalStatus);
+
+            return osalStatus;  // Exit: Error: reader condition wait failed
+        }
+    }
+
+    /* Get as many available bytes as the destination can hold */
+    *bytesGet = template_osalPosixStreamBufferDataRead(streamBuffer, data, dataLengthBytes);
+
+    if (*bytesGet != 0u)
+    {
+        rc = pthread_cond_broadcast(&streamBuffer->writeCond);
+        if (rc != 0)
+        {
+            /* Unlock internally used stream buffer mutex */
+            (void)pthread_mutex_unlock(&streamBuffer->mutex);
+
+            osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Writer condition notification failed
+
+            /* Trace returned value */
+            TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPend -> %d", (int)osalStatus);
+
+            return osalStatus;  // Exit: Error: writer condition notification failed
+        }
+    }
+
+    /* Unlock internally used stream buffer mutex */
+    unlockRc = pthread_mutex_unlock(&streamBuffer->mutex);
+    if (unlockRc != 0)
+    {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: Stream-buffer mutex unlocking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPend -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer mutex unlocking failed
+    }
+
+    if (*bytesGet == 0u)
+    {
+        osalStatus = TEMPLATE_OSAL_STREAM_BUFFER_IS_EMPTY_ERR;  // Error: Stream buffer is empty
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPend -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: no stream-buffer data was retrieved before timeout
+    }
+
+    /* Trace output value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPend: bytesGet = %lu",
+                              (unsigned long)*bytesGet);
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferPend -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: stream-buffer data was retrieved
 }
 
 
 /**
  * \brief Reset a registered POSIX stream buffer.
+ *
+ * \details Reset is rejected while one or more threads are blocked waiting for
+ *          data or free capacity,
  *
  * \param osal                Opaque pointer to the initialized POSIX OSAL instance.
  * \param streamBufferHandle  Registered stream-buffer handle.
@@ -2249,11 +3362,225 @@ static Template_osalErr_e template_osalPosixStreamBufferPend(void *const osal,
 static Template_osalErr_e template_osalPosixStreamBufferReset(void *const osal,
                                                               const Template_osalStreamBufferHandle_t streamBufferHandle)
 {
-    (void)osal;
-    (void)streamBufferHandle;
-    TEMPLATE_OSAL_POSIX_ASSERT(0);
+    Template_osalErr_e osalStatus = TEMPLATE_OSAL_NO_ERR;
 
-    return TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Exit: Error: POSIX stream buffers are not supported
+    /* Trace input args */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferReset(%p, %p)",
+                              osal, (void *)streamBufferHandle);
+
+    /* Validate input args */
+    TEMPLATE_OSAL_POSIX_ASSERT(osal != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(streamBufferHandle != NULL);
+
+    /* Down-casting of the OSAL handle */
+    Template_osalPosix_s *const port = (Template_osalPosix_s *)osal;
+
+    /* Validate backend state */
+    TEMPLATE_OSAL_POSIX_ASSERT(template_osalPosixIsValid(port));
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->streamBufferHandleFind != NULL);
+
+    /* Try to find the stream-buffer handle within the OSAL instance registry */
+    const size_t streamBufferId = port->base.ptable->streamBufferHandleFind(port, streamBufferHandle);
+    if ((streamBufferId == 0u) ||
+        (streamBufferId > TEMPLATE_OSAL_STREAM_BUFFER_SLOTS_NUM))
+    {
+        osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid stream-buffer handle
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferReset -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer handle is not registered
+    }
+
+    /* Down-casting of the stream-buffer handle */
+    Template_osalPosixStreamBuffer_s *const streamBuffer =
+        (Template_osalPosixStreamBuffer_s *)streamBufferHandle;
+
+    /* Lock internally used stream buffer mutex */
+    int rc = pthread_mutex_lock(&streamBuffer->mutex);
+    if (rc != 0)
+    {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        osalStatus = TEMPLATE_OSAL_STREAM_BUFFER_RESET_ERR;  // Error: Stream-buffer mutex locking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferReset -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer mutex locking failed
+    }
+
+    /* Reject reset while blocked readers or writers still use the object */
+    if ((streamBuffer->readAwaiterCount != 0u) ||
+        (streamBuffer->writeAwaiterCount != 0u))
+    {
+        /* Unlock internally used stream buffer mutex */
+        (void)pthread_mutex_unlock(&streamBuffer->mutex);
+
+        osalStatus = TEMPLATE_OSAL_STREAM_BUFFER_RESET_ERR;  // Error: Stream buffer still has active awaiters
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferReset -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream buffer still has active awaiters
+    }
+
+    /* Reset the byte ring buffer to the empty state */
+    streamBuffer->readIdx   = 0u;
+    streamBuffer->writeIdx  = 0u;
+    streamBuffer->dataCount = 0u;
+
+    /* Unlock internally used stream buffer mutex */
+    rc = pthread_mutex_unlock(&streamBuffer->mutex);
+    if (rc != 0)
+    {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        osalStatus = TEMPLATE_OSAL_STREAM_BUFFER_RESET_ERR;  // Error: Stream-buffer mutex unlocking failed
+
+        /* Trace returned value */
+        TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferReset -> %d", (int)osalStatus);
+
+        return osalStatus;  // Exit: Error: stream-buffer mutex unlocking failed
+    }
+
+    /* Trace returned value */
+    TEMPLATE_OSAL_POSIX_TRACE("template_osalPosixStreamBufferReset -> %d", (int)osalStatus);
+
+    return osalStatus;  // Exit: Success: stream buffer was reset
+}
+
+
+/**
+ * \brief Copy bytes into a stream buffer while its internal mutex is held.
+ *
+ * \param streamBuffer    Stream-buffer object.
+ * \param data            Source data buffer.
+ * \param dataLengthBytes Maximum number of bytes to copy.
+ *
+ * \return Number of bytes copied into the stream buffer.
+ */
+static size_t template_osalPosixStreamBufferDataWrite(Template_osalPosixStreamBuffer_s *const streamBuffer,
+                                                      const void *const data,
+                                                      const size_t dataLengthBytes)
+{
+    TEMPLATE_OSAL_POSIX_ASSERT(streamBuffer != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(data != NULL);
+
+    const size_t freeSpace =
+        streamBuffer->capacity - streamBuffer->dataCount;
+    const size_t bytesToWrite =
+        (dataLengthBytes < freeSpace) ? dataLengthBytes : freeSpace;
+
+    if (bytesToWrite == 0u)
+    {
+        return 0u;  // Exit: Success: no free stream-buffer capacity was available
+    }
+
+    const size_t firstPart =
+        ((streamBuffer->capacity - streamBuffer->writeIdx) < bytesToWrite) ?
+        (streamBuffer->capacity - streamBuffer->writeIdx) :
+        bytesToWrite;
+
+    memcpy(&streamBuffer->buffer[streamBuffer->writeIdx], data, firstPart);
+
+    const size_t secondPart = bytesToWrite - firstPart;
+    if (secondPart != 0u)
+    {
+        memcpy(&streamBuffer->buffer[0],
+               &((const uint8_t *)data)[firstPart],
+               secondPart);
+    }
+
+    streamBuffer->writeIdx =
+        (streamBuffer->writeIdx + bytesToWrite) % streamBuffer->capacity;
+    streamBuffer->dataCount += bytesToWrite;
+
+    return bytesToWrite;  // Exit: Success: copied byte count returned
+}
+
+
+/**
+ * \brief Copy bytes from a stream buffer while its internal mutex is held.
+ *
+ * \param streamBuffer    Stream-buffer object.
+ * \param data            Destination data buffer.
+ * \param dataLengthBytes Maximum number of bytes to copy.
+ *
+ * \return Number of bytes copied from the stream buffer.
+ */
+static size_t template_osalPosixStreamBufferDataRead(Template_osalPosixStreamBuffer_s *const streamBuffer,
+                                                     void *const data,
+                                                     const size_t dataLengthBytes)
+{
+    TEMPLATE_OSAL_POSIX_ASSERT(streamBuffer != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(data != NULL);
+
+    const size_t bytesToRead =
+        (dataLengthBytes < streamBuffer->dataCount) ? dataLengthBytes : streamBuffer->dataCount;
+
+    if (bytesToRead == 0u)
+    {
+        return 0u;  // Exit: Success: no stream-buffer data was available
+    }
+
+    const size_t firstPart =
+        ((streamBuffer->capacity - streamBuffer->readIdx) < bytesToRead) ?
+        (streamBuffer->capacity - streamBuffer->readIdx) :
+        bytesToRead;
+
+    memcpy(data, &streamBuffer->buffer[streamBuffer->readIdx], firstPart);
+
+    const size_t secondPart = bytesToRead - firstPart;
+    if (secondPart != 0u)
+    {
+        memcpy(&((uint8_t *)data)[firstPart],
+               &streamBuffer->buffer[0],
+               secondPart);
+    }
+
+    streamBuffer->readIdx =
+        (streamBuffer->readIdx + bytesToRead) % streamBuffer->capacity;
+    streamBuffer->dataCount -= bytesToRead;
+
+    return bytesToRead;  // Exit: Success: copied byte count returned
+}
+
+
+/**
+ * \brief Release a cancelled blocked stream-buffer operation and unlock its internal mutex.
+ *
+ * \param context  Pointer to Template_osalPosixStreamBufferWaitCleanup_s.
+ */
+static void template_osalPosixStreamBufferWaitCleanup(void *const context)
+{
+    Template_osalPosixStreamBufferWaitCleanup_s *const cleanup =
+        (Template_osalPosixStreamBufferWaitCleanup_s *)context;
+
+    TEMPLATE_OSAL_POSIX_ASSERT(cleanup != NULL);
+    TEMPLATE_OSAL_POSIX_ASSERT(cleanup->streamBuffer != NULL);
+
+    if (cleanup->writeAwaiter)
+    {
+        TEMPLATE_OSAL_POSIX_ASSERT(cleanup->streamBuffer->writeAwaiterCount > 0u);
+        --cleanup->streamBuffer->writeAwaiterCount;
+    }
+    else
+    {
+        TEMPLATE_OSAL_POSIX_ASSERT(cleanup->streamBuffer->readAwaiterCount > 0u);
+        --cleanup->streamBuffer->readAwaiterCount;
+    }
+
+    /* Unlock internally used stream buffer mutex */
+    const int rc = pthread_mutex_unlock(&cleanup->streamBuffer->mutex);
+    if (rc != 0)
+    {
+        /* This branch is impossible under normal conditions */
+        TEMPLATE_OSAL_POSIX_ASSERT(0);
+    }
 }
 
 // END STREAM_BUFFER
@@ -2890,8 +4217,12 @@ static Template_osalErr_e template_osalPosixSemaphoreCreate(void *const osal,
     /* Initialize the available-count semaphore */
     if (sem_init(&semaphore->availableCountSmphr, 0, (unsigned int)initialCount) != 0)
     {
+        /* Release acquired resources */
         free(semaphore);
+
+        /* Unlock resource mutex */
         (void)template_osalPosixResourceUnlock(port);
+
         osalStatus = TEMPLATE_OSAL_SEMAPHORE_CREATE_ERR;  // Error: Available-count semaphore initialization failed
 
         /* Trace returned value */
@@ -2904,8 +4235,11 @@ static Template_osalErr_e template_osalPosixSemaphoreCreate(void *const osal,
     const Template_osalSemaphoreCount_t freeCount = maxCount - initialCount;
     if (sem_init(&semaphore->freeCountSmphr, 0, (unsigned int)freeCount) != 0)
     {
+        /* Release acquired resources */
         (void)sem_destroy(&semaphore->availableCountSmphr);
         free(semaphore);
+
+        /* Unlock resource mutex */
         (void)template_osalPosixResourceUnlock(port);
 
         osalStatus = TEMPLATE_OSAL_SEMAPHORE_CREATE_ERR;  // Error: Couldn't create POSIX semaphore control block
@@ -2971,7 +4305,7 @@ static Template_osalErr_e template_osalPosixSemaphoreDelete(void *const osal,
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable != NULL);
     TEMPLATE_OSAL_POSIX_ASSERT(port->base.ptable->semaphoreHandleFind != NULL);
 
-    /* Lock */
+    /* Lock resource mutex */
     osalStatus = template_osalPosixResourceLock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
@@ -2986,7 +4320,9 @@ static Template_osalErr_e template_osalPosixSemaphoreDelete(void *const osal,
     if ((semaphoreId == 0u) ||
         (semaphoreId > TEMPLATE_OSAL_SEMAPHORE_SLOTS_NUM))
     {
+        /* Unlock resource mutex */
         (void)template_osalPosixResourceUnlock(port);
+
         osalStatus = TEMPLATE_OSAL_INVALID_ARGS_ERR;  // Error: Invalid semaphore handle
 
         /* Trace returned value */
@@ -3005,8 +4341,12 @@ static Template_osalErr_e template_osalPosixSemaphoreDelete(void *const osal,
     if ((availableRc != 0) ||
         (freeRc != 0))
     {
+        /* This branch is very unlikely */
         TEMPLATE_OSAL_POSIX_ASSERT(0);
+
+        /* Unlock resource mutex */
         (void)template_osalPosixResourceUnlock(port);
+
         osalStatus = TEMPLATE_OSAL_PORT_SPECIFIC_ERR;  // Error: POSIX counting-semaphore teardown failed
 
         /* Trace returned value */
@@ -3019,7 +4359,7 @@ static Template_osalErr_e template_osalPosixSemaphoreDelete(void *const osal,
     free(semaphore);
     port->base.semaphoreObjHandle[semaphoreId - 1u] = TEMPLATE_OSAL_OBJ_HANDLE_INVALID;
 
-    /* Unlock */
+    /* Unlock resource mutex */
     osalStatus = template_osalPosixResourceUnlock(port);
     if (osalStatus != TEMPLATE_OSAL_NO_ERR)
     {
