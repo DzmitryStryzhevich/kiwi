@@ -24,13 +24,13 @@ Usage examples for the generated generic OSAL API are collected in [`doc/example
 
 | Target | Language | Status | Notes |
 | --- | --- | --- | --- |
-| FreeRTOS | C | Implemented | Queues, stream buffers, mutexes, counting semaphores, event flags, threads, critical sections, software timers, time and memory |
-| POSIX | C | Planned | Host/portable backend scaffold exists |
+| FreeRTOS | C | Implemented | Queues, stream buffers, mutexes, counting semaphores, event flags, threads including explicit `Yield`, deprecated system-level critical sections, software timers, time and memory |
+| POSIX | C | Implemented | Queues, stream buffers, recursive mutexes, counting semaphores, event flags, threads including `Yield` and `DelayUntil`, native software timers, monotonic time and memory; thread suspend/resume and system-level critical sections are unsupported |
 | C++ OSAL variant | C++ | Planned | C++ generation/port support is on the roadmap |
 
 ## Testing
 
-A four-stage GitHub Actions pipeline checks the generator, generates the full OSAL API set, builds and links the generated FreeRTOS port against the official FreeRTOS `GCC_POSIX` host port, and runs static analysis. See [`doc/testing.md`](doc/testing.md) for the current CI flow and the broader testing model.
+A four-stage GitHub Actions pipeline checks the generator, generates the full OSAL API set for FreeRTOS and POSIX, builds and links the generated FreeRTOS port against the official FreeRTOS `GCC_POSIX` host port as well as the native POSIX port, and runs static analysis. See [`doc/testing.md`](doc/testing.md) for the current CI flow and the broader testing model.
 
 ## Contributing
 

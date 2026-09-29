@@ -102,7 +102,11 @@
 // END MEMORY
 
 /**
- * \brief Template indefinite timeout definition used by timeout-aware primitives.
+ * \brief Template indefinite timeout definition used by timeout-aware synchronization primitives.
+ *
+ * \details Represents an unbounded wait for operations that wait for an external
+ *          condition or resource. It is not a valid duration for thread delay
+ *          operations.
  */
 #define TEMPLATE_OSAL_INFINITY_TOUT    ((Template_osalTimeMs_t)-1)
 
@@ -131,52 +135,52 @@
  */
 typedef enum
 {
-    TEMPLATE_OSAL_NO_ERR                            = 0,   //!< No error occurred; operation was successful.
-    TEMPLATE_OSAL_INVALID_ARGS_ERR                  = 1,   //!< Invalid arguments passed to an OSAL function.
-    TEMPLATE_OSAL_NOT_INIT_ERR                      = 2,   //!< OSAL instance or required service is not initialized.
-    TEMPLATE_OSAL_CALL_FROM_ISR_ERR                 = 3,   //!< Function was called from an ISR where this operation is not allowed.
+    TEMPLATE_OSAL_NO_ERR            = 0,                   //!< No error occurred; operation was successful.
+    TEMPLATE_OSAL_INVALID_ARGS_ERR  = 1,                   //!< Invalid arguments passed to an OSAL function.
+    TEMPLATE_OSAL_NOT_INIT_ERR      = 2,                   //!< OSAL instance or required service is not initialized.
+    TEMPLATE_OSAL_CALL_FROM_ISR_ERR = 3,                   //!< Function was called from an ISR where this operation is not allowed.
 
     // BEGIN QUEUE
-    TEMPLATE_OSAL_QUEUE_CREATE_ERR                  = 4,   //!< Failed to create a queue or reserve a queue registry slot.
-    TEMPLATE_OSAL_QUEUE_MEM_ALLOCATION_ERR          = 5,   //!< Memory allocation failed during queue creation.
-    TEMPLATE_OSAL_QUEUE_OVERFLOW_ERR                = 6,   //!< Queue item could not be inserted because the queue is full.
-    TEMPLATE_OSAL_QUEUE_IS_EMPTY_ERR                = 7,   //!< Queue item could not be retrieved because the queue is empty.
-    TEMPLATE_OSAL_QUEUE_IS_FULL_ERR                 = 8,   //!< Queue is currently full.
+    TEMPLATE_OSAL_QUEUE_CREATE_ERR         = 4,            //!< Failed to create a queue or reserve a queue registry slot.
+    TEMPLATE_OSAL_QUEUE_MEM_ALLOCATION_ERR = 5,            //!< Memory allocation failed during queue creation.
+    TEMPLATE_OSAL_QUEUE_OVERFLOW_ERR       = 6,            //!< Queue item could not be inserted because the queue is full.
+    TEMPLATE_OSAL_QUEUE_IS_EMPTY_ERR       = 7,            //!< Queue item could not be retrieved because the queue is empty.
+    TEMPLATE_OSAL_QUEUE_IS_FULL_ERR        = 8,            //!< Queue is currently full.
     // END QUEUE
 
     // BEGIN STREAM_BUFFER
-    TEMPLATE_OSAL_STREAM_BUFFER_CREATE_ERR          = 9,   //!< Failed to create a stream buffer or reserve a registry slot.
-    TEMPLATE_OSAL_STREAM_BUFFER_MEM_ALLOCATION_ERR  = 10,  //!< Memory allocation failed during stream buffer creation.
-    TEMPLATE_OSAL_STREAM_BUFFER_IS_EMPTY_ERR        = 11,  //!< Stream buffer does not contain data available for reading.
-    TEMPLATE_OSAL_STREAM_BUFFER_IS_FULL_ERR         = 12,  //!< Stream buffer does not have capacity available for writing.
-    TEMPLATE_OSAL_STREAM_BUFFER_RESET_ERR           = 13,  //!< Failed to reset the stream buffer to its empty state.
+    TEMPLATE_OSAL_STREAM_BUFFER_CREATE_ERR         = 9,    //!< Failed to create a stream buffer or reserve a registry slot.
+    TEMPLATE_OSAL_STREAM_BUFFER_MEM_ALLOCATION_ERR = 10,   //!< Memory allocation failed during stream buffer creation.
+    TEMPLATE_OSAL_STREAM_BUFFER_IS_EMPTY_ERR       = 11,   //!< Stream buffer does not contain data available for reading.
+    TEMPLATE_OSAL_STREAM_BUFFER_IS_FULL_ERR        = 12,   //!< Stream buffer does not have capacity available for writing.
+    TEMPLATE_OSAL_STREAM_BUFFER_RESET_ERR          = 13,   //!< Failed to reset the stream buffer to its empty state.
     // END STREAM_BUFFER
 
     // BEGIN MUTEX
-    TEMPLATE_OSAL_MUTEX_CREATE_ERR                  = 14,  //!< Failed to create a mutex or reserve a mutex registry slot.
-    TEMPLATE_OSAL_MUTEX_MEM_ALLOCATION_ERR          = 15,  //!< Memory allocation failed during mutex creation.
-    TEMPLATE_OSAL_MUTEX_LOCK_ERR                    = 16,  //!< Mutex could not be locked within the requested wait condition.
-    TEMPLATE_OSAL_MUTEX_UNLOCK_ERR                  = 17,  //!< Mutex could not be unlocked.
+    TEMPLATE_OSAL_MUTEX_CREATE_ERR         = 14,           //!< Failed to create a mutex or reserve a mutex registry slot.
+    TEMPLATE_OSAL_MUTEX_MEM_ALLOCATION_ERR = 15,           //!< Memory allocation failed during mutex creation.
+    TEMPLATE_OSAL_MUTEX_LOCK_ERR           = 16,           //!< Mutex could not be locked within the requested wait condition.
+    TEMPLATE_OSAL_MUTEX_UNLOCK_ERR         = 17,           //!< Mutex could not be unlocked.
     // END MUTEX
 
     // BEGIN SEMAPHORE
-    TEMPLATE_OSAL_SEMAPHORE_CREATE_ERR              = 18,  //!< Failed to create a counting semaphore or reserve a registry slot.
-    TEMPLATE_OSAL_SEMAPHORE_MEM_ALLOCATION_ERR      = 19,  //!< Memory allocation failed during semaphore creation.
-    TEMPLATE_OSAL_SEMAPHORE_WAIT_ERR                = 20,  //!< Semaphore wait or pend operation did not complete successfully.
-    TEMPLATE_OSAL_SEMAPHORE_POST_ERR                = 21,  //!< Failed to post a count to the semaphore.
+    TEMPLATE_OSAL_SEMAPHORE_CREATE_ERR         = 18,       //!< Failed to create a counting semaphore or reserve a registry slot.
+    TEMPLATE_OSAL_SEMAPHORE_MEM_ALLOCATION_ERR = 19,       //!< Memory allocation failed during semaphore creation.
+    TEMPLATE_OSAL_SEMAPHORE_WAIT_ERR           = 20,       //!< Semaphore wait or pend operation did not complete successfully.
+    TEMPLATE_OSAL_SEMAPHORE_POST_ERR           = 21,       //!< Failed to post a count to the semaphore.
     // END SEMAPHORE
 
     // BEGIN THREAD
-    TEMPLATE_OSAL_THREAD_CREATE_ERR                 = 22,  //!< Failed to create a thread or reserve a thread registry slot.
-    TEMPLATE_OSAL_THREAD_MEM_ALLOCATION_ERR         = 23,  //!< Memory allocation failed during thread creation.
+    TEMPLATE_OSAL_THREAD_CREATE_ERR         = 22,          //!< Failed to create a thread or reserve a thread registry slot.
+    TEMPLATE_OSAL_THREAD_MEM_ALLOCATION_ERR = 23,          //!< Memory allocation failed during thread creation.
     // END THREAD
 
     // BEGIN EVENT_FLAGS
-    TEMPLATE_OSAL_EVENT_FLAGS_CREATE_ERR            = 24,  //!< Failed to create an event flags object or reserve a registry slot.
-    TEMPLATE_OSAL_EVENT_FLAGS_MEM_ALLOCATION_ERR    = 25,  //!< Memory allocation failed during event flags creation.
-    TEMPLATE_OSAL_EVENT_FLAGS_WAIT_ERR              = 26,  //!< Requested event flags wait condition was not satisfied.
-    TEMPLATE_OSAL_EVENT_FLAGS_SET_ERR               = 27,  //!< Failed to set one or more event flags bits.
-    TEMPLATE_OSAL_EVENT_FLAGS_CLEAR_ERR             = 28,  //!< Failed to clear one or more event flags bits.
+    TEMPLATE_OSAL_EVENT_FLAGS_CREATE_ERR         = 24,     //!< Failed to create an event flags object or reserve a registry slot.
+    TEMPLATE_OSAL_EVENT_FLAGS_MEM_ALLOCATION_ERR = 25,     //!< Memory allocation failed during event flags creation.
+    TEMPLATE_OSAL_EVENT_FLAGS_WAIT_ERR           = 26,     //!< Requested event flags wait condition was not satisfied.
+    TEMPLATE_OSAL_EVENT_FLAGS_SET_ERR            = 27,     //!< Failed to set one or more event flags bits.
+    TEMPLATE_OSAL_EVENT_FLAGS_CLEAR_ERR          = 28,     //!< Failed to clear one or more event flags bits.
     // END EVENT_FLAGS
 
     // BEGIN SOFTWARE_TIMER
@@ -188,10 +192,10 @@ typedef enum
     // END SOFTWARE_TIMER
 
     // BEGIN MEMORY
-    TEMPLATE_OSAL_MEM_ALLOCATION_ERR                = 34,  //!< Backend memory allocation failed.
+    TEMPLATE_OSAL_MEM_ALLOCATION_ERR = 34,                 //!< Backend memory allocation failed.
     // END MEMORY
 
-    TEMPLATE_OSAL_PORT_SPECIFIC_ERR                 = 35   //!< Port-specific or RTOS-specific operation failed.
+    TEMPLATE_OSAL_PORT_SPECIFIC_ERR = 35                   //!< Port-specific or RTOS-specific operation failed.
 } Template_osalErr_e;
 
 /**
@@ -224,7 +228,10 @@ typedef void *Template_osalStreamBufferHandle_t;
 
 // BEGIN MUTEX
 /**
- * \brief Template OSAL mutex type definition.
+ * \brief Template OSAL recursive mutex handle type definition.
+ * \details Every mutex created through the generic OSAL contract is recursive/reentrant.
+ *          The owning thread may acquire the same mutex repeatedly and shall perform a
+ *          matching number of unlock operations before another thread can acquire it.
  */
 typedef void *Template_osalMutexHandle_t;
 // END MUTEX
@@ -288,8 +295,8 @@ typedef struct
     const char                            *name;           /*!< Optional timer name. */
     void                                  *timerParam;     /*!< User parameter passed to callback; may be NULL. */
     Template_osalSoftwareTimerExpiredCb_f timerExpiredCb;  /*!< Expiration callback; must not be NULL. */
-    bool                                   autoReload;     /*!< true = periodic, false = one-shot. */
-    Template_osalTimeMs_t                  periodMs;       /*!< Timer period in milliseconds; must be non-zero. */
+    bool                                  autoReload;      /*!< true = periodic, false = one-shot. */
+    Template_osalTimeMs_t                 periodMs;        /*!< Timer period in milliseconds; must be non-zero. */
 } Template_osalSoftwareTimerAttr_s;
 
 /**
@@ -297,7 +304,7 @@ typedef struct
  */
 typedef struct
 {
-    Template_osalSoftwareTimerAttr_s    attr;     /*!< Creation attributes snapshot. */
+    Template_osalSoftwareTimerAttr_s   attr;      /*!< Creation attributes snapshot. */
     Template_osalSoftwareTimerHandle_t handle;  /*!< RTOS-native timer handle. */
 } Template_osalSoftwareTimer_s;
 // END SOFTWARE_TIMER
@@ -346,7 +353,7 @@ typedef struct
  */
 typedef struct
 {
-    Template_osalThreadAttr_s    attr;      /*!< Creation attributes (snapshot). */
+    Template_osalThreadAttr_s   attr;       /*!< Creation attributes (snapshot). */
     Template_osalThreadHandle_t handle;   /*!< RTOS-native handle.         */
 } Template_osalThread_s;
 // END THREAD
@@ -603,7 +610,9 @@ typedef struct
     /*------------------------------------ Mutexes -------------------------------------*/
 
     /**
-     * \brief Create a mutex.
+     * \brief Create a recursive/reentrant mutex.
+     * \details Recursive ownership is part of the generic OSAL contract and shall be
+     *          preserved by every backend implementation.
      *
      * \param osal         OSAL instance pointer.
      * \param mutexHandle  Output pointer receiving the created mutex handle.
@@ -850,9 +859,14 @@ typedef struct
                                        Template_osalThreadAttr_s threadAttr);
 
     /**
-     * \brief Delete the thread.
+     * \brief Delete another thread.
      *
-     * \note The operation must be stopped before deleting the thread to avoid system damage.
+     * \details Deletes a registered thread other than the calling thread.
+     *          Self-deletion is not permitted; template_osalThreadExit() shall be
+     *          used to terminate the calling thread.
+     *
+     * \note The caller is responsible for ensuring that external thread termination
+     *       does not leave shared state or owned resources in an inconsistent state.
      *
      * \param osal          Pointer to OSAL instance.
      * \param threadHandle  Handle of the thread being deleted.
@@ -865,6 +879,12 @@ typedef struct
     /**
      * \brief Suspend the thread.
      *
+     * \note This operation is retained for backward compatibility and is not
+     *       recommended for new code. Arbitrary thread suspension may stop a thread
+     *       outside a well-defined synchronization point and preserve execution
+     *       context that can become stale before the thread is resumed. Prefer
+     *       synchronization primitives for controlled thread blocking.
+     *
      * \param osal          Pointer to OSAL instance.
      * \param threadHandle  Handle of the thread to suspend.
      *
@@ -876,6 +896,11 @@ typedef struct
     /**
      * \brief Resume the thread.
      *
+     * \note This operation is retained for backward compatibility and is not
+     *       recommended for new code. It shall only be used together with thread
+     *       suspension. Prefer synchronization primitives that resume execution
+     *       from well-defined synchronization points.
+     *
      * \param osal          Pointer to OSAL instance.
      * \param threadHandle  Handle of the thread to resume.
      *
@@ -885,7 +910,25 @@ typedef struct
                                        const Template_osalThreadHandle_t threadHandle);
 
     /**
+     * \brief Yield execution of the current thread to the scheduler.
+     *
+     * \details The operation voluntarily yields the current execution opportunity.
+     *          It does not guarantee that another thread will run before the calling
+     *          thread becomes scheduled again.
+     *
+     * \param osal  Pointer to OSAL instance.
+     *
+     * \return Template_osalErr_e error code, non-zero indicates error.
+     */
+    Template_osalErr_e (*threadYield)(void *const osal);
+
+    /**
      * \brief Delay the execution of the current thread.
+     *
+     * \details A zero delay returns immediately without blocking or yielding the
+     *          calling thread. A finite non-zero delay blocks the calling thread
+     *          for the requested interval. TEMPLATE_OSAL_INFINITY_TOUT is not
+     *          accepted and results in TEMPLATE_OSAL_INVALID_ARGS_ERR.
      *
      * \param osal     Pointer to OSAL instance.
      * \param delayMs  Delay duration in milliseconds.
@@ -898,9 +941,15 @@ typedef struct
     /**
      * \brief Delay the current thread until the next periodic wake-up point.
      *
+     * \details A zero period returns immediately without blocking or yielding the
+     *          calling thread and does not modify previousWakeTimeMs. A finite
+     *          non-zero period delays the calling thread until the next periodic
+     *          wake-up point. TEMPLATE_OSAL_INFINITY_TOUT is not accepted and
+     *          results in TEMPLATE_OSAL_INVALID_ARGS_ERR.
+     *
      * \param osal                OSAL instance pointer.
      * \param previousWakeTimeMs  In/out scheduled wake reference in milliseconds; updated to the next reference point.
-     * \param periodMs            Period in milliseconds; must be non-zero.
+     * \param periodMs            Period in milliseconds.
      *
      * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
      */
@@ -910,6 +959,9 @@ typedef struct
 
     /**
      * \brief Terminate the calling thread (does not return).
+     *
+     * \details This is the thread self-termination operation. ThreadDelete shall
+     *          not be used by a thread to delete itself.
      *
      * \param osal  Pointer to OSAL instance (must be valid).
      *
@@ -922,7 +974,15 @@ typedef struct
     /*------------------------------- Critical section ------------------------------*/
 
     /**
-     * \brief Enter a short OS critical section.
+     * \brief Enter a system-level OS critical section.
+     *
+     * \deprecated Prefer component-scoped synchronization primitives such as
+     *             mutexes for new code.
+     *
+     * \warning This operation may affect execution outside the calling component
+     *          through backend-specific interrupt or scheduler masking semantics.
+     *          It may be unsupported by backends that cannot provide equivalent
+     *          system-level behavior.
      *
      * \param osal  OSAL instance pointer.
      *
@@ -931,7 +991,13 @@ typedef struct
     Template_osalErr_e (*criticalSectionEnter)(void *const osal);
 
     /**
-     * \brief Exit a previously entered OS critical section.
+     * \brief Exit a previously entered system-level OS critical section.
+     *
+     * \deprecated Prefer component-scoped synchronization primitives such as
+     *             mutexes for new code.
+     *
+     * \warning This operation is paired with criticalSectionEnter() and inherits
+     *          its backend-specific system-level side effects and limitations.
      *
      * \param osal  OSAL instance pointer.
      *
@@ -1137,7 +1203,7 @@ typedef struct
      * \return size_t        Mutex ID (index + 1) if found; 0 otherwise.
      */
     size_t (*mutexHandleFind)(void *const osalPort,
-                                const Template_osalMutexHandle_t mutexHandle);
+                              const Template_osalMutexHandle_t mutexHandle);
     // END MUTEX
 
     // BEGIN SEMAPHORE
@@ -1686,7 +1752,9 @@ Template_osalErr_e template_osalStreamBufferHandleGet(Template_osal_s *const osa
 /*------------------------------------- Mutexes --------------------------------*/
 
 /**
- * \brief Create a mutex.
+ * \brief Create a recursive/reentrant mutex.
+ * \details Recursive ownership is part of the generic OSAL contract. The owning thread
+ *          may lock the mutex repeatedly; each successful lock requires a matching unlock.
  *
  * \param osal         OSAL instance pointer.
  * \param mutexHandle  Output pointer receiving the created mutex handle.
@@ -1972,9 +2040,14 @@ Template_osalErr_e template_osalThreadCreate(Template_osal_s *const osal,
                                              Template_osalThreadAttr_s threadAttr);
 
 /**
- * \brief Delete the thread.
+ * \brief Delete another thread.
  *
- * \note The operation must be stopped before deleting the thread to avoid system damage.
+ * \details Deletes a registered thread other than the calling thread.
+ *          Self-deletion is not permitted; template_osalThreadExit() shall be
+ *          used to terminate the calling thread.
+ *
+ * \note The caller is responsible for ensuring that external thread termination
+ *       does not leave shared state or owned resources in an inconsistent state.
  *
  * \param osal          Pointer to OSAL instance.
  * \param threadHandle  Handle of the thread being deleted.
@@ -1987,6 +2060,12 @@ Template_osalErr_e template_osalThreadDelete(Template_osal_s *const osal,
 /**
  * \brief Suspend the thread.
  *
+ * \note This operation is retained for backward compatibility and is not
+ *       recommended for new code. Arbitrary thread suspension may stop a thread
+ *       outside a well-defined synchronization point and preserve execution
+ *       context that can become stale before the thread is resumed. Prefer
+ *       synchronization primitives for controlled thread blocking.
+ *
  * \param osal          Pointer to OSAL instance.
  * \param threadHandle  Handle of the thread to suspend.
  *
@@ -1998,6 +2077,11 @@ Template_osalErr_e template_osalThreadSuspend(Template_osal_s *const osal,
 /**
  * \brief Resume the thread.
  *
+ * \note This operation is retained for backward compatibility and is not
+ *       recommended for new code. It shall only be used together with thread
+ *       suspension. Prefer synchronization primitives that resume execution
+ *       from well-defined synchronization points.
+ *
  * \param osal          Pointer to OSAL instance.
  * \param threadHandle  Handle of the thread to resume.
  *
@@ -2007,7 +2091,25 @@ Template_osalErr_e template_osalThreadResume(Template_osal_s *const osal,
                                              const Template_osalThreadHandle_t threadHandle);
 
 /**
+ * \brief Yield execution of the current thread to the scheduler.
+ *
+ * \details The operation voluntarily yields the current execution opportunity.
+ *          It does not guarantee that another thread will run before the calling
+ *          thread becomes scheduled again.
+ *
+ * \param osal  Pointer to OSAL instance.
+ *
+ * \return Template_osalErr_e error code, non-zero indicates error.
+ */
+Template_osalErr_e template_osalThreadYield(Template_osal_s *const osal);
+
+/**
  * \brief Delay the execution of the current thread.
+ *
+ * \details A zero delay returns immediately without blocking or yielding the
+ *          calling thread. A finite non-zero delay blocks the calling thread
+ *          for the requested interval. TEMPLATE_OSAL_INFINITY_TOUT is not
+ *          accepted and results in TEMPLATE_OSAL_INVALID_ARGS_ERR.
  *
  * \param osal     Pointer to OSAL instance.
  * \param delayMs  Delay duration in milliseconds.
@@ -2020,9 +2122,15 @@ Template_osalErr_e template_osalThreadDelay(Template_osal_s *const osal,
 /**
  * \brief Delay the current thread until the next periodic wake-up point.
  *
+ * \details A zero period returns immediately without blocking or yielding the
+ *          calling thread and does not modify previousWakeTimeMs. A finite
+ *          non-zero period delays the calling thread until the next periodic
+ *          wake-up point. TEMPLATE_OSAL_INFINITY_TOUT is not accepted and
+ *          results in TEMPLATE_OSAL_INVALID_ARGS_ERR.
+ *
  * \param osal                OSAL instance pointer.
  * \param previousWakeTimeMs  In/out scheduled wake reference in milliseconds; updated to the next reference point.
- * \param periodMs            Period in milliseconds; must be non-zero.
+ * \param periodMs            Period in milliseconds.
  *
  * \return Template_osalErr_e, zero value = success, otherwise an error has occurred.
  */
@@ -2032,6 +2140,9 @@ Template_osalErr_e template_osalThreadDelayUntil(Template_osal_s *const osal,
 
 /**
  * \brief Terminate the calling thread (does not return).
+ *
+ * \details This is the thread self-termination operation. ThreadDelete shall
+ *          not be used by a thread to delete itself.
  *
  * \param osal  Pointer to OSAL instance (must be valid).
  *
@@ -2057,7 +2168,15 @@ Template_osalErr_e template_osalThreadHandleGet(Template_osal_s *const osal,
 /*------------------------------- Critical section ----------------------------*/
 
 /**
- * \brief Enter a short OS critical section.
+ * \brief Enter a system-level OS critical section.
+ *
+ * \deprecated Prefer component-scoped synchronization primitives such as mutexes
+ *             for new code.
+ *
+ * \warning This operation may affect execution outside the calling component
+ *          through backend-specific interrupt or scheduler masking semantics.
+ *          It may be unsupported by backends that cannot provide equivalent
+ *          system-level behavior.
  *
  * \param osal  OSAL instance pointer.
  *
@@ -2066,7 +2185,13 @@ Template_osalErr_e template_osalThreadHandleGet(Template_osal_s *const osal,
 Template_osalErr_e template_osalCriticalSectionEnter(Template_osal_s *const osal);
 
 /**
- * \brief Exit a previously entered OS critical section.
+ * \brief Exit a previously entered system-level OS critical section.
+ *
+ * \deprecated Prefer component-scoped synchronization primitives such as mutexes
+ *             for new code.
+ *
+ * \warning This operation is paired with template_osalCriticalSectionEnter() and
+ *          inherits its backend-specific system-level side effects and limitations.
  *
  * \param osal  OSAL instance pointer.
  *

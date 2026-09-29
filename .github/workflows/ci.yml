@@ -68,11 +68,12 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install dist-generator/*.whl
 
-      - name: Generate full FreeRTOS OSAL
+      - name: Generate full FreeRTOS and POSIX OSAL
         run: |
           kiwicgen \
             --module-prefix=ci_osal \
             --port=FreeRTOS \
+            --port=POSIX \
             --language=C \
             --use-queue-api \
             --use-stream-buffer-api \
@@ -93,6 +94,8 @@ jobs:
           test -f ci-generated/ci_osal/ci_osal_osal.c
           test -f ci-generated/ci_osal/portable/freertos/ci_osal_osal_freertos.h
           test -f ci-generated/ci_osal/portable/freertos/ci_osal_osal_freertos.c
+          test -f ci-generated/ci_osal/portable/posix/ci_osal_osal_posix.h
+          test -f ci-generated/ci_osal/portable/posix/ci_osal_osal_posix.c
           ! grep -R -n -E '// BEGIN |// END ' ci-generated/ci_osal --include='*.c' --include='*.h'
 
       - name: Upload generated full set
@@ -133,9 +136,13 @@ jobs:
             -DFREERTOS_KERNEL_DIR="$PWD/third_party/FreeRTOS-Kernel" \
             -DGENERATED_OSAL_DIR="$PWD/ci-generated/ci_osal"
 
-      - name: Build generated code with FreeRTOS POSIX port
+      - name: Build generated code with FreeRTOS and native POSIX ports
         run: |
           cmake --build build-generated --parallel
+
+      - name: Run generated POSIX smoke check
+        run: |
+          ./build-generated/ci_osal_posix_link_check
 
       - name: Upload compile commands
         uses: actions/upload-artifact@v4
@@ -191,6 +198,13 @@ jobs:
             -c ci-generated/ci_osal/portable/freertos/ci_osal_osal_freertos.c \
             -o /tmp/ci_osal_osal_freertos_analyze.o
 
+          gcc -std=c11 -Wall -Wextra -Werror -fanalyzer -pthread \
+            -D_POSIX_C_SOURCE=200809L \
+            -Ici-generated/ci_osal \
+            -Ici-generated/ci_osal/portable/posix \
+            -c ci-generated/ci_osal/portable/posix/ci_osal_osal_posix.c \
+            -o /tmp/ci_osal_osal_posix_analyze.o
+
       - name: Run cppcheck on generated sources
         run: |
           cppcheck \
@@ -200,8 +214,10 @@ jobs:
             --suppress=missingIncludeSystem \
             -Ici-generated/ci_osal \
             -Ici-generated/ci_osal/portable/freertos \
+            -Ici-generated/ci_osal/portable/posix \
             -I.github/ci/freertos_posix \
             -Ithird_party/FreeRTOS-Kernel/include \
             -Ithird_party/FreeRTOS-Kernel/portable/ThirdParty/GCC/Posix \
             ci-generated/ci_osal/ci_osal_osal.c \
-            ci-generated/ci_osal/portable/freertos/ci_osal_osal_freertos.c
+            ci-generated/ci_osal/portable/freertos/ci_osal_osal_freertos.c \
+            ci-generated/ci_osal/portable/posix/ci_osal_osal_posix.c

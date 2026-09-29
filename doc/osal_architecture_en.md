@@ -182,6 +182,10 @@ Not every term has to be used by every primitive group. Consistency means preser
 
 One nuance matters: `Wait` is not defined as a universal synonym for “always wait forever” across every possible primitive. For event flags, for example, a wait naturally combines a flag mask, `WAIT_ANY` / `WAIT_ALL`, clear behavior, and a timeout. The important requirement is not identical function shapes, but predictable semantics at the component boundary.
 
+### 4.3 Mutex recursion contract
+
+Every mutex created through the KIWI generic OSAL API is **recursive/reentrant**. If the owning thread locks the same mutex multiple times, each acquisition succeeds and increments the recursive ownership depth. The mutex becomes available to another thread only after the owner performs the same number of matching `Unlock` operations. Backends shall preserve this behavior even when their native default mutex type is non-recursive.
+
 ---
 
 ## 5. KIWI OSAL architectural model
@@ -225,7 +229,7 @@ The direction of dependency is important: application logic depends on the gener
 
 KIWI is not merely a set of OS abstraction interfaces. It is an **OSAL code generator that specializes the system contract for a particular software component**.
 
-This is a core architectural property. Most components do not need every system service that could possibly exist. A driver may need only a queue and a mutex; a communication stack may require threads, queues, timers, and memory; a small service may use only time and critical sections. The generator allows each component to receive the contract it actually needs instead of forcing all components through one maximum-size OSAL.
+This is a core architectural property. Most components do not need every system service that could possibly exist. A driver may need only a queue and a mutex; a communication stack may require threads, queues, timers, and memory; a small service may use only time and a mutex. The generator allows each component to receive the contract it actually needs instead of forcing all components through one maximum-size OSAL.
 
 ### 6.1 What the generator does
 
@@ -604,9 +608,9 @@ It is useful to distinguish two kinds of test environment.
 
 ### 15.1 Development and integration implementation
 
-A future POSIX backend, for example, can allow a component to run on an ordinary development workstation.
+The POSIX backend allows a component to run on an ordinary development workstation while preserving the same generic OSAL contract.
 
-This is not a collection of stubs. A thread remains a real thread, a queue behaves as a queue, and a mutex performs actual synchronization. Such an implementation is useful for:
+For implemented primitives, this is not a collection of stubs. A thread remains a real thread, a queue behaves as a queue, and a mutex performs actual synchronization. Such an implementation is useful for:
 
 - integration tests;
 - system tests;
@@ -808,7 +812,7 @@ A single hand-maintained library is sufficient when every component needs the sa
 
 ## 21. Current KIWI OSAL primitive groups
 
-The current generator and FreeRTOS implementation support the following groups:
+The current generator exposes the following primitive groups. Backend support may differ where an operating system cannot provide equivalent semantics:
 
 | Group | Main operations |
 | --- | --- |
@@ -817,11 +821,15 @@ The current generator and FreeRTOS implementation support the following groups:
 | Mutex | `Create`, `Delete`, `TryLock`, `Lock`, `PendLock`, `Unlock`, `HandleGet` |
 | Counting semaphore | `Create`, `Delete`, `Wait`, `Pend`, `Post`, `CountGet`, `HandleGet` |
 | Event flags | `Create`, `Delete`, `Set`, `Clear`, `Get`, `Wait`, `HandleGet` |
-| Thread | `Create`, `Delete`, `Suspend`, `Resume`, `Delay`, `DelayUntil`, `Exit`, `HandleGet` |
-| Critical section | `Enter`, `Exit` |
+| Thread | `Create`, `Delete`, `Suspend`, `Resume`, `Yield`, `Delay`, `DelayUntil`, `Exit`, `HandleGet` |
+| Critical section | `Enter`, `Exit` (deprecated system-level primitive) |
 | Software timer | `Create`, `Delete`, `Start`, `Stop`, `Reset`, `HandleGet` |
 | Time | `TimeMsGet` |
 | Memory | `Malloc`, `Free`, `MemPtrGet` |
+
+`ThreadYield` is an explicit scheduler hint: it voluntarily yields the current execution opportunity but does not guarantee that another thread will run before the caller is scheduled again. `ThreadDelay(0)` remains a no-op and is deliberately distinct from `ThreadYield`.
+
+The critical-section group is retained for backward compatibility but is deprecated for new component code. It represents backend-specific system-level interrupt or scheduler masking and can affect execution outside the calling component. Component-scoped mutual exclusion should use mutexes instead. The POSIX backend therefore leaves this operation runtime-unsupported because portable user space cannot provide equivalent interrupt-masking semantics. Portable POSIX thread suspend/resume are likewise unsupported.
 
 The generic thread-priority model has four fixed levels:
 
