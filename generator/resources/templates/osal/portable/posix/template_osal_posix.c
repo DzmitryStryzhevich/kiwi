@@ -779,11 +779,13 @@ static const Template_osalVtable_s template_osalPosixVtable =
 // END THREAD
 
 // BEGIN CRITICAL_SECTION
+/*------------------------- Critical sections  ----------------- -------------*/
     .criticalSectionEnter = template_osalPosixCriticalSectionEnter,
     .criticalSectionExit  = template_osalPosixCriticalSectionExit,
 // END CRITICAL_SECTION
 
 // BEGIN SOFTWARE_TIMER
+/*------------------------- Software timers -- ----------------- -------------*/
     .softwareTimerCreate = template_osalPosixSoftwareTimerCreate,
     .softwareTimerDelete = template_osalPosixSoftwareTimerDelete,
     .softwareTimerStart  = template_osalPosixSoftwareTimerStart,
@@ -802,7 +804,7 @@ static const Template_osalVtable_s template_osalPosixVtable =
     .memFree  = template_osalPosixMemFree,
 // END MEMORY
 
-    /*------------------------------- Predicate -------------------------------*/
+    /*------------------------------- Validation ------------------------------*/
     .isValid = template_osalPosixIsValid
 };
 
