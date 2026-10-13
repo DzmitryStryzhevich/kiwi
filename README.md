@@ -24,13 +24,15 @@ Usage examples for the generated generic OSAL API are collected in [`doc/example
 
 | Target | Language | Status | Notes |
 | --- | --- | --- | --- |
-| FreeRTOS | C | Implemented | Queues, stream buffers, mutexes, counting semaphores, event flags, threads, critical sections, software timers, time and memory |
-| POSIX | C | Planned | Host/portable backend scaffold exists |
+| FreeRTOS | C | Implemented | Queues, stream buffers, mutexes, counting semaphores, event flags, threads including explicit `Yield`, deprecated system-level critical sections, software timers, time and memory |
+| POSIX | C | Implemented | Queues, stream buffers, recursive mutexes, counting semaphores, event flags, threads including `Yield` and `DelayUntil`, native software timers, monotonic time and memory; thread suspend/resume and system-level critical sections are unsupported |
 | C++ OSAL variant | C++ | Planned | C++ generation/port support is on the roadmap |
 
 ## Testing
 
-A four-stage GitHub Actions pipeline checks the generator, generates the full OSAL API set, builds and links the generated FreeRTOS port against the official FreeRTOS `GCC_POSIX` host port, and runs static analysis. See [`doc/testing.md`](doc/testing.md) for the current CI flow and the broader testing model.
+KIWI has an automated OSAL verification harness based on GoogleTest/GoogleMock and CTest. Generic OSAL behavior is covered by isolated unit tests, the native POSIX backend is covered by behavioral integration tests, and the FreeRTOS backend is exercised against the official FreeRTOS `GCC_POSIX` host port. Generator profile checks are part of the same test entry point, and GitLab runs the suites as separate jobs with JUnit reports.
+
+GitHub Actions additionally verifies full-set generation, real FreeRTOS/POSIX linking and static analysis. See [`test/README.md`](test/README.md) for local test commands and [`doc/testing.md`](doc/testing.md) for the complete verification model.
 
 ## Contributing
 

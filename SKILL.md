@@ -102,3 +102,195 @@ If a function currently returns a summary status that may represent either succe
 - Backend-only registry helpers belong in the protected methods table when they operate on generic OSAL-owned registry state.
 - Backend ports must use the generic `vtable` contract and protected `ptable` helpers consistently with existing primitives.
 - Do not expose backend-native handles or implementation details to component code beyond the established opaque-handle contract.
+
+## Testing and Verification Rules
+
+Testing is part of feature design, not a follow-up activity.
+
+Every new feature, OSAL primitive, backend capability, generator extension or higher-level abstraction must be designed together with the tests that verify it. Before implementation is considered complete, determine:
+
+- what behavior must be verified;
+- which test level owns each verification;
+- which positive, negative, lifecycle, timeout and concurrency scenarios are required;
+- whether the existing test harness must be extended;
+- whether CMake/CTest or CI integration must be updated;
+- whether the change affects more than one backend or generated configuration.
+
+A feature is not considered fully designed until its verification strategy is defined. When automated verification is not practical, document the reason explicitly instead of silently omitting tests.
+
+### Test Levels
+
+Keep generic unit tests and backend integration tests conceptually separate.
+
+Generic OSAL unit tests verify the generic API contract in isolation through the mock-backed `vtable`/`ptable` harness. They should cover, as applicable:
+
+- input validation;
+- initialized and non-initialized states;
+- generic lifecycle behavior;
+- registry and ownership logic implemented by the generic layer;
+- correct backend dispatch;
+- argument forwarding;
+- backend-status propagation;
+- generic handle and resource-slot behavior.
+
+Do not use generic unit tests to prove native backend behavior such as real blocking, wake-up, scheduling, timeout, timer expiration or thread interaction.
+
+Backend integration tests verify observable behavior using the real backend implementation and its real native primitives. They should cover, as applicable:
+
+- blocking and wake-up behavior;
+- timeout behavior;
+- producer/consumer or waiter/notifier interaction;
+- ordering and data integrity;
+- lifecycle behavior observable through the real backend;
+- concurrent access;
+- timer expiration and restart behavior;
+- backend-specific supported and unsupported semantics.
+
+Do not duplicate generic unit-test validation matrices in integration tests. Generic API calls may be asserted in integration tests as scenario assumptions or setup preconditions, but the purpose of an integration test must be real backend behavior.
+
+For the FreeRTOS backend host integration suite, use the FreeRTOS POSIX port so the tests exercise the actual KIWI FreeRTOS backend together with the real FreeRTOS kernel. Do not replace that layer with mocked FreeRTOS API calls when the goal is backend integration verification.
+
+Generator behavior must be tested at the generator/integration level when a change affects generated API, primitive selection, template filtering, backend emission or generated buildability.
+
+### Test Executables and Naming
+
+Keep unit and integration test environments in separate executables. Prefer one executable per test level/runtime environment rather than one executable per primitive.
+
+The expected top-level split is:
+
+```text
+kiwi_osal_unit_test
+kiwi_osal_posix_it_test
+kiwi_osal_freertos_posix_it_test
+```
+
+Integration-test names must always identify both the port and the fact that the test is an integration test, even when the containing directory already implies the port.
+
+Use file names following this form:
+
+```text
+osal_<port>_it_test_<primitive>_gtest.cpp
+```
+
+For example:
+
+```text
+osal_posix_it_test_queue_gtest.cpp
+osal_posix_it_test_software_timer_gtest.cpp
+osal_freertos_posix_it_test_queue_gtest.cpp
+osal_freertos_posix_it_test_software_timer_gtest.cpp
+```
+
+Generic unit-test files should follow this form:
+
+```text
+osal_unit_test_<primitive>_gtest.cpp
+```
+
+Test fixtures and suites must also make the runtime environment explicit, for example `OsalPosixItTest` and `OsalFreertosPosixItTest`.
+
+### Test Isolation and Fixtures
+
+Tests must be independent of execution order and of state left by neighboring tests.
+
+Use GoogleTest fixtures with `SetUp()` and `TearDown()` whenever practical. Initialization and deinitialization of the OSAL instance used by a test should normally be owned by the fixture.
+
+Each test should receive fresh test state, including as applicable:
+
+- a newly initialized OSAL instance;
+- clean generic registries;
+- clean backend state;
+- reset callback contexts, counters, latches and synchronization objects;
+- no worker thread, timer or resource leaked from a previous test.
+
+Resources created by a scenario must be explicitly released by the scenario or reliably cleaned up by the fixture. `TearDown()` must remain safe after partial test failure.
+
+When a test intentionally exercises initialization or deinitialization itself, track fixture state so cleanup does not blindly initialize or deinitialize the same instance twice.
+
+Scenarios that require multiple OSAL instances must create and destroy those instances independently.
+
+Thread and timer tests must ensure that worker activity and callbacks are quiescent before the test finishes so no asynchronous activity can leak into a later test.
+
+### Test Scenario Structure
+
+Use the Arrange-Act-Assert pattern whenever it naturally fits the scenario.
+
+Scenario setup and required assumptions should normally use `ASSERT_*` so the test stops when the state required for the behavior under test cannot be established. Use `EXPECT_*` for independent observations of the behavior under test when continuing the scenario remains meaningful.
+
+Do not turn setup checks into separate integration-test goals. For example, asserting successful primitive creation is normally a precondition for a blocking or timeout scenario, not a duplicate test of the generic Create API contract.
+
+Each test scenario must have a Doxygen description that states, concisely but with enough detail:
+
+- what behavior is being verified;
+- how the scenario exercises that behavior;
+- what observable result is expected.
+
+Use `\brief` for the test goal and `\details` for the scenario and expected behavior, consistent with the surrounding test style.
+
+Inside the test body, add concise comments for important scenario milestones and state transitions. Comments should describe intent, for example:
+
+```c
+/* Fill the buffer to force the producer to block */
+/* Release capacity from the consumer side */
+/* Verify that the blocked producer resumes */
+```
+
+Do not number test steps. Avoid comments that merely repeat the following statement, such as `Call function`, `Check result` or `Increment counter`.
+
+### Behavioral Coverage
+
+When a primitive or abstraction gains new behavior, extend its tests with scenarios that exercise that behavior rather than only adding API smoke tests.
+
+Depending on the primitive, consider:
+
+- normal operation;
+- resource exhaustion or capacity limits;
+- empty/full states;
+- blocking and wake-up transitions;
+- finite timeout expiration;
+- multiple waiters or producers/consumers;
+- ordering and data integrity;
+- reset/restart behavior;
+- independent simultaneous objects;
+- ownership across OSAL instances;
+- repeated lifecycle operations where allowed;
+- backend-specific unsupported behavior.
+
+Time-sensitive integration tests must verify semantic timing behavior with reasonable bounds or synchronization events. Do not require exact wall-clock equality that is sensitive to host scheduler jitter.
+
+Shared integration helpers may be used for reusable infrastructure such as latches, atomic counters, bounded wait helpers, timing helpers, callback contexts and deterministic test data. Do not hide the actual behavioral scenario behind a complex generic framework when an explicit port-specific test remains clearer.
+
+### Blocking and Concurrency Tests
+
+Tests must not rely on unbounded waits.
+
+Every blocking or asynchronous scenario must have a finite test-side escape path so a regression results in a failed test rather than a permanently hung test process. CTest must also provide an outer timeout as a final safety net for integration tests.
+
+Prefer explicit synchronization between test threads over arbitrary long sleeps. Small bounded delays may be used only when they are part of the behavior being tested or when no stronger synchronization point exists.
+
+### CMake, CTest and GitLab CI
+
+The local and CI test paths must use the same CMake/CTest harness. Do not maintain a separate CI-only execution path for the same tests.
+
+Register GoogleTest cases with CTest so individual scenarios remain visible and filterable. Apply useful labels such as:
+
+```text
+unit
+integration
+posix
+freertos_posix
+generator
+```
+
+Keep separate build/test environments where different runtime environments require it, for example generic unit tests, native POSIX integration tests and FreeRTOS-POSIX integration tests.
+
+GitLab CI must expose test failures clearly. When test infrastructure is added or changed, update CI as needed to provide:
+
+- separate jobs for logically distinct test environments when practical;
+- CTest output on failure;
+- JUnit test reports;
+- useful failure logs as artifacts;
+- bounded job and test timeouts;
+- deterministic non-zero exit status on test failure.
+
+Generated-code tests in CI must regenerate the required output from the current templates/configuration rather than accidentally relying on stale generated files.

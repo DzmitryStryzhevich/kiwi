@@ -254,7 +254,7 @@ The settings area remains compact when the window is resized; extra space is ass
 Ports:
 
 - FreeRTOS — implemented.
-- POSIX — planned, selectable in the GUI, but generation is not implemented yet.
+- POSIX — implemented. Queues, stream buffers, recursive mutexes, counting semaphores, event flags, thread operations including explicit `Yield` and `DelayUntil`, native software timers, monotonic time and memory are implemented. Portable thread suspend/resume and the deprecated system-level critical-section primitive are unsupported.
 
 Languages:
 
@@ -263,6 +263,14 @@ Languages:
 
 
 Before starting a generation worker, the GUI validates configuration. At least one port and a language must be selected. Selecting an unimplemented port/language produces both a generator-log error and a GUI error message; generation is not started.
+
+## POSIX port
+
+The generated POSIX port is intended for host/native execution and maps the generic OSAL contract to pthreads, POSIX semaphores, condition variables, POSIX timers and libc services. Queue synchronization uses one native mutex plus two backend-private semaphores, `freeSlotsSmphr` and `busySlotsSmphr`; these internal objects are not generic OSAL semaphores and do not consume semaphore registry slots. Generic OSAL mutexes are always recursive/reentrant on every backend. Stream buffers use a byte ring buffer protected by a native mutex with condition variables for blocked readers and writers. Event flags use a native mutex, condition variable and explicit awaiter bookkeeping.
+
+POSIX timed waits use native blocking primitives rather than polling loops. `ThreadDelayUntil` uses an absolute `CLOCK_MONOTONIC` deadline to avoid accumulating periodic-delay drift, `ThreadYield` maps to `sched_yield()`, and `TimeMsGet` is based on `CLOCK_MONOTONIC`. Native software timers use `timer_create()` with `CLOCK_MONOTONIC` and `SIGEV_THREAD`; `timer_settime()` provides arm/disarm behavior for Start, Stop and Reset. Generated POSIX build scripts discover and link `Threads::Threads` and request `_POSIX_C_SOURCE=200809L`.
+
+Portable pthreads provide no direct suspend/resume primitive with the required OSAL semantics, so `ThreadSuspend` and `ThreadResume` remain explicit runtime-unsupported operations. The generic critical-section primitive is retained for backward compatibility but is deprecated because it represents system-level interrupt/scheduler masking rather than component-scoped synchronization. Portable POSIX user space cannot provide equivalent interrupt-masking semantics, so the POSIX backend reports `TEMPLATE_OSAL_PORT_SPECIFIC_ERR` for critical-section Enter/Exit; component code should use mutexes for ordinary critical regions.
 
 ## FreeRTOS port instance parameters
 
