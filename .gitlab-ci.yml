@@ -1,2 +1,125 @@
-# GitLab CI/CD entry point.
-# Pipeline definitions will be added under .gitlab/ in a subsequent development step.
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Kiwi contributors
+
+stages:
+  - test
+
+variables:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  CMAKE_GENERATOR: "Ninja"
+
+.test-base:
+  stage: test
+  image: python:3.12-bookworm
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends cmake ninja-build g++ git ca-certificates
+    - rm -rf /var/lib/apt/lists/*
+    - python -m pip install -e generator
+
+.generator-test-base:
+  extends: .test-base
+  timeout: 10m
+
+.cpp-test-base:
+  extends: .test-base
+  timeout: 15m
+
+osal-generator-test:
+  extends: .generator-test-base
+  script:
+    - >-
+      cmake -S test -B build/test-generator
+      -DCMAKE_BUILD_TYPE=Debug
+      -DKIWI_TEST_BUILD_GENERATOR=ON
+      -DKIWI_TEST_BUILD_UNIT=OFF
+      -DKIWI_TEST_BUILD_POSIX=OFF
+      -DKIWI_TEST_BUILD_FREERTOS_POSIX=OFF
+    - ctest --test-dir build/test-generator -N -L generator
+    - >-
+      ctest --test-dir build/test-generator
+      -L generator
+      --output-on-failure
+      --output-junit junit.xml
+  artifacts:
+    when: always
+    expire_in: 7 days
+    reports:
+      junit: build/test-generator/junit.xml
+    paths:
+      - build/test-generator/Testing/
+
+osal-unit-test:
+  extends: .cpp-test-base
+  script:
+    - >-
+      cmake -S test -B build/test-unit
+      -DCMAKE_BUILD_TYPE=Debug
+      -DKIWI_TEST_BUILD_GENERATOR=OFF
+      -DKIWI_TEST_BUILD_UNIT=ON
+      -DKIWI_TEST_BUILD_POSIX=OFF
+      -DKIWI_TEST_BUILD_FREERTOS_POSIX=OFF
+    - cmake --build build/test-unit --parallel
+    - ctest --test-dir build/test-unit -N -L unit
+    - >-
+      ctest --test-dir build/test-unit
+      -L unit
+      --output-on-failure
+      --output-junit junit.xml
+  artifacts:
+    when: always
+    expire_in: 7 days
+    reports:
+      junit: build/test-unit/junit.xml
+    paths:
+      - build/test-unit/Testing/
+
+osal-posix-it-test:
+  extends: .cpp-test-base
+  script:
+    - >-
+      cmake -S test -B build/test-posix
+      -DCMAKE_BUILD_TYPE=Debug
+      -DKIWI_TEST_BUILD_GENERATOR=OFF
+      -DKIWI_TEST_BUILD_UNIT=OFF
+      -DKIWI_TEST_BUILD_POSIX=ON
+      -DKIWI_TEST_BUILD_FREERTOS_POSIX=OFF
+    - cmake --build build/test-posix --parallel
+    - ctest --test-dir build/test-posix -N -L '^posix$'
+    - >-
+      ctest --test-dir build/test-posix
+      -L '^posix$'
+      --output-on-failure
+      --output-junit junit.xml
+  artifacts:
+    when: always
+    expire_in: 7 days
+    reports:
+      junit: build/test-posix/junit.xml
+    paths:
+      - build/test-posix/Testing/
+
+osal-freertos-posix-it-test:
+  extends: .cpp-test-base
+  script:
+    - >-
+      cmake -S test -B build/test-freertos-posix
+      -DCMAKE_BUILD_TYPE=Debug
+      -DKIWI_TEST_BUILD_GENERATOR=OFF
+      -DKIWI_TEST_BUILD_UNIT=OFF
+      -DKIWI_TEST_BUILD_POSIX=OFF
+      -DKIWI_TEST_BUILD_FREERTOS_POSIX=ON
+    - cmake --build build/test-freertos-posix --parallel
+    - ctest --test-dir build/test-freertos-posix -N -L '^freertos_posix$'
+    - >-
+      ctest --test-dir build/test-freertos-posix
+      -L '^freertos_posix$'
+      --output-on-failure
+      --output-junit junit.xml
+  artifacts:
+    when: always
+    expire_in: 7 days
+    reports:
+      junit: build/test-freertos-posix/junit.xml
+    paths:
+      - build/test-freertos-posix/Testing/
