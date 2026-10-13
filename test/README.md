@@ -167,7 +167,17 @@ ctest --test-dir build/test-freertos-posix -R SoftwareTimer --output-on-failure
 
 ## GitLab CI
 
-`.gitlab-ci.yml` uses the same CMake/CTest entry points as local development. The pipeline separates generator, generic unit, native POSIX integration and FreeRTOS-POSIX integration environments into distinct jobs.
+Both CI systems use a five-stage verification flow:
+
+```text
+1 - Generator build check
+2 - Generate full OSAL set
+3 - Build generated code
+4 - Static analysis
+5 - Test suites
+```
+
+GitHub Actions exposes these as five sequential jobs. GitLab uses the same five explicit stages; the final `test` stage fans out into separate generator, generic unit, native POSIX integration and FreeRTOS-POSIX integration jobs. The test jobs use the same CMake/CTest entry points as local development.
 
 Each job:
 

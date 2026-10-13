@@ -297,3 +297,17 @@ Testability is part of OSAL design rather than a follow-up task.
 Every new primitive, primitive feature, backend capability or generator-level extension must define its verification approach while the feature is being designed. Depending on the change this means extending generic unit tests, one or more backend integration suites, generator tests, the common harness or CI.
 
 A feature is not considered complete merely because its production implementation compiles; its intended behavior must also have an executable verification path at the appropriate layer.
+
+## CI pipeline stages
+
+GitHub Actions and GitLab CI follow the same five-stage verification sequence:
+
+```text
+1 - Generator build check
+2 - Generate full OSAL set
+3 - Build generated code
+4 - Static analysis
+5 - Test suites
+```
+
+The final GitLab `test` stage runs generator, generic unit, native POSIX integration and FreeRTOS-POSIX integration jobs independently. GitHub Actions runs the complete test harness in the fifth sequential job so the workflow graph keeps the same five-stage shape.
