@@ -159,14 +159,20 @@ def render_port_cmake(
         if config.split_src_inc_files
         else "${CMAKE_CURRENT_LIST_DIR}/../.."
     )
-    return "\n".join(
+    lines = [
+        "# SPDX-License-Identifier: MIT",
+        "# Copyright (c) 2026 Kiwi contributors",
+        "",
+        f"# {port} OSAL port generated build script.",
+        f"# {port} include paths and libraries are expected from the parent project.",
+        "",
+    ]
+
+    if port == "POSIX":
+        lines.extend(["find_package(Threads REQUIRED)", ""])
+
+    lines.extend(
         [
-            "# SPDX-License-Identifier: MIT",
-            "# Copyright (c) 2026 Kiwi contributors",
-            "",
-            f"# {port} OSAL port generated build script.",
-            f"# {port} include paths and libraries are expected from the parent project.",
-            "",
             f"add_library({forms.snake}_osal_{slug} STATIC",
             f"    {source}",
             ")",
@@ -177,13 +183,37 @@ def render_port_cmake(
             f"        {base_include}",
             ")",
             "",
+        ]
+    )
+
+    if port == "POSIX":
+        lines.extend(
+            [
+                f"target_compile_features({forms.snake}_osal_{slug} PUBLIC c_std_99)",
+                "",
+                f"target_compile_definitions({forms.snake}_osal_{slug}",
+                "    PUBLIC",
+                "        _POSIX_C_SOURCE=200809L",
+                ")",
+                "",
+            ]
+        )
+
+    link_libraries = [forms.snake + "_osal"]
+    if port == "POSIX":
+        link_libraries.append("Threads::Threads")
+
+    lines.extend(
+        [
             f"target_link_libraries({forms.snake}_osal_{slug}",
             "    PUBLIC",
-            f"        {forms.snake}_osal",
+            *[f"        {library}" for library in link_libraries],
             ")",
             "",
         ]
     )
+
+    return "\n".join(lines)
 
 
 def render_combined_cmake(forms: PrefixForms, config: GenerationConfig) -> str:
@@ -205,16 +235,24 @@ def render_combined_cmake(forms: PrefixForms, config: GenerationConfig) -> str:
         "# Combined base + selected OSAL ports generated build script.",
         "# Native OS include paths and libraries are expected from the parent project.",
         "",
-        f"add_library({forms.snake}_osal STATIC",
-        f"    {base_source}",
-        ")",
-        "",
-        f"target_include_directories({forms.snake}_osal",
-        "    PUBLIC",
-        f"        {include_dir}",
-        ")",
-        "",
     ]
+
+    if "POSIX" in config.ports:
+        lines.extend(["find_package(Threads REQUIRED)", ""])
+
+    lines.extend(
+        [
+            f"add_library({forms.snake}_osal STATIC",
+            f"    {base_source}",
+            ")",
+            "",
+            f"target_include_directories({forms.snake}_osal",
+            "    PUBLIC",
+            f"        {include_dir}",
+            ")",
+            "",
+        ]
+    )
 
     for port in config.ports:
         slug = port_slug(port)
@@ -234,9 +272,31 @@ def render_combined_cmake(forms: PrefixForms, config: GenerationConfig) -> str:
                 f"        {include_dir}",
                 ")",
                 "",
+            ]
+        )
+
+        if port == "POSIX":
+            lines.extend(
+                [
+                    f"target_compile_features({forms.snake}_osal_{slug} PUBLIC c_std_99)",
+                    "",
+                    f"target_compile_definitions({forms.snake}_osal_{slug}",
+                    "    PUBLIC",
+                    "        _POSIX_C_SOURCE=200809L",
+                    ")",
+                    "",
+                ]
+            )
+
+        link_libraries = [forms.snake + "_osal"]
+        if port == "POSIX":
+            link_libraries.append("Threads::Threads")
+
+        lines.extend(
+            [
                 f"target_link_libraries({forms.snake}_osal_{slug}",
                 "    PUBLIC",
-                f"        {forms.snake}_osal",
+                *[f"        {library}" for library in link_libraries],
                 ")",
                 "",
             ]
