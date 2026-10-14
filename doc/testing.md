@@ -267,9 +267,9 @@ build/test-freertos-posix
 
 This separation keeps a FreeRTOS scheduler/runtime failure from obscuring native POSIX or generic unit results.
 
-## GitHub generated-code verification
+## GitHub Actions verification
 
-The existing GitHub Actions path remains focused on generated-code quality:
+GitHub Actions follows the same five-stage verification flow as GitLab CI:
 
 ```text
 generator-build
@@ -282,6 +282,9 @@ build-generated
       |
       v
 static-analysis
+      |
+      v
+test-suites
 ```
 
 The full set enables queue, stream buffer, mutex, semaphore, event flags, thread, deprecated Critical Section, software timer, time and memory groups for both implemented ports.
@@ -289,6 +292,8 @@ The full set enables queue, stream buffer, mutex, semaphore, event flags, thread
 The build stage links the FreeRTOS backend against FreeRTOS-Kernel `V11.3.1` and the `GCC_POSIX` simulator port, and links the native POSIX backend against host pthread/POSIX facilities. The native POSIX smoke executable also checks initialization/deinitialization, explicit thread yield and the expected unsupported Critical Section result.
 
 The static-analysis stage runs GCC `-fanalyzer` and `cppcheck` over the generated generic, FreeRTOS and POSIX sources.
+
+The final GitHub job builds the complete test harness and runs generator, generic unit, native POSIX integration and FreeRTOS-POSIX integration suites as separate CTest label passes. Each pass emits its own JUnit file. Every GitHub job also writes a concise Markdown report to `$GITHUB_STEP_SUMMARY`; the test summary includes actual passed, failed, skipped and total counts for every suite. Detailed stdout/stderr remains available in the individual workflow steps.
 
 ## Test-by-design rule
 

@@ -165,7 +165,7 @@ ctest --test-dir build/test-posix -R StreamBuffer --output-on-failure
 ctest --test-dir build/test-freertos-posix -R SoftwareTimer --output-on-failure
 ```
 
-## GitLab CI
+## CI integration
 
 Both CI systems use a five-stage verification flow:
 
@@ -179,13 +179,15 @@ Both CI systems use a five-stage verification flow:
 
 GitHub Actions exposes these as five sequential jobs. GitLab uses the same five explicit stages; the final `test` stage fans out into separate generator, generic unit, native POSIX integration and FreeRTOS-POSIX integration jobs. The test jobs use the same CMake/CTest entry points as local development.
 
-Each job:
+The test jobs:
 
-- configures its own build directory;
-- lists discovered tests with `ctest -N`;
-- runs the relevant CTest label with `--output-on-failure`;
-- writes a JUnit report for GitLab;
-- preserves the CTest `Testing/` directory as an artifact for failure diagnostics.
+- configure their own build environment;
+- list discovered tests with `ctest -N`;
+- run the relevant CTest labels with `--output-on-failure`;
+- write JUnit reports;
+- preserve the CTest `Testing/` directory as an artifact for failure diagnostics.
+
+GitHub Actions also publishes a Markdown Job Summary for every stage. The final test summary reports passed, failed, skipped and total counts separately for generator, generic unit, native POSIX integration and FreeRTOS-POSIX integration suites.
 
 The FreeRTOS integration job uses the official kernel `GCC_POSIX` port and the test-specific `FreeRTOSConfig.h`; it does not mock the FreeRTOS API.
 
