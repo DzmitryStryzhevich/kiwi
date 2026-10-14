@@ -38,6 +38,11 @@ target_include_directories(freertos_config SYSTEM
         ${CMAKE_CURRENT_LIST_DIR}
 )
 
+target_compile_definitions(freertos_config
+    INTERFACE
+        projCOVERAGE_TEST=0
+)
+
 # Use the official host simulator port and a real FreeRTOS heap implementation.
 set(FREERTOS_PORT "GCC_POSIX" CACHE STRING "" FORCE)
 set(FREERTOS_HEAP "4" CACHE STRING "" FORCE)

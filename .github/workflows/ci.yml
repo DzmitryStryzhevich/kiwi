@@ -13,52 +13,82 @@ env:
 jobs:
   generator-build:
     name: 1 - Generator build check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       - name: Build generator package
+        id: build-generator
         run: |
           python -m pip install --upgrade pip build
           python -m compileall -q generator/core generator/formatter generator/cli generator/gui
           python -m build generator --outdir dist-generator
 
       - name: Verify built generator
+        id: verify-generator
         run: |
           python -m pip install dist-generator/*.whl
           kiwicgen --version
           kiwicgen --help
 
       - name: Upload generator package
-        uses: actions/upload-artifact@v4
+        id: upload-generator
+        uses: actions/upload-artifact@v7
         with:
           name: generator-dist
           path: dist-generator/
           if-no-files-found: error
 
+      - name: Publish job summary
+        if: always()
+        env:
+          BUILD_RESULT: ${{ steps.build-generator.conclusion }}
+          VERIFY_RESULT: ${{ steps.verify-generator.conclusion }}
+          ARTIFACT_RESULT: ${{ steps.upload-generator.conclusion }}
+        run: |
+          {
+            echo "## 1 - Generator build check"
+            echo
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| Python bytecode compilation and package build | ${BUILD_RESULT} |"
+            echo "| Installed wheel, version and CLI help | ${VERIFY_RESULT} |"
+            echo "| Generator package artifact | ${ARTIFACT_RESULT} |"
+            echo
+            echo "**Python:** 3.12"
+            echo
+            if compgen -G 'dist-generator/*' > /dev/null; then
+              echo "### Built package"
+              echo
+              for package in dist-generator/*; do
+                echo "- \`$(basename "$package")\`"
+              done
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
   generate-full-set:
     name: 2 - Generate full OSAL set
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: generator-build
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       - name: Download generator package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: generator-dist
           path: dist-generator
@@ -69,6 +99,7 @@ jobs:
           python -m pip install dist-generator/*.whl
 
       - name: Generate full FreeRTOS and POSIX OSAL
+        id: generate-full-set
         run: |
           kiwicgen \
             --module-prefix=ci_osal \
@@ -89,6 +120,7 @@ jobs:
             --output=ci-generated
 
       - name: Verify generated tree
+        id: verify-generated-tree
         run: |
           test -f ci-generated/ci_osal/ci_osal_osal.h
           test -f ci-generated/ci_osal/ci_osal_osal.c
@@ -99,35 +131,69 @@ jobs:
           ! grep -R -n -E '// BEGIN |// END ' ci-generated/ci_osal --include='*.c' --include='*.h'
 
       - name: Upload generated full set
-        uses: actions/upload-artifact@v4
+        id: upload-generated-full-set
+        uses: actions/upload-artifact@v7
         with:
           name: generated-full-set
           path: ci-generated/
           if-no-files-found: error
 
+      - name: Publish job summary
+        if: always()
+        env:
+          GENERATE_RESULT: ${{ steps.generate-full-set.conclusion }}
+          VERIFY_RESULT: ${{ steps.verify-generated-tree.conclusion }}
+          ARTIFACT_RESULT: ${{ steps.upload-generated-full-set.conclusion }}
+        run: |
+          c_count=0
+          h_count=0
+          if [ -d ci-generated ]; then
+            c_count=$(find ci-generated -type f -name '*.c' | wc -l)
+            h_count=$(find ci-generated -type f -name '*.h' | wc -l)
+          fi
+
+          {
+            echo "## 2 - Generate full OSAL set"
+            echo
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| Full FreeRTOS + POSIX generation | ${GENERATE_RESULT} |"
+            echo "| Generated tree and marker validation | ${VERIFY_RESULT} |"
+            echo "| Generated source artifact | ${ARTIFACT_RESULT} |"
+            echo
+            echo "### Generated configuration"
+            echo
+            echo "- Ports: **FreeRTOS**, **POSIX**"
+            echo "- Language: **C**"
+            echo "- Enabled primitives: Queue, Stream Buffer, Mutex, Counting Semaphore, Event Flags, Thread, Critical Section, Software Timer, Time, Memory"
+            echo "- Generated C sources: **${c_count}**"
+            echo "- Generated headers: **${h_count}**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   build-generated:
     name: 3 - Build generated code
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: generate-full-set
 
     steps:
       - name: Checkout KIWI
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Checkout FreeRTOS-Kernel
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: FreeRTOS/FreeRTOS-Kernel
           ref: ${{ env.FREERTOS_KERNEL_REF }}
           path: third_party/FreeRTOS-Kernel
 
       - name: Download generated full set
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: generated-full-set
           path: ci-generated
 
       - name: Configure real FreeRTOS POSIX build
+        id: configure-generated
         run: |
           cmake \
             -S .github/ci/freertos_posix \
@@ -137,38 +203,64 @@ jobs:
             -DGENERATED_OSAL_DIR="$PWD/ci-generated/ci_osal"
 
       - name: Build generated code with FreeRTOS and native POSIX ports
+        id: build-generated-code
         run: |
           cmake --build build-generated --parallel
 
       - name: Run generated POSIX smoke check
+        id: posix-smoke
         run: |
           ./build-generated/ci_osal_posix_link_check
 
       - name: Upload compile commands
-        uses: actions/upload-artifact@v4
+        id: upload-build-metadata
+        uses: actions/upload-artifact@v7
         with:
           name: generated-build-metadata
           path: build-generated/compile_commands.json
           if-no-files-found: ignore
 
+      - name: Publish job summary
+        if: always()
+        env:
+          CONFIGURE_RESULT: ${{ steps.configure-generated.conclusion }}
+          BUILD_RESULT: ${{ steps.build-generated-code.conclusion }}
+          SMOKE_RESULT: ${{ steps.posix-smoke.conclusion }}
+          METADATA_RESULT: ${{ steps.upload-build-metadata.conclusion }}
+        run: |
+          {
+            echo "## 3 - Build generated code"
+            echo
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| Configure generated OSAL against real FreeRTOS POSIX port | ${CONFIGURE_RESULT} |"
+            echo "| Build generic, FreeRTOS and native POSIX generated code | ${BUILD_RESULT} |"
+            echo "| Native POSIX link/runtime smoke check | ${SMOKE_RESULT} |"
+            echo "| Compile commands artifact | ${METADATA_RESULT} |"
+            echo
+            echo "**FreeRTOS-Kernel:** \`${FREERTOS_KERNEL_REF}\`"
+            echo
+            echo "**Build type:** Debug"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   static-analysis:
     name: 4 - Static analysis
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: build-generated
 
     steps:
       - name: Checkout KIWI
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Checkout FreeRTOS-Kernel
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: FreeRTOS/FreeRTOS-Kernel
           ref: ${{ env.FREERTOS_KERNEL_REF }}
           path: third_party/FreeRTOS-Kernel
 
       - name: Download generated full set
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: generated-full-set
           path: ci-generated
@@ -179,6 +271,7 @@ jobs:
           sudo apt-get install -y cppcheck
 
       - name: Run GCC static analyzer on generated sources
+        id: gcc-analyzer
         run: |
           gcc -std=c11 -Wall -Wextra -Werror -fanalyzer \
             -Ici-generated/ci_osal \
@@ -206,6 +299,7 @@ jobs:
             -o /tmp/ci_osal_osal_posix_analyze.o
 
       - name: Run cppcheck on generated sources
+        id: cppcheck
         run: |
           cppcheck \
             --std=c11 \
@@ -221,3 +315,214 @@ jobs:
             ci-generated/ci_osal/ci_osal_osal.c \
             ci-generated/ci_osal/portable/freertos/ci_osal_osal_freertos.c \
             ci-generated/ci_osal/portable/posix/ci_osal_osal_posix.c
+
+      - name: Publish job summary
+        if: always()
+        env:
+          GCC_ANALYZER_RESULT: ${{ steps.gcc-analyzer.conclusion }}
+          CPPCHECK_RESULT: ${{ steps.cppcheck.conclusion }}
+        run: |
+          {
+            echo "## 4 - Static analysis"
+            echo
+            echo "| Analyzer | Sources | Result |"
+            echo "| --- | --- | --- |"
+            echo "| GCC \`-fanalyzer\` | Generic OSAL, FreeRTOS backend, POSIX backend | ${GCC_ANALYZER_RESULT} |"
+            echo "| cppcheck | Generic OSAL, FreeRTOS backend, POSIX backend | ${CPPCHECK_RESULT} |"
+            echo
+            echo "Compiler diagnostics are treated as errors by the GCC analyzer pass."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  test-suites:
+    name: 5 - Test suites
+    runs-on: ubuntu-24.04
+    needs: static-analysis
+
+    steps:
+      - name: Checkout KIWI
+        uses: actions/checkout@v7
+
+      - name: Checkout GoogleTest
+        uses: actions/checkout@v7
+        with:
+          repository: google/googletest
+          ref: v1.14.0
+          path: third_party/googletest
+
+      - name: Checkout FreeRTOS-Kernel
+        uses: actions/checkout@v7
+        with:
+          repository: FreeRTOS/FreeRTOS-Kernel
+          ref: ${{ env.FREERTOS_KERNEL_REF }}
+          path: third_party/FreeRTOS-Kernel
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install generator
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e generator
+
+      - name: Configure complete test harness
+        id: configure-tests
+        run: |
+          cmake \
+            -S test \
+            -B build-test \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DKIWI_TEST_BUILD_GENERATOR=ON \
+            -DKIWI_TEST_BUILD_UNIT=ON \
+            -DKIWI_TEST_BUILD_POSIX=ON \
+            -DKIWI_TEST_BUILD_FREERTOS_POSIX=ON \
+            -DKIWI_TEST_FETCH_GTEST=OFF \
+            -DKIWI_TEST_FETCH_FREERTOS=OFF \
+            -DKIWI_TEST_GTEST_SOURCE_DIR="$PWD/third_party/googletest" \
+            -DKIWI_TEST_FREERTOS_KERNEL_DIR="$PWD/third_party/FreeRTOS-Kernel"
+
+      - name: Build test executables
+        id: build-tests
+        run: |
+          cmake --build build-test --parallel
+
+      - name: List discovered tests
+        id: discover-tests
+        run: |
+          ctest --test-dir build-test -N
+
+      - name: Run generator integration tests
+        id: test-generator
+        if: always() && steps.build-tests.conclusion == 'success'
+        run: |
+          ctest \
+            --test-dir build-test \
+            -L '^generator$' \
+            --output-on-failure \
+            --output-junit junit-generator.xml
+
+      - name: Run generic OSAL unit tests
+        id: test-unit
+        if: always() && steps.build-tests.conclusion == 'success'
+        run: |
+          ctest \
+            --test-dir build-test \
+            -L '^unit$' \
+            --output-on-failure \
+            --output-junit junit-unit.xml
+
+      - name: Run native POSIX integration tests
+        id: test-posix
+        if: always() && steps.build-tests.conclusion == 'success'
+        run: |
+          ctest \
+            --test-dir build-test \
+            -L '^posix$' \
+            --output-on-failure \
+            --output-junit junit-posix.xml
+
+      - name: Run FreeRTOS POSIX integration tests
+        id: test-freertos-posix
+        if: always() && steps.build-tests.conclusion == 'success'
+        run: |
+          ctest \
+            --test-dir build-test \
+            -L '^freertos_posix$' \
+            --output-on-failure \
+            --output-junit junit-freertos-posix.xml
+
+      - name: Publish job summary
+        if: always()
+        env:
+          CONFIGURE_RESULT: ${{ steps.configure-tests.conclusion }}
+          BUILD_RESULT: ${{ steps.build-tests.conclusion }}
+          DISCOVERY_RESULT: ${{ steps.discover-tests.conclusion }}
+          GENERATOR_RESULT: ${{ steps.test-generator.conclusion }}
+          UNIT_RESULT: ${{ steps.test-unit.conclusion }}
+          POSIX_RESULT: ${{ steps.test-posix.conclusion }}
+          FREERTOS_POSIX_RESULT: ${{ steps.test-freertos-posix.conclusion }}
+        run: |
+          python - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          build_dir = Path("build-test")
+          suites = [
+              ("Generator integration", "junit-generator.xml", os.environ["GENERATOR_RESULT"]),
+              ("Generic OSAL unit", "junit-unit.xml", os.environ["UNIT_RESULT"]),
+              ("Native POSIX integration", "junit-posix.xml", os.environ["POSIX_RESULT"]),
+              ("FreeRTOS POSIX integration", "junit-freertos-posix.xml", os.environ["FREERTOS_POSIX_RESULT"]),
+          ]
+
+          def junit_counts(path: Path):
+              if not path.exists():
+                  return None
+
+              try:
+                  root = ET.parse(path).getroot()
+              except (ET.ParseError, OSError):
+                  return None
+
+              if root.tag == "testsuite":
+                  nodes = [root]
+              else:
+                  nodes = list(root.iter("testsuite"))
+
+              tests = sum(int(node.attrib.get("tests", 0)) for node in nodes)
+              failures = sum(int(node.attrib.get("failures", 0)) for node in nodes)
+              errors = sum(int(node.attrib.get("errors", 0)) for node in nodes)
+              skipped = sum(int(node.attrib.get("skipped", 0)) for node in nodes)
+              passed = tests - failures - errors - skipped
+              return tests, passed, failures + errors, skipped
+
+          lines = [
+              "## 5 - Test suites",
+              "",
+              "### Harness",
+              "",
+              "| Check | Result |",
+              "| --- | --- |",
+              f"| Configure complete test harness | {os.environ['CONFIGURE_RESULT']} |",
+              f"| Build test executables | {os.environ['BUILD_RESULT']} |",
+              f"| GoogleTest/CTest discovery | {os.environ['DISCOVERY_RESULT']} |",
+              "",
+              "### Results",
+              "",
+              "| Suite | Passed | Failed | Skipped | Total | Step |",
+              "| --- | ---: | ---: | ---: | ---: | --- |",
+          ]
+
+          for name, filename, conclusion in suites:
+              counts = junit_counts(build_dir / filename)
+              if counts is None:
+                  lines.append(f"| {name} | - | - | - | - | {conclusion} |")
+                  continue
+
+              total, passed, failed, skipped = counts
+              lines.append(
+                  f"| {name} | {passed} | {failed} | {skipped} | {total} | {conclusion} |"
+              )
+
+          lines.extend([
+              "",
+              "**GoogleTest:** v1.14.0",
+              "",
+              f"**FreeRTOS-Kernel:** `{os.environ.get('FREERTOS_KERNEL_REF', 'V11.3.1')}` / `GCC_POSIX`",
+          ])
+
+          summary_path = Path(os.environ["GITHUB_STEP_SUMMARY"])
+          summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: |
+            build-test/junit-*.xml
+            build-test/Testing/
+          if-no-files-found: ignore

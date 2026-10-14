@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Kiwi contributors
+
+1-generator-build-check:
+  extends: .default-python-job
+  stage: generator_build
+  script:
+    - .gitlab/scripts/generator_build_check.sh
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - dist-generator/
+
+2-generate-full-osal-set:
+  extends: .default-python-job
+  stage: generate
+  needs:
+    - job: 1-generator-build-check
+      artifacts: true
+  script:
+    - .gitlab/scripts/generate_full_osal_set.sh
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - ci-generated/

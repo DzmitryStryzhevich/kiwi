@@ -1,2 +1,259 @@
-# GitLab CI/CD entry point.
-# Pipeline definitions will be added under .gitlab/ in a subsequent development step.
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Kiwi contributors
+
+stages:
+  - generator_build
+  - generate
+  - build_generated
+  - static_analysis
+  - test
+
+variables:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  CMAKE_GENERATOR: "Ninja"
+  FREERTOS_KERNEL_REF: "V11.3.1"
+  GTEST_REF: "v1.14.0"
+
+.default-python-job:
+  image: python:3.12-bookworm
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends cmake ninja-build g++ git ca-certificates
+    - rm -rf /var/lib/apt/lists/*
+
+1-generator-build-check:
+  extends: .default-python-job
+  stage: generator_build
+  script:
+    - python -m pip install --upgrade pip build
+    - python -m compileall -q generator/core generator/formatter generator/cli generator/gui
+    - python -m build generator --outdir dist-generator
+    - python -m pip install dist-generator/*.whl
+    - kiwicgen --version
+    - kiwicgen --help
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - dist-generator/
+
+2-generate-full-osal-set:
+  extends: .default-python-job
+  stage: generate
+  needs:
+    - job: 1-generator-build-check
+      artifacts: true
+  script:
+    - python -m pip install dist-generator/*.whl
+    - >-
+      kiwicgen
+      --module-prefix=ci_osal
+      --port=FreeRTOS
+      --port=POSIX
+      --language=C
+      --use-queue-api
+      --use-stream-buffer-api
+      --use-mutex-api
+      --use-semaphore-api
+      --use-event-flags-api
+      --use-thread-api
+      --use-critical-section-api
+      --use-software-timer-api
+      --use-time-api
+      --use-memory-api
+      --split-into-port-dir
+      --output=ci-generated
+    - test -f ci-generated/ci_osal/ci_osal_osal.h
+    - test -f ci-generated/ci_osal/ci_osal_osal.c
+    - test -f ci-generated/ci_osal/portable/freertos/ci_osal_osal_freertos.c
+    - test -f ci-generated/ci_osal/portable/posix/ci_osal_osal_posix.c
+    - '! grep -R -n -E ''// BEGIN |// END '' ci-generated/ci_osal --include=''*.c'' --include=''*.h'''
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - ci-generated/
+
+3-build-generated-code:
+  extends: .default-python-job
+  stage: build_generated
+  needs:
+    - job: 2-generate-full-osal-set
+      artifacts: true
+  script:
+    - git clone --depth 1 --branch "$FREERTOS_KERNEL_REF" https://github.com/FreeRTOS/FreeRTOS-Kernel.git third_party/FreeRTOS-Kernel
+    - >-
+      cmake
+      -S .github/ci/freertos_posix
+      -B build-generated
+      -DCMAKE_BUILD_TYPE=Debug
+      -DFREERTOS_KERNEL_DIR="$CI_PROJECT_DIR/third_party/FreeRTOS-Kernel"
+      -DGENERATED_OSAL_DIR="$CI_PROJECT_DIR/ci-generated/ci_osal"
+    - cmake --build build-generated --parallel
+    - ./build-generated/ci_osal_posix_link_check
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - build-generated/compile_commands.json
+
+4-static-analysis:
+  extends: .default-python-job
+  stage: static_analysis
+  needs:
+    - job: 2-generate-full-osal-set
+      artifacts: true
+    - job: 3-build-generated-code
+      artifacts: false
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends cmake ninja-build g++ gcc git ca-certificates cppcheck
+    - rm -rf /var/lib/apt/lists/*
+  script:
+    - git clone --depth 1 --branch "$FREERTOS_KERNEL_REF" https://github.com/FreeRTOS/FreeRTOS-Kernel.git third_party/FreeRTOS-Kernel
+    - >-
+      gcc -std=c11 -Wall -Wextra -Werror -fanalyzer
+      -Ici-generated/ci_osal
+      -Ici-generated/ci_osal/portable/freertos
+      -I.github/ci/freertos_posix
+      -Ithird_party/FreeRTOS-Kernel/include
+      -Ithird_party/FreeRTOS-Kernel/portable/ThirdParty/GCC/Posix
+      -c ci-generated/ci_osal/ci_osal_osal.c
+      -o /tmp/ci_osal_osal_analyze.o
+    - >-
+      gcc -std=c11 -Wall -Wextra -Werror -fanalyzer
+      -Ici-generated/ci_osal
+      -Ici-generated/ci_osal/portable/freertos
+      -I.github/ci/freertos_posix
+      -Ithird_party/FreeRTOS-Kernel/include
+      -Ithird_party/FreeRTOS-Kernel/portable/ThirdParty/GCC/Posix
+      -c ci-generated/ci_osal/portable/freertos/ci_osal_osal_freertos.c
+      -o /tmp/ci_osal_osal_freertos_analyze.o
+    - >-
+      gcc -std=c11 -Wall -Wextra -Werror -fanalyzer -pthread
+      -D_POSIX_C_SOURCE=200809L
+      -Ici-generated/ci_osal
+      -Ici-generated/ci_osal/portable/posix
+      -c ci-generated/ci_osal/portable/posix/ci_osal_osal_posix.c
+      -o /tmp/ci_osal_osal_posix_analyze.o
+    - >-
+      cppcheck
+      --std=c11
+      --enable=warning,performance,portability
+      --error-exitcode=1
+      --suppress=missingIncludeSystem
+      -Ici-generated/ci_osal
+      -Ici-generated/ci_osal/portable/freertos
+      -Ici-generated/ci_osal/portable/posix
+      -I.github/ci/freertos_posix
+      -Ithird_party/FreeRTOS-Kernel/include
+      -Ithird_party/FreeRTOS-Kernel/portable/ThirdParty/GCC/Posix
+      ci-generated/ci_osal/ci_osal_osal.c
+      ci-generated/ci_osal/portable/freertos/ci_osal_osal_freertos.c
+      ci-generated/ci_osal/portable/posix/ci_osal_osal_posix.c
+
+.test-base:
+  extends: .default-python-job
+  stage: test
+  timeout: 15m
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends cmake ninja-build g++ git ca-certificates
+    - rm -rf /var/lib/apt/lists/*
+    - python -m pip install -e generator
+    - git clone --depth 1 --branch "$GTEST_REF" https://github.com/google/googletest.git third_party/googletest
+
+5-generator-test:
+  extends: .test-base
+  script:
+    - >-
+      cmake -S test -B build/test-generator
+      -DCMAKE_BUILD_TYPE=Debug
+      -DKIWI_TEST_BUILD_GENERATOR=ON
+      -DKIWI_TEST_BUILD_UNIT=OFF
+      -DKIWI_TEST_BUILD_POSIX=OFF
+      -DKIWI_TEST_BUILD_FREERTOS_POSIX=OFF
+    - ctest --test-dir build/test-generator -N -L generator
+    - ctest --test-dir build/test-generator -L generator --output-on-failure --output-junit junit.xml
+  artifacts:
+    when: always
+    expire_in: 7 days
+    reports:
+      junit: build/test-generator/junit.xml
+    paths:
+      - build/test-generator/Testing/
+
+5-osal-unit-test:
+  extends: .test-base
+  script:
+    - >-
+      cmake -S test -B build/test-unit
+      -DCMAKE_BUILD_TYPE=Debug
+      -DKIWI_TEST_BUILD_GENERATOR=OFF
+      -DKIWI_TEST_BUILD_UNIT=ON
+      -DKIWI_TEST_BUILD_POSIX=OFF
+      -DKIWI_TEST_BUILD_FREERTOS_POSIX=OFF
+      -DKIWI_TEST_FETCH_GTEST=OFF
+      -DKIWI_TEST_GTEST_SOURCE_DIR="$CI_PROJECT_DIR/third_party/googletest"
+    - cmake --build build/test-unit --parallel
+    - ctest --test-dir build/test-unit -N -L unit
+    - ctest --test-dir build/test-unit -L unit --output-on-failure --output-junit junit.xml
+  artifacts:
+    when: always
+    expire_in: 7 days
+    reports:
+      junit: build/test-unit/junit.xml
+    paths:
+      - build/test-unit/Testing/
+
+5-osal-posix-it-test:
+  extends: .test-base
+  script:
+    - >-
+      cmake -S test -B build/test-posix
+      -DCMAKE_BUILD_TYPE=Debug
+      -DKIWI_TEST_BUILD_GENERATOR=OFF
+      -DKIWI_TEST_BUILD_UNIT=OFF
+      -DKIWI_TEST_BUILD_POSIX=ON
+      -DKIWI_TEST_BUILD_FREERTOS_POSIX=OFF
+      -DKIWI_TEST_FETCH_GTEST=OFF
+      -DKIWI_TEST_GTEST_SOURCE_DIR="$CI_PROJECT_DIR/third_party/googletest"
+    - cmake --build build/test-posix --parallel
+    - ctest --test-dir build/test-posix -N -L '^posix$'
+    - ctest --test-dir build/test-posix -L '^posix$' --output-on-failure --output-junit junit.xml
+  artifacts:
+    when: always
+    expire_in: 7 days
+    reports:
+      junit: build/test-posix/junit.xml
+    paths:
+      - build/test-posix/Testing/
+
+5-osal-freertos-posix-it-test:
+  extends: .test-base
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends cmake ninja-build g++ git ca-certificates
+    - rm -rf /var/lib/apt/lists/*
+    - python -m pip install -e generator
+    - git clone --depth 1 --branch "$GTEST_REF" https://github.com/google/googletest.git third_party/googletest
+    - git clone --depth 1 --branch "$FREERTOS_KERNEL_REF" https://github.com/FreeRTOS/FreeRTOS-Kernel.git third_party/FreeRTOS-Kernel
+  script:
+    - >-
+      cmake -S test -B build/test-freertos-posix
+      -DCMAKE_BUILD_TYPE=Debug
+      -DKIWI_TEST_BUILD_GENERATOR=OFF
+      -DKIWI_TEST_BUILD_UNIT=OFF
+      -DKIWI_TEST_BUILD_POSIX=OFF
+      -DKIWI_TEST_BUILD_FREERTOS_POSIX=ON
+      -DKIWI_TEST_FETCH_GTEST=OFF
+      -DKIWI_TEST_FETCH_FREERTOS=OFF
+      -DKIWI_TEST_GTEST_SOURCE_DIR="$CI_PROJECT_DIR/third_party/googletest"
+      -DKIWI_TEST_FREERTOS_KERNEL_DIR="$CI_PROJECT_DIR/third_party/FreeRTOS-Kernel"
+    - cmake --build build/test-freertos-posix --parallel
+    - ctest --test-dir build/test-freertos-posix -N -L '^freertos_posix$'
+    - ctest --test-dir build/test-freertos-posix -L '^freertos_posix$' --output-on-failure --output-junit junit.xml
+  artifacts:
+    when: always
+    expire_in: 7 days
+    reports:
+      junit: build/test-freertos-posix/junit.xml
+    paths:
+      - build/test-freertos-posix/Testing/
