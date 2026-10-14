@@ -31,7 +31,7 @@ struct SemaphoreHandleDummy
  */
 TEST_F(OsalUnitTest, Semaphore_InvalidArgs)
 {
-    KiwiTest_osalSemaphoreHandle_t out = nullptr;
+    KiwiTest_osalSemaphoreHandle_t out  = nullptr;
     KiwiTest_osalSemaphoreCount_t count = 0u;
 
     EXPECT_EQ(kiwiTest_osalSemaphoreCreate(nullptr, 2u, 0u, &out), KIWI_TEST_OSAL_INVALID_ARGS_ERR);
@@ -61,12 +61,12 @@ TEST_F(OsalUnitTest, Semaphore_InvalidArgs)
  */
 TEST_F(OsalUnitTest, Semaphore_Create_DispatchesConfigurationAndStatus)
 {
-    SemaphoreHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalSemaphoreHandle_t>(&dummy);
+    SemaphoreHandleDummy dummy         = {};
+    auto handle                        = static_cast<KiwiTest_osalSemaphoreHandle_t>(&dummy);
     KiwiTest_osalSemaphoreHandle_t out = nullptr;
 
     EXPECT_CALL(mock_, semaphoreCreate(osal(), 5u, 2u, _))
-        .WillOnce(DoAll(SetArgPointee<3>(handle), Return(KIWI_TEST_OSAL_SEMAPHORE_CREATE_ERR)));
+    .WillOnce(DoAll(SetArgPointee<3>(handle), Return(KIWI_TEST_OSAL_SEMAPHORE_CREATE_ERR)));
 
     EXPECT_EQ(kiwiTest_osalSemaphoreCreate(osal(), 5u, 2u, &out),
               KIWI_TEST_OSAL_SEMAPHORE_CREATE_ERR);
@@ -86,15 +86,15 @@ TEST_F(OsalUnitTest, Semaphore_Create_DispatchesConfigurationAndStatus)
  */
 TEST_F(OsalUnitTest, Semaphore_Operations_DispatchAndPropagateBackendStatus)
 {
-    SemaphoreHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalSemaphoreHandle_t>(&dummy);
+    SemaphoreHandleDummy dummy          = {};
+    auto handle                         = static_cast<KiwiTest_osalSemaphoreHandle_t>(&dummy);
     KiwiTest_osalSemaphoreCount_t count = 0u;
 
     EXPECT_CALL(mock_, semaphoreWait(osal(), handle)).WillOnce(Return(KIWI_TEST_OSAL_SEMAPHORE_WAIT_ERR));
     EXPECT_CALL(mock_, semaphorePend(osal(), handle, 75u)).WillOnce(Return(KIWI_TEST_OSAL_SEMAPHORE_WAIT_ERR));
     EXPECT_CALL(mock_, semaphorePost(osal(), handle)).WillOnce(Return(KIWI_TEST_OSAL_SEMAPHORE_POST_ERR));
     EXPECT_CALL(mock_, semaphoreCountGet(osal(), handle, _))
-        .WillOnce(DoAll(SetArgPointee<2>(3u), Return(KIWI_TEST_OSAL_NO_ERR)));
+    .WillOnce(DoAll(SetArgPointee<2>(3u), Return(KIWI_TEST_OSAL_NO_ERR)));
     EXPECT_CALL(mock_, semaphoreDelete(osal(), handle)).WillOnce(Return(KIWI_TEST_OSAL_NO_ERR));
 
     EXPECT_EQ(kiwiTest_osalSemaphoreWait(osal(), handle), KIWI_TEST_OSAL_SEMAPHORE_WAIT_ERR);
@@ -117,8 +117,8 @@ TEST_F(OsalUnitTest, Semaphore_Operations_DispatchAndPropagateBackendStatus)
  */
 TEST_F(OsalUnitTest, Semaphore_HandleGet_ReturnsRegisteredHandle)
 {
-    SemaphoreHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalSemaphoreHandle_t>(&dummy);
+    SemaphoreHandleDummy dummy         = {};
+    auto handle                        = static_cast<KiwiTest_osalSemaphoreHandle_t>(&dummy);
     KiwiTest_osalSemaphoreHandle_t out = nullptr;
 
     osal()->semaphoreObjHandle[0] = handle;
@@ -140,7 +140,7 @@ TEST_F(OsalUnitTest, Semaphore_HandleGet_ReturnsRegisteredHandle)
  */
 TEST_F(OsalUnitTest, Semaphore_NotInitialized_ReturnsNotInit)
 {
-    KiwiTest_osal_s uninitialized = {};
+    KiwiTest_osal_s uninitialized         = {};
     KiwiTest_osalSemaphoreHandle_t handle = nullptr;
 
     EXPECT_EQ(kiwiTest_osalSemaphoreCreate(&uninitialized, 2u, 0u, &handle), KIWI_TEST_OSAL_NOT_INIT_ERR);
@@ -160,8 +160,9 @@ TEST_F(OsalUnitTest, Semaphore_NotInitialized_ReturnsNotInit)
 TEST_F(OsalUnitTest, Semaphore_MissingBackendOperation_ReturnsPortSpecific)
 {
     KiwiTest_osalVtable_s vtable = kOsalMockVtable;
+
     vtable.semaphoreCreate = nullptr;
-    osal()->vtable = &vtable;
+    osal()->vtable         = &vtable;
     KiwiTest_osalSemaphoreHandle_t handle = nullptr;
 
     EXPECT_EQ(kiwiTest_osalSemaphoreCreate(osal(), 2u, 0u, &handle), KIWI_TEST_OSAL_PORT_SPECIFIC_ERR);

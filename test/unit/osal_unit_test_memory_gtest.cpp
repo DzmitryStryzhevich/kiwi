@@ -25,30 +25,32 @@ using ::testing::Return;
 TEST_F(OsalUnitTest, Memory_Alloc_ValidatesBackendResult)
 {
     int storage = 0;
-    void *out = nullptr;
+    void *out   = nullptr;
 
     EXPECT_EQ(kiwiTest_osalMalloc(osal(), 0u, &out), KIWI_TEST_OSAL_INVALID_ARGS_ERR);
     EXPECT_EQ(kiwiTest_osalMalloc(osal(), 16u, nullptr), KIWI_TEST_OSAL_INVALID_ARGS_ERR);
 
     EXPECT_CALL(mock_, memAlloc(osal(), 16u, _))
-        .WillOnce([&](void *, size_t, void **ptr)
-        {
-            *ptr = &storage;
-            return KIWI_TEST_OSAL_NO_ERR;
-        });
+    .WillOnce([&](void *, size_t, void **ptr)
+    {
+        *ptr = &storage;
+
+        return KIWI_TEST_OSAL_NO_ERR;
+    });
     ASSERT_EQ(kiwiTest_osalMalloc(osal(), 16u, &out), KIWI_TEST_OSAL_NO_ERR);
     EXPECT_EQ(out, &storage);
 
     EXPECT_CALL(mock_, memAlloc(osal(), 32u, _))
-        .WillOnce(Return(KIWI_TEST_OSAL_MEM_ALLOCATION_ERR));
+    .WillOnce(Return(KIWI_TEST_OSAL_MEM_ALLOCATION_ERR));
     EXPECT_EQ(kiwiTest_osalMalloc(osal(), 32u, &out), KIWI_TEST_OSAL_MEM_ALLOCATION_ERR);
 
     EXPECT_CALL(mock_, memAlloc(osal(), 64u, _))
-        .WillOnce([](void *, size_t, void **ptr)
-        {
-            *ptr = nullptr;
-            return KIWI_TEST_OSAL_NO_ERR;
-        });
+    .WillOnce([](void *, size_t, void **ptr)
+    {
+        *ptr = nullptr;
+
+        return KIWI_TEST_OSAL_NO_ERR;
+    });
     EXPECT_EQ(kiwiTest_osalMalloc(osal(), 64u, &out), KIWI_TEST_OSAL_MEM_ALLOCATION_ERR);
 }
 
@@ -66,7 +68,7 @@ TEST_F(OsalUnitTest, Memory_Alloc_ValidatesBackendResult)
 TEST_F(OsalUnitTest, Memory_FreeAndHandleGet_UseRegistryAndBackend)
 {
     int storage = 0;
-    void *out = nullptr;
+    void *out   = nullptr;
 
     osal()->memPtr[1] = &storage;
     ASSERT_EQ(kiwiTest_osalMemPtrGet(osal(), 1u, &out), KIWI_TEST_OSAL_NO_ERR);
@@ -75,7 +77,6 @@ TEST_F(OsalUnitTest, Memory_FreeAndHandleGet_UseRegistryAndBackend)
     EXPECT_CALL(mock_, memFree(osal(), &storage)).WillOnce(Return(KIWI_TEST_OSAL_PORT_SPECIFIC_ERR));
     EXPECT_EQ(kiwiTest_osalFree(osal(), &storage), KIWI_TEST_OSAL_PORT_SPECIFIC_ERR);
 }
-
 
 
 /**
@@ -90,7 +91,7 @@ TEST_F(OsalUnitTest, Memory_FreeAndHandleGet_UseRegistryAndBackend)
 TEST_F(OsalUnitTest, Memory_NotInitialized_ReturnsNotInit)
 {
     KiwiTest_osal_s uninitialized = {};
-    void *memory = nullptr;
+    void *memory                  = nullptr;
 
     EXPECT_EQ(kiwiTest_osalMalloc(&uninitialized, 16u, &memory), KIWI_TEST_OSAL_NOT_INIT_ERR);
 }
@@ -107,10 +108,10 @@ TEST_F(OsalUnitTest, Memory_NotInitialized_ReturnsNotInit)
 TEST_F(OsalUnitTest, Memory_MissingBackendOperation_ReturnsPortSpecific)
 {
     KiwiTest_osalVtable_s vtable = kOsalMockVtable;
-    void *memory = nullptr;
+    void *memory                 = nullptr;
 
     vtable.memAlloc = nullptr;
-    osal()->vtable = &vtable;
+    osal()->vtable  = &vtable;
 
     EXPECT_EQ(kiwiTest_osalMalloc(osal(), 16u, &memory), KIWI_TEST_OSAL_PORT_SPECIFIC_ERR);
 

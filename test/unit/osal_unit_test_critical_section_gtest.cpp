@@ -56,6 +56,7 @@ TEST_F(OsalUnitTest, CriticalSection_DispatchesAndPropagatesBackendStatus)
 TEST_F(OsalUnitTest, CriticalSection_NotInitialized_ReturnsNotInit)
 {
     KiwiTest_osal_s uninitialized = {};
+
     EXPECT_EQ(kiwiTest_osalCriticalSectionEnter(&uninitialized), KIWI_TEST_OSAL_NOT_INIT_ERR);
 }
 
@@ -72,8 +73,9 @@ TEST_F(OsalUnitTest, CriticalSection_NotInitialized_ReturnsNotInit)
 TEST_F(OsalUnitTest, CriticalSection_MissingBackendOperation_ReturnsPortSpecific)
 {
     KiwiTest_osalVtable_s vtable = kOsalMockVtable;
+
     vtable.criticalSectionEnter = nullptr;
-    osal()->vtable = &vtable;
+    osal()->vtable              = &vtable;
 
     EXPECT_EQ(kiwiTest_osalCriticalSectionEnter(osal()), KIWI_TEST_OSAL_PORT_SPECIFIC_ERR);
 

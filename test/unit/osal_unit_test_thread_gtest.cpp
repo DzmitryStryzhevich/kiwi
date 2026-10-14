@@ -36,8 +36,8 @@ void threadWorker(void *)
 TEST_F(OsalUnitTest, Thread_InvalidArgs)
 {
     KiwiTest_osalThreadHandle_t handle = nullptr;
-    KiwiTest_osalThreadAttr_s attr = {threadWorker, "worker", 4096u, nullptr, KIWI_TEST_OSAL_THREAD_PRIO_NORMAL};
-    KiwiTest_osalTimeMs_t wake = 10u;
+    KiwiTest_osalThreadAttr_s attr     = {threadWorker, "worker", 4096u, nullptr, KIWI_TEST_OSAL_THREAD_PRIO_NORMAL};
+    KiwiTest_osalTimeMs_t wake         = 10u;
 
     EXPECT_EQ(kiwiTest_osalThreadCreate(nullptr, &handle, attr), KIWI_TEST_OSAL_INVALID_ARGS_ERR);
     EXPECT_EQ(kiwiTest_osalThreadCreate(osal(), nullptr, attr), KIWI_TEST_OSAL_INVALID_ARGS_ERR);
@@ -65,11 +65,11 @@ TEST_F(OsalUnitTest, Thread_InvalidArgs)
  */
 TEST_F(OsalUnitTest, Thread_Create_DispatchesCompleteAttributes)
 {
-    ThreadHandleDummy dummy = {};
-    auto expectedHandle = static_cast<KiwiTest_osalThreadHandle_t>(&dummy);
+    ThreadHandleDummy dummy                  = {};
+    auto expectedHandle                      = static_cast<KiwiTest_osalThreadHandle_t>(&dummy);
     KiwiTest_osalThreadHandle_t actualHandle = nullptr;
-    int workerArg = 33;
-    KiwiTest_osalThreadAttr_s attr = {
+    int workerArg                            = 33;
+    KiwiTest_osalThreadAttr_s attr           = {
         threadWorker,
         "worker",
         8192u,
@@ -78,16 +78,17 @@ TEST_F(OsalUnitTest, Thread_Create_DispatchesCompleteAttributes)
     };
 
     EXPECT_CALL(mock_, threadCreate(osal(), _, _))
-        .WillOnce([&](void *, KiwiTest_osalThreadHandle_t *handle, KiwiTest_osalThreadAttr_s actualAttr)
-        {
-            EXPECT_EQ(actualAttr.worker, attr.worker);
-            EXPECT_STREQ(actualAttr.name, attr.name);
-            EXPECT_EQ(actualAttr.stackSize, attr.stackSize);
-            EXPECT_EQ(actualAttr.args, attr.args);
-            EXPECT_EQ(actualAttr.prio, attr.prio);
-            *handle = expectedHandle;
-            return KIWI_TEST_OSAL_THREAD_CREATE_ERR;
-        });
+    .WillOnce([&](void *, KiwiTest_osalThreadHandle_t *handle, KiwiTest_osalThreadAttr_s actualAttr)
+    {
+        EXPECT_EQ(actualAttr.worker, attr.worker);
+        EXPECT_STREQ(actualAttr.name, attr.name);
+        EXPECT_EQ(actualAttr.stackSize, attr.stackSize);
+        EXPECT_EQ(actualAttr.args, attr.args);
+        EXPECT_EQ(actualAttr.prio, attr.prio);
+        *handle = expectedHandle;
+
+        return KIWI_TEST_OSAL_THREAD_CREATE_ERR;
+    });
 
     EXPECT_EQ(kiwiTest_osalThreadCreate(osal(), &actualHandle, attr), KIWI_TEST_OSAL_THREAD_CREATE_ERR);
     EXPECT_EQ(actualHandle, expectedHandle);
@@ -107,7 +108,7 @@ TEST_F(OsalUnitTest, Thread_Create_DispatchesCompleteAttributes)
 TEST_F(OsalUnitTest, Thread_LifecycleControls_DispatchAndPropagateStatus)
 {
     ThreadHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalThreadHandle_t>(&dummy);
+    auto handle             = static_cast<KiwiTest_osalThreadHandle_t>(&dummy);
 
     EXPECT_CALL(mock_, threadSuspend(osal(), handle)).WillOnce(Return(KIWI_TEST_OSAL_PORT_SPECIFIC_ERR));
     EXPECT_CALL(mock_, threadResume(osal(), handle)).WillOnce(Return(KIWI_TEST_OSAL_PORT_SPECIFIC_ERR));
@@ -157,11 +158,12 @@ TEST_F(OsalUnitTest, Thread_DelayUntil_DispatchesInOutWakeReference)
     KiwiTest_osalTimeMs_t wake = 100u;
 
     EXPECT_CALL(mock_, threadDelayUntil(osal(), &wake, 25u))
-        .WillOnce([&](void *, KiwiTest_osalTimeMs_t *previousWakeTimeMs, KiwiTest_osalTimeMs_t)
-        {
-            *previousWakeTimeMs = 125u;
-            return KIWI_TEST_OSAL_NO_ERR;
-        });
+    .WillOnce([&](void *, KiwiTest_osalTimeMs_t *previousWakeTimeMs, KiwiTest_osalTimeMs_t)
+    {
+        *previousWakeTimeMs = 125u;
+
+        return KIWI_TEST_OSAL_NO_ERR;
+    });
 
     ASSERT_EQ(kiwiTest_osalThreadDelayUntil(osal(), &wake, 25u), KIWI_TEST_OSAL_NO_ERR);
     EXPECT_EQ(wake, 125u);
@@ -179,8 +181,8 @@ TEST_F(OsalUnitTest, Thread_DelayUntil_DispatchesInOutWakeReference)
  */
 TEST_F(OsalUnitTest, Thread_HandleGet_ReturnsRegisteredHandle)
 {
-    ThreadHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalThreadHandle_t>(&dummy);
+    ThreadHandleDummy dummy         = {};
+    auto handle                     = static_cast<KiwiTest_osalThreadHandle_t>(&dummy);
     KiwiTest_osalThreadHandle_t out = nullptr;
 
     osal()->threadObjHandle[0].handle = handle;
@@ -201,9 +203,9 @@ TEST_F(OsalUnitTest, Thread_HandleGet_ReturnsRegisteredHandle)
  */
 TEST_F(OsalUnitTest, Thread_NotInitialized_ReturnsNotInit)
 {
-    KiwiTest_osal_s uninitialized = {};
+    KiwiTest_osal_s uninitialized      = {};
     KiwiTest_osalThreadHandle_t handle = nullptr;
-    KiwiTest_osalThreadAttr_s attr = {threadWorker, "worker", 1024u, nullptr, KIWI_TEST_OSAL_THREAD_PRIO_NORMAL};
+    KiwiTest_osalThreadAttr_s attr     = {threadWorker, "worker", 1024u, nullptr, KIWI_TEST_OSAL_THREAD_PRIO_NORMAL};
 
     EXPECT_EQ(kiwiTest_osalThreadCreate(&uninitialized, &handle, attr), KIWI_TEST_OSAL_NOT_INIT_ERR);
 }
@@ -221,8 +223,9 @@ TEST_F(OsalUnitTest, Thread_NotInitialized_ReturnsNotInit)
 TEST_F(OsalUnitTest, Thread_MissingBackendOperation_ReturnsPortSpecific)
 {
     KiwiTest_osalVtable_s vtable = kOsalMockVtable;
+
     vtable.threadYield = nullptr;
-    osal()->vtable = &vtable;
+    osal()->vtable     = &vtable;
 
     EXPECT_EQ(kiwiTest_osalThreadYield(osal()), KIWI_TEST_OSAL_PORT_SPECIFIC_ERR);
 

@@ -10,28 +10,29 @@
 
 namespace
 {
-
 struct MutexWorkerContext
 {
-    KiwiTest_osal_s *osal = nullptr;
-    KiwiTest_osalMutexHandle_t mutex = nullptr;
-    KiwiTest_osalTimeMs_t timeoutMs = 0u;
-    bool timed = false;
-    bool unlockAfterAcquire = false;
-    std::atomic<bool> started{false};
-    std::atomic<bool> completed{false};
-    KiwiTest_osalErr_e status = KIWI_TEST_OSAL_PORT_SPECIFIC_ERR;
+    KiwiTest_osal_s            *osal              = nullptr;
+    KiwiTest_osalMutexHandle_t mutex              = nullptr;
+    KiwiTest_osalTimeMs_t      timeoutMs          = 0u;
+    bool                       timed              = false;
+    bool                       unlockAfterAcquire = false;
+    std::atomic<bool>          started{false};
+    std::atomic<bool>          completed{false};
+    KiwiTest_osalErr_e         status = KIWI_TEST_OSAL_PORT_SPECIFIC_ERR;
 };
 
 void mutexWorker(void *const args)
 {
     auto *const context = static_cast<MutexWorkerContext *>(args);
+
     context->started.store(true);
     context->status = context->timed
                     ? kiwiTest_osalMutexPendLock(context->osal, context->mutex, context->timeoutMs)
                     : kiwiTest_osalMutexTryLock(context->osal, context->mutex);
 
-    if ((context->status == KIWI_TEST_OSAL_NO_ERR) && context->unlockAfterAcquire)
+    if ((context->status == KIWI_TEST_OSAL_NO_ERR) &&
+        context->unlockAfterAcquire)
     {
         (void)kiwiTest_osalMutexUnlock(context->osal, context->mutex);
     }
@@ -39,7 +40,6 @@ void mutexWorker(void *const args)
     context->completed.store(true);
     kiwi::test::parkWorker(context->osal);
 }
-
 } // namespace
 
 /**
@@ -57,6 +57,7 @@ TEST_F(OsalPosixItTest, Mutex_RecursiveLocking_RequiresMatchingUnlocks)
 {
     /* Arrange */
     KiwiTest_osalMutexHandle_t mutex = nullptr;
+
     ASSERT_EQ(kiwiTest_osalMutexCreate(osal(), &mutex), KIWI_TEST_OSAL_NO_ERR);
 
     /* Act and Assert */
@@ -84,11 +85,12 @@ TEST_F(OsalPosixItTest, Mutex_TryLockDuringContention_FailsWithoutBlocking)
 {
     /* Arrange */
     KiwiTest_osalMutexHandle_t mutex = nullptr;
+
     ASSERT_EQ(kiwiTest_osalMutexCreate(osal(), &mutex), KIWI_TEST_OSAL_NO_ERR);
     ASSERT_EQ(kiwiTest_osalMutexLock(osal(), mutex), KIWI_TEST_OSAL_NO_ERR);
 
     MutexWorkerContext context{};
-    context.osal = osal();
+    context.osal  = osal();
     context.mutex = mutex;
 
     KiwiTest_osalThreadHandle_t worker = nullptr;
@@ -98,7 +100,10 @@ TEST_F(OsalPosixItTest, Mutex_TryLockDuringContention_FailsWithoutBlocking)
     /* Act */
     ASSERT_EQ(kiwiTest_osalThreadCreate(osal(), &worker, attr), KIWI_TEST_OSAL_NO_ERR);
     workerGuard.set(worker);
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() { return context.completed.load(); }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]()
+    {
+        return context.completed.load();
+    }));
 
     /* Assert */
     EXPECT_EQ(context.status, KIWI_TEST_OSAL_MUTEX_LOCK_ERR);
@@ -126,14 +131,15 @@ TEST_F(OsalPosixItTest, Mutex_PendLock_WakesAfterOwnerUnlocks)
 {
     /* Arrange */
     KiwiTest_osalMutexHandle_t mutex = nullptr;
+
     ASSERT_EQ(kiwiTest_osalMutexCreate(osal(), &mutex), KIWI_TEST_OSAL_NO_ERR);
     ASSERT_EQ(kiwiTest_osalMutexLock(osal(), mutex), KIWI_TEST_OSAL_NO_ERR);
 
     MutexWorkerContext context{};
-    context.osal = osal();
-    context.mutex = mutex;
-    context.timeoutMs = kiwi::test::kScenarioTimeoutMs;
-    context.timed = true;
+    context.osal               = osal();
+    context.mutex              = mutex;
+    context.timeoutMs          = kiwi::test::kScenarioTimeoutMs;
+    context.timed              = true;
     context.unlockAfterAcquire = true;
 
     KiwiTest_osalThreadHandle_t worker = nullptr;
@@ -141,14 +147,18 @@ TEST_F(OsalPosixItTest, Mutex_PendLock_WakesAfterOwnerUnlocks)
     const auto attr = kiwi::test::workerAttr(mutexWorker, &context, "mutex-pend");
     ASSERT_EQ(kiwiTest_osalThreadCreate(osal(), &worker, attr), KIWI_TEST_OSAL_NO_ERR);
     workerGuard.set(worker);
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() { return context.started.load(); }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() {
+        return context.started.load();
+    }));
 
     /* Verify real contention before releasing ownership */
     EXPECT_TRUE(kiwi::test::staysFalseFor(osal(), context.completed, 10u));
 
     /* Act */
     ASSERT_EQ(kiwiTest_osalMutexUnlock(osal(), mutex), KIWI_TEST_OSAL_NO_ERR);
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() { return context.completed.load(); }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() {
+        return context.completed.load();
+    }));
 
     /* Assert */
     EXPECT_EQ(context.status, KIWI_TEST_OSAL_NO_ERR);
@@ -173,14 +183,15 @@ TEST_F(OsalPosixItTest, Mutex_PendLock_ExpiresDuringContention)
 {
     /* Arrange */
     KiwiTest_osalMutexHandle_t mutex = nullptr;
+
     ASSERT_EQ(kiwiTest_osalMutexCreate(osal(), &mutex), KIWI_TEST_OSAL_NO_ERR);
     ASSERT_EQ(kiwiTest_osalMutexLock(osal(), mutex), KIWI_TEST_OSAL_NO_ERR);
 
     MutexWorkerContext context{};
-    context.osal = osal();
-    context.mutex = mutex;
+    context.osal      = osal();
+    context.mutex     = mutex;
     context.timeoutMs = kiwi::test::kShortTimeoutMs;
-    context.timed = true;
+    context.timed     = true;
 
     KiwiTest_osalThreadHandle_t worker = nullptr;
     kiwi::test::RegisteredThreadGuard workerGuard(osal());
@@ -189,7 +200,9 @@ TEST_F(OsalPosixItTest, Mutex_PendLock_ExpiresDuringContention)
     /* Act */
     ASSERT_EQ(kiwiTest_osalThreadCreate(osal(), &worker, attr), KIWI_TEST_OSAL_NO_ERR);
     workerGuard.set(worker);
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() { return context.completed.load(); }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() {
+        return context.completed.load();
+    }));
 
     /* Assert */
     EXPECT_EQ(context.status, KIWI_TEST_OSAL_MUTEX_LOCK_ERR);
@@ -226,4 +239,3 @@ TEST_F(OsalPosixItTest, Mutex_ForeignInstance_CannotUseOwnedHandle)
     ASSERT_EQ(kiwiTest_osalMutexUnlock(osal(), mutex), KIWI_TEST_OSAL_NO_ERR);
     ASSERT_EQ(kiwiTest_osalMutexDelete(osal(), mutex), KIWI_TEST_OSAL_NO_ERR);
 }
-

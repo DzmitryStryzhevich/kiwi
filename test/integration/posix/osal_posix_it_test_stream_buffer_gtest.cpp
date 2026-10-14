@@ -12,56 +12,56 @@
 
 namespace
 {
-
 struct StreamReadContext
 {
-    KiwiTest_osal_s *osal = nullptr;
+    KiwiTest_osal_s                   *osal        = nullptr;
     KiwiTest_osalStreamBufferHandle_t streamBuffer = nullptr;
-    std::atomic<bool> started{false};
-    std::atomic<bool> completed{false};
-    KiwiTest_osalErr_e status = KIWI_TEST_OSAL_PORT_SPECIFIC_ERR;
-    std::array<uint8_t, 8u> data{};
-    size_t bytesGet = 0u;
+    std::atomic<bool>                 started{false};
+    std::atomic<bool>                 completed{false};
+    KiwiTest_osalErr_e                status = KIWI_TEST_OSAL_PORT_SPECIFIC_ERR;
+    std::array<uint8_t, 8u>           data{};
+    size_t                            bytesGet = 0u;
 };
 
 void streamWaitWorker(void *const args)
 {
     auto *const context = static_cast<StreamReadContext *>(args);
+
     context->started.store(true);
     context->status = kiwiTest_osalStreamBufferWait(context->osal,
-                                                     context->streamBuffer,
-                                                     context->data.data(),
-                                                     context->data.size(),
-                                                     &context->bytesGet);
+                                                    context->streamBuffer,
+                                                    context->data.data(),
+                                                    context->data.size(),
+                                                    &context->bytesGet);
     context->completed.store(true);
     kiwi::test::parkWorker(context->osal);
 }
 
 struct StreamWriteContext
 {
-    KiwiTest_osal_s *osal = nullptr;
+    KiwiTest_osal_s                   *osal        = nullptr;
     KiwiTest_osalStreamBufferHandle_t streamBuffer = nullptr;
-    std::array<uint8_t, 4u> data{5u, 6u, 7u, 8u};
-    std::atomic<bool> started{false};
-    std::atomic<bool> completed{false};
-    KiwiTest_osalErr_e status = KIWI_TEST_OSAL_PORT_SPECIFIC_ERR;
-    size_t bytesPut = 0u;
+    std::array<uint8_t, 4u>           data{5u, 6u, 7u, 8u};
+    std::atomic<bool>                 started{false};
+    std::atomic<bool>                 completed{false};
+    KiwiTest_osalErr_e                status   = KIWI_TEST_OSAL_PORT_SPECIFIC_ERR;
+    size_t                            bytesPut = 0u;
 };
 
 void streamPostWorker(void *const args)
 {
     auto *const context = static_cast<StreamWriteContext *>(args);
+
     context->started.store(true);
     context->status = kiwiTest_osalStreamBufferPost(context->osal,
-                                                     context->streamBuffer,
-                                                     context->data.data(),
-                                                     context->data.size(),
-                                                     kiwi::test::kScenarioTimeoutMs,
-                                                     &context->bytesPut);
+                                                    context->streamBuffer,
+                                                    context->data.data(),
+                                                    context->data.size(),
+                                                    kiwi::test::kScenarioTimeoutMs,
+                                                    &context->bytesPut);
     context->completed.store(true);
     kiwi::test::parkWorker(context->osal);
 }
-
 } // namespace
 
 /**
@@ -81,6 +81,7 @@ TEST_F(OsalPosixItTest, StreamBuffer_NonBlockingTransfers_PreserveOrderAndAllowP
 {
     /* Arrange */
     KiwiTest_osalStreamBufferHandle_t streamBuffer = nullptr;
+
     ASSERT_EQ(kiwiTest_osalStreamBufferCreate(osal(), 4u, 1u, &streamBuffer), KIWI_TEST_OSAL_NO_ERR);
     const std::array<uint8_t, 6u> source{1u, 2u, 3u, 4u, 5u, 6u};
 
@@ -138,11 +139,12 @@ TEST_F(OsalPosixItTest, StreamBuffer_GetFromEmptyBuffer_ReportsEmptyState)
 {
     /* Arrange */
     KiwiTest_osalStreamBufferHandle_t streamBuffer = nullptr;
+
     ASSERT_EQ(kiwiTest_osalStreamBufferCreate(osal(), 8u, 1u, &streamBuffer), KIWI_TEST_OSAL_NO_ERR);
 
     /* Act */
-    uint8_t data = 0u;
-    size_t bytesGet = 1u;
+    uint8_t data      = 0u;
+    size_t bytesGet   = 1u;
     const auto status = kiwiTest_osalStreamBufferGet(osal(), streamBuffer, &data, 1u, &bytesGet);
 
     /* Assert */
@@ -169,10 +171,11 @@ TEST_F(OsalPosixItTest, StreamBuffer_WaitingReader_WakesWhenTriggerLevelIsReache
 {
     /* Arrange */
     KiwiTest_osalStreamBufferHandle_t streamBuffer = nullptr;
+
     ASSERT_EQ(kiwiTest_osalStreamBufferCreate(osal(), 8u, 4u, &streamBuffer), KIWI_TEST_OSAL_NO_ERR);
 
     StreamReadContext context{};
-    context.osal = osal();
+    context.osal         = osal();
     context.streamBuffer = streamBuffer;
 
     KiwiTest_osalThreadHandle_t worker = nullptr;
@@ -180,7 +183,9 @@ TEST_F(OsalPosixItTest, StreamBuffer_WaitingReader_WakesWhenTriggerLevelIsReache
     const auto attr = kiwi::test::workerAttr(streamWaitWorker, &context, "stream-reader");
     ASSERT_EQ(kiwiTest_osalThreadCreate(osal(), &worker, attr), KIWI_TEST_OSAL_NO_ERR);
     workerGuard.set(worker);
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() { return context.started.load(); }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() {
+        return context.started.load();
+    }));
 
     /* Publish less than the trigger threshold */
     const std::array<uint8_t, 3u> belowTrigger{1u, 2u, 3u};
@@ -198,7 +203,9 @@ TEST_F(OsalPosixItTest, StreamBuffer_WaitingReader_WakesWhenTriggerLevelIsReache
     const uint8_t triggerByte = 4u;
     ASSERT_EQ(kiwiTest_osalStreamBufferPut(osal(), streamBuffer, &triggerByte, 1u, &bytesPut),
               KIWI_TEST_OSAL_NO_ERR);
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() { return context.completed.load(); }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() {
+        return context.completed.load();
+    }));
 
     /* Assert */
     EXPECT_EQ(context.status, KIWI_TEST_OSAL_NO_ERR);
@@ -229,6 +236,7 @@ TEST_F(OsalPosixItTest, StreamBuffer_Post_WakesAfterReaderProvidesRequiredCapaci
 {
     /* Arrange */
     KiwiTest_osalStreamBufferHandle_t streamBuffer = nullptr;
+
     ASSERT_EQ(kiwiTest_osalStreamBufferCreate(osal(), 6u, 1u, &streamBuffer), KIWI_TEST_OSAL_NO_ERR);
     const std::array<uint8_t, 4u> initial{1u, 2u, 3u, 4u};
     size_t bytesPut = 0u;
@@ -237,7 +245,7 @@ TEST_F(OsalPosixItTest, StreamBuffer_Post_WakesAfterReaderProvidesRequiredCapaci
     ASSERT_EQ(bytesPut, initial.size());
 
     StreamWriteContext context{};
-    context.osal = osal();
+    context.osal         = osal();
     context.streamBuffer = streamBuffer;
 
     KiwiTest_osalThreadHandle_t worker = nullptr;
@@ -245,7 +253,9 @@ TEST_F(OsalPosixItTest, StreamBuffer_Post_WakesAfterReaderProvidesRequiredCapaci
     const auto attr = kiwi::test::workerAttr(streamPostWorker, &context, "stream-writer");
     ASSERT_EQ(kiwiTest_osalThreadCreate(osal(), &worker, attr), KIWI_TEST_OSAL_NO_ERR);
     workerGuard.set(worker);
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() { return context.started.load(); }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() {
+        return context.started.load();
+    }));
     EXPECT_TRUE(kiwi::test::staysFalseFor(osal(), context.completed, 10u));
 
     /* Act: release exactly enough capacity for the pending write */
@@ -254,7 +264,9 @@ TEST_F(OsalPosixItTest, StreamBuffer_Post_WakesAfterReaderProvidesRequiredCapaci
     ASSERT_EQ(kiwiTest_osalStreamBufferGet(osal(), streamBuffer, consumed.data(), consumed.size(), &bytesGet),
               KIWI_TEST_OSAL_NO_ERR);
     ASSERT_EQ(bytesGet, consumed.size());
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() { return context.completed.load(); }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() {
+        return context.completed.load();
+    }));
 
     /* Assert */
     EXPECT_EQ(context.status, KIWI_TEST_OSAL_NO_ERR);
@@ -293,11 +305,12 @@ TEST_F(OsalPosixItTest, StreamBuffer_PendOnEmptyBuffer_ExpiresAfterTimeout)
 {
     /* Arrange */
     KiwiTest_osalStreamBufferHandle_t streamBuffer = nullptr;
+
     ASSERT_EQ(kiwiTest_osalStreamBufferCreate(osal(), 8u, 1u, &streamBuffer), KIWI_TEST_OSAL_NO_ERR);
     std::array<uint8_t, 4u> data{};
-    size_t bytesGet = 1u;
+    size_t bytesGet               = 1u;
     KiwiTest_osalTimeMs_t startMs = 0u;
-    KiwiTest_osalTimeMs_t endMs = 0u;
+    KiwiTest_osalTimeMs_t endMs   = 0u;
     ASSERT_EQ(kiwiTest_osalTimeMsGet(osal(), &startMs), KIWI_TEST_OSAL_NO_ERR);
 
     /* Act */
@@ -333,6 +346,7 @@ TEST_F(OsalPosixItTest, StreamBuffer_WrapAround_PreservesCompleteByteSequence)
 {
     /* Arrange */
     KiwiTest_osalStreamBufferHandle_t streamBuffer = nullptr;
+
     ASSERT_EQ(kiwiTest_osalStreamBufferCreate(osal(), 8u, 1u, &streamBuffer), KIWI_TEST_OSAL_NO_ERR);
     const std::array<uint8_t, 6u> first{0u, 1u, 2u, 3u, 4u, 5u};
     const std::array<uint8_t, 6u> second{6u, 7u, 8u, 9u, 10u, 11u};
@@ -378,6 +392,7 @@ TEST_F(OsalPosixItTest, StreamBuffer_Reset_DiscardsBufferedData)
 {
     /* Arrange */
     KiwiTest_osalStreamBufferHandle_t streamBuffer = nullptr;
+
     ASSERT_EQ(kiwiTest_osalStreamBufferCreate(osal(), 8u, 1u, &streamBuffer), KIWI_TEST_OSAL_NO_ERR);
     const std::array<uint8_t, 3u> payload{1u, 2u, 3u};
     size_t bytesPut = 0u;
@@ -433,4 +448,3 @@ TEST_F(OsalPosixItTest, StreamBuffer_ForeignInstance_CannotUseOwnedHandle)
     EXPECT_EQ(received, payload);
     ASSERT_EQ(kiwiTest_osalStreamBufferDelete(osal(), streamBuffer), KIWI_TEST_OSAL_NO_ERR);
 }
-

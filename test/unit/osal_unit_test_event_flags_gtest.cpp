@@ -31,10 +31,10 @@ struct EventFlagsHandleDummy
  */
 TEST_F(OsalUnitTest, EventFlags_InvalidArgs)
 {
-    EventFlagsHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalEventFlagsHandle_t>(&dummy);
+    EventFlagsHandleDummy dummy         = {};
+    auto handle                         = static_cast<KiwiTest_osalEventFlagsHandle_t>(&dummy);
     KiwiTest_osalEventFlagsHandle_t out = nullptr;
-    uint32_t flags = 0u;
+    uint32_t flags                      = 0u;
 
     EXPECT_EQ(kiwiTest_osalEventFlagsCreate(nullptr, &out), KIWI_TEST_OSAL_INVALID_ARGS_ERR);
     EXPECT_EQ(kiwiTest_osalEventFlagsCreate(osal(), nullptr), KIWI_TEST_OSAL_INVALID_ARGS_ERR);
@@ -68,17 +68,17 @@ TEST_F(OsalUnitTest, EventFlags_InvalidArgs)
  */
 TEST_F(OsalUnitTest, EventFlags_LifecycleAndBitOperations_DispatchToBackend)
 {
-    EventFlagsHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalEventFlagsHandle_t>(&dummy);
+    EventFlagsHandleDummy dummy         = {};
+    auto handle                         = static_cast<KiwiTest_osalEventFlagsHandle_t>(&dummy);
     KiwiTest_osalEventFlagsHandle_t out = nullptr;
-    uint32_t actual = 0u;
+    uint32_t actual                     = 0u;
 
     EXPECT_CALL(mock_, eventFlagsCreate(osal(), _))
-        .WillOnce(DoAll(SetArgPointee<1>(handle), Return(KIWI_TEST_OSAL_NO_ERR)));
+    .WillOnce(DoAll(SetArgPointee<1>(handle), Return(KIWI_TEST_OSAL_NO_ERR)));
     EXPECT_CALL(mock_, eventFlagsSet(osal(), handle, 0x05u)).WillOnce(Return(KIWI_TEST_OSAL_EVENT_FLAGS_SET_ERR));
     EXPECT_CALL(mock_, eventFlagsClear(osal(), handle, 0x04u)).WillOnce(Return(KIWI_TEST_OSAL_EVENT_FLAGS_CLEAR_ERR));
     EXPECT_CALL(mock_, eventFlagsGet(osal(), handle, _))
-        .WillOnce(DoAll(SetArgPointee<2>(0x01u), Return(KIWI_TEST_OSAL_NO_ERR)));
+    .WillOnce(DoAll(SetArgPointee<2>(0x01u), Return(KIWI_TEST_OSAL_NO_ERR)));
     EXPECT_CALL(mock_, eventFlagsDelete(osal(), handle)).WillOnce(Return(KIWI_TEST_OSAL_NO_ERR));
 
     ASSERT_EQ(kiwiTest_osalEventFlagsCreate(osal(), &out), KIWI_TEST_OSAL_NO_ERR);
@@ -104,13 +104,13 @@ TEST_F(OsalUnitTest, EventFlags_LifecycleAndBitOperations_DispatchToBackend)
 TEST_F(OsalUnitTest, EventFlags_Wait_DispatchesCompleteContract)
 {
     EventFlagsHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalEventFlagsHandle_t>(&dummy);
-    uint32_t actual = 0u;
-    const auto options = static_cast<KiwiTest_osalEventFlagsOptions_e>(
+    auto handle                 = static_cast<KiwiTest_osalEventFlagsHandle_t>(&dummy);
+    uint32_t actual             = 0u;
+    const auto options          = static_cast<KiwiTest_osalEventFlagsOptions_e>(
         KIWI_TEST_OSAL_EVENT_FLAGS_WAIT_ALL | KIWI_TEST_OSAL_EVENT_FLAGS_NO_CLEAR);
 
     EXPECT_CALL(mock_, eventFlagsWait(osal(), handle, 0x03u, options, 125u, _))
-        .WillOnce(DoAll(SetArgPointee<5>(0x03u), Return(KIWI_TEST_OSAL_EVENT_FLAGS_WAIT_ERR)));
+    .WillOnce(DoAll(SetArgPointee<5>(0x03u), Return(KIWI_TEST_OSAL_EVENT_FLAGS_WAIT_ERR)));
 
     EXPECT_EQ(kiwiTest_osalEventFlagsWait(osal(), handle, 0x03u, options, 125u, &actual),
               KIWI_TEST_OSAL_EVENT_FLAGS_WAIT_ERR);
@@ -129,8 +129,8 @@ TEST_F(OsalUnitTest, EventFlags_Wait_DispatchesCompleteContract)
  */
 TEST_F(OsalUnitTest, EventFlags_HandleGet_ReturnsRegisteredHandle)
 {
-    EventFlagsHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalEventFlagsHandle_t>(&dummy);
+    EventFlagsHandleDummy dummy         = {};
+    auto handle                         = static_cast<KiwiTest_osalEventFlagsHandle_t>(&dummy);
     KiwiTest_osalEventFlagsHandle_t out = nullptr;
 
     osal()->eventFlagsObjHandle[1] = handle;
@@ -152,7 +152,7 @@ TEST_F(OsalUnitTest, EventFlags_HandleGet_ReturnsRegisteredHandle)
  */
 TEST_F(OsalUnitTest, EventFlags_NotInitialized_ReturnsNotInit)
 {
-    KiwiTest_osal_s uninitialized = {};
+    KiwiTest_osal_s uninitialized          = {};
     KiwiTest_osalEventFlagsHandle_t handle = nullptr;
 
     EXPECT_EQ(kiwiTest_osalEventFlagsCreate(&uninitialized, &handle), KIWI_TEST_OSAL_NOT_INIT_ERR);
@@ -172,8 +172,9 @@ TEST_F(OsalUnitTest, EventFlags_NotInitialized_ReturnsNotInit)
 TEST_F(OsalUnitTest, EventFlags_MissingBackendOperation_ReturnsPortSpecific)
 {
     KiwiTest_osalVtable_s vtable = kOsalMockVtable;
+
     vtable.eventFlagsCreate = nullptr;
-    osal()->vtable = &vtable;
+    osal()->vtable          = &vtable;
     KiwiTest_osalEventFlagsHandle_t handle = nullptr;
 
     EXPECT_EQ(kiwiTest_osalEventFlagsCreate(osal(), &handle), KIWI_TEST_OSAL_PORT_SPECIFIC_ERR);

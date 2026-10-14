@@ -215,11 +215,11 @@ public:
 
 namespace kiwi_test_osal_mock_registry
 {
-
 void bind(KiwiTest_osal_s *osal, OsalMock *mock);
-void unbind(KiwiTest_osal_s *osal);
-OsalMock *get(const KiwiTest_osal_s *osal);
 
+void unbind(KiwiTest_osal_s *osal);
+
+OsalMock *get(const KiwiTest_osal_s *osal);
 } // namespace kiwi_test_osal_mock_registry
 
 
@@ -245,7 +245,7 @@ public:
         }
     }
 
-    OsalMockBinder(const OsalMockBinder &) = delete;
+    OsalMockBinder(const OsalMockBinder &)            = delete;
     OsalMockBinder &operator=(const OsalMockBinder &) = delete;
 
 private:

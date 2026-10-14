@@ -11,26 +11,25 @@
 
 namespace
 {
-
 struct QueueWaitContext
 {
-    KiwiTest_osal_s *osal = nullptr;
+    KiwiTest_osal_s            *osal = nullptr;
     KiwiTest_osalQueueHandle_t queue = nullptr;
-    std::atomic<bool> started{false};
-    std::atomic<bool> completed{false};
-    KiwiTest_osalErr_e status = KIWI_TEST_OSAL_PORT_SPECIFIC_ERR;
-    uint32_t value = 0u;
+    std::atomic<bool>          started{false};
+    std::atomic<bool>          completed{false};
+    KiwiTest_osalErr_e         status = KIWI_TEST_OSAL_PORT_SPECIFIC_ERR;
+    uint32_t                   value  = 0u;
 };
 
 void queueWaitWorker(void *const args)
 {
     auto *const context = static_cast<QueueWaitContext *>(args);
+
     context->started.store(true);
     context->status = kiwiTest_osalQueueItemWait(context->osal, context->queue, &context->value);
     context->completed.store(true);
     kiwi::test::parkWorker(context->osal);
 }
-
 } // namespace
 
 /**
@@ -52,11 +51,12 @@ TEST_F(OsalPosixItTest, Queue_FifoAndBoundaryStates_ArePreserved)
 {
     /* Arrange */
     KiwiTest_osalQueueHandle_t queue = nullptr;
+
     ASSERT_EQ(kiwiTest_osalQueueCreate(osal(), sizeof(uint32_t), 2u, &queue), KIWI_TEST_OSAL_NO_ERR);
     ASSERT_NE(queue, nullptr);
 
-    const uint32_t first = 0x11223344u;
-    const uint32_t second = 0x55667788u;
+    const uint32_t first    = 0x11223344u;
+    const uint32_t second   = 0x55667788u;
     const uint32_t overflow = 0xAABBCCDDu;
 
     /* Act: fill the queue and exercise the non-blocking full boundary */
@@ -64,9 +64,9 @@ TEST_F(OsalPosixItTest, Queue_FifoAndBoundaryStates_ArePreserved)
     ASSERT_EQ(kiwiTest_osalQueueItemPut(osal(), queue, &second), KIWI_TEST_OSAL_NO_ERR);
     EXPECT_EQ(kiwiTest_osalQueueItemPut(osal(), queue, &overflow), KIWI_TEST_OSAL_QUEUE_IS_FULL_ERR);
 
-    uint32_t receivedFirst = 0u;
+    uint32_t receivedFirst  = 0u;
     uint32_t receivedSecond = 0u;
-    uint32_t emptyRead = 0u;
+    uint32_t emptyRead      = 0u;
     ASSERT_EQ(kiwiTest_osalQueueItemGet(osal(), queue, &receivedFirst), KIWI_TEST_OSAL_NO_ERR);
     ASSERT_EQ(kiwiTest_osalQueueItemGet(osal(), queue, &receivedSecond), KIWI_TEST_OSAL_NO_ERR);
 
@@ -96,10 +96,11 @@ TEST_F(OsalPosixItTest, Queue_WaitingConsumer_WakesAfterPut)
 {
     /* Arrange */
     KiwiTest_osalQueueHandle_t queue = nullptr;
+
     ASSERT_EQ(kiwiTest_osalQueueCreate(osal(), sizeof(uint32_t), 1u, &queue), KIWI_TEST_OSAL_NO_ERR);
 
     QueueWaitContext context{};
-    context.osal = osal();
+    context.osal  = osal();
     context.queue = queue;
 
     KiwiTest_osalThreadHandle_t worker = nullptr;
@@ -107,7 +108,9 @@ TEST_F(OsalPosixItTest, Queue_WaitingConsumer_WakesAfterPut)
     const auto attr = kiwi::test::workerAttr(queueWaitWorker, &context, "queue-wait");
     ASSERT_EQ(kiwiTest_osalThreadCreate(osal(), &worker, attr), KIWI_TEST_OSAL_NO_ERR);
     workerGuard.set(worker);
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() { return context.started.load(); }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() {
+        return context.started.load();
+    }));
 
     /* Verify that the consumer is genuinely blocked on the empty queue */
     EXPECT_TRUE(kiwi::test::staysFalseFor(osal(), context.completed, 10u));
@@ -115,7 +118,9 @@ TEST_F(OsalPosixItTest, Queue_WaitingConsumer_WakesAfterPut)
     /* Act: publish data from the producer side */
     const uint32_t expected = 0xCAFEBABEu;
     ASSERT_EQ(kiwiTest_osalQueueItemPut(osal(), queue, &expected), KIWI_TEST_OSAL_NO_ERR);
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() { return context.completed.load(); }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() {
+        return context.completed.load();
+    }));
 
     /* Assert */
     EXPECT_EQ(context.status, KIWI_TEST_OSAL_NO_ERR);
@@ -142,11 +147,12 @@ TEST_F(OsalPosixItTest, Queue_PendOnEmptyQueue_ExpiresAfterTimeout)
 {
     /* Arrange */
     KiwiTest_osalQueueHandle_t queue = nullptr;
+
     ASSERT_EQ(kiwiTest_osalQueueCreate(osal(), sizeof(uint32_t), 1u, &queue), KIWI_TEST_OSAL_NO_ERR);
 
     KiwiTest_osalTimeMs_t startMs = 0u;
-    KiwiTest_osalTimeMs_t endMs = 0u;
-    uint32_t value = 0u;
+    KiwiTest_osalTimeMs_t endMs   = 0u;
+    uint32_t value                = 0u;
     ASSERT_EQ(kiwiTest_osalTimeMsGet(osal(), &startMs), KIWI_TEST_OSAL_NO_ERR);
 
     /* Act */
@@ -176,13 +182,14 @@ TEST_F(OsalPosixItTest, Queue_PostToFullQueue_ExpiresAfterTimeout)
 {
     /* Arrange */
     KiwiTest_osalQueueHandle_t queue = nullptr;
+
     ASSERT_EQ(kiwiTest_osalQueueCreate(osal(), sizeof(uint32_t), 1u, &queue), KIWI_TEST_OSAL_NO_ERR);
-    const uint32_t queued = 0x12345678u;
+    const uint32_t queued  = 0x12345678u;
     const uint32_t pending = 0x87654321u;
     ASSERT_EQ(kiwiTest_osalQueueItemPut(osal(), queue, &queued), KIWI_TEST_OSAL_NO_ERR);
 
     KiwiTest_osalTimeMs_t startMs = 0u;
-    KiwiTest_osalTimeMs_t endMs = 0u;
+    KiwiTest_osalTimeMs_t endMs   = 0u;
     ASSERT_EQ(kiwiTest_osalTimeMsGet(osal(), &startMs), KIWI_TEST_OSAL_NO_ERR);
 
     /* Act */
@@ -214,6 +221,7 @@ TEST_F(OsalPosixItTest, Queue_Reset_DiscardsQueuedItems)
 {
     /* Arrange */
     KiwiTest_osalQueueHandle_t queue = nullptr;
+
     ASSERT_EQ(kiwiTest_osalQueueCreate(osal(), sizeof(uint32_t), 2u, &queue), KIWI_TEST_OSAL_NO_ERR);
     const uint32_t value = 0xA5A5A5A5u;
     ASSERT_EQ(kiwiTest_osalQueueItemPut(osal(), queue, &value), KIWI_TEST_OSAL_NO_ERR);
@@ -251,10 +259,9 @@ TEST_F(OsalPosixItTest, Queue_ForeignInstance_CannotUseOwnedHandle)
 
     /* Assert that ownership rejection does not invalidate the real queue */
     const uint32_t value = 0x13579BDFu;
-    uint32_t received = 0u;
+    uint32_t received    = 0u;
     ASSERT_EQ(kiwiTest_osalQueueItemPut(osal(), queue, &value), KIWI_TEST_OSAL_NO_ERR);
     ASSERT_EQ(kiwiTest_osalQueueItemGet(osal(), queue, &received), KIWI_TEST_OSAL_NO_ERR);
     EXPECT_EQ(received, value);
     ASSERT_EQ(kiwiTest_osalQueueDelete(osal(), queue), KIWI_TEST_OSAL_NO_ERR);
 }
-

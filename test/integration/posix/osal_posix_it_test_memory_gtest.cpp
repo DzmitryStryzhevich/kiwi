@@ -23,7 +23,7 @@
  */
 TEST_F(OsalPosixItTest, Memory_AllocatedBlock_IsWritableAndReleasable)
 {
-    void *memory = nullptr;
+    void *memory          = nullptr;
     constexpr size_t size = 64u;
 
     /* Allocate registered backend memory */
@@ -33,6 +33,7 @@ TEST_F(OsalPosixItTest, Memory_AllocatedBlock_IsWritableAndReleasable)
     /* Write and verify a deterministic pattern */
     std::memset(memory, 0xA5, size);
     const auto *bytes = static_cast<const uint8_t *>(memory);
+
     for (size_t i = 0u; i < size; ++i)
     {
         EXPECT_EQ(bytes[i], 0xA5u);
@@ -57,7 +58,7 @@ TEST_F(OsalPosixItTest, Memory_ForeignInstance_CannotFreeOwnedAllocation)
 {
     /* Arrange */
     ASSERT_TRUE(initializeSecondaryOsal());
-    void *memory = nullptr;
+    void *memory          = nullptr;
     constexpr size_t size = 32u;
     ASSERT_EQ(kiwiTest_osalMalloc(osal(), size, &memory), KIWI_TEST_OSAL_NO_ERR);
     ASSERT_NE(memory, nullptr);
@@ -72,4 +73,3 @@ TEST_F(OsalPosixItTest, Memory_ForeignInstance_CannotFreeOwnedAllocation)
     EXPECT_EQ(bytes[size - 1u], 0x5Au);
     ASSERT_EQ(kiwiTest_osalFree(osal(), memory), KIWI_TEST_OSAL_NO_ERR);
 }
-

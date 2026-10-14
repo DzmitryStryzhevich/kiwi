@@ -13,7 +13,7 @@ namespace
 {
 struct ThreadWorkerContext
 {
-    KiwiTest_osal_s *osal = nullptr;
+    KiwiTest_osal_s   *osal = nullptr;
     std::atomic<bool> entered{false};
     std::atomic<bool> completed{false};
 };
@@ -21,6 +21,7 @@ struct ThreadWorkerContext
 void selfExitWorker(void *const args)
 {
     auto *const context = static_cast<ThreadWorkerContext *>(args);
+
     context->entered.store(true);
     context->completed.store(true);
     kiwiTest_osalThreadExit(context->osal);
@@ -29,17 +30,17 @@ void selfExitWorker(void *const args)
 
 struct ParkWorkerContext
 {
-    KiwiTest_osal_s *osal = nullptr;
+    KiwiTest_osal_s   *osal = nullptr;
     std::atomic<bool> started{false};
 };
 
 void parkedWorker(void *const args)
 {
     auto *const context = static_cast<ParkWorkerContext *>(args);
+
     context->started.store(true);
     kiwi::test::parkWorker(context->osal);
 }
-
 } // namespace
 
 /**
@@ -88,24 +89,31 @@ TEST_F(OsalPosixItTest, Thread_CreateWorker_ExecutesAndSelfTerminates)
 {
     /* Arrange: occupy one thread slot for the complete scenario */
     ParkWorkerContext occupiedContext{};
+
     occupiedContext.osal = osal();
     KiwiTest_osalThreadHandle_t occupiedWorker = nullptr;
     kiwi::test::RegisteredThreadGuard occupiedGuard(osal());
     const auto occupiedAttr = kiwi::test::workerAttr(parkedWorker, &occupiedContext, "worker-occupied");
     ASSERT_EQ(kiwiTest_osalThreadCreate(osal(), &occupiedWorker, occupiedAttr), KIWI_TEST_OSAL_NO_ERR);
     occupiedGuard.set(occupiedWorker);
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&occupiedContext]() { return occupiedContext.started.load(); }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&occupiedContext]() {
+        return occupiedContext.started.load();
+    }));
 
     ThreadWorkerContext exitContext{};
     exitContext.osal = osal();
     KiwiTest_osalThreadHandle_t exitWorker = nullptr;
-    const auto exitAttr = kiwi::test::workerAttr(selfExitWorker, &exitContext, "worker-exit");
+    const auto exitAttr                    = kiwi::test::workerAttr(selfExitWorker, &exitContext, "worker-exit");
 
     /* Act: fill the remaining slot with a worker that self-terminates */
     ASSERT_EQ(kiwiTest_osalThreadCreate(osal(), &exitWorker, exitAttr), KIWI_TEST_OSAL_NO_ERR);
     ASSERT_NE(exitWorker, nullptr);
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&exitContext]() { return exitContext.entered.load(); }));
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&exitContext]() { return exitContext.completed.load(); }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&exitContext]() {
+        return exitContext.entered.load();
+    }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&exitContext]() {
+        return exitContext.completed.load();
+    }));
 
     /* Wait until ThreadExit makes the second registry slot reusable */
     ParkWorkerContext replacementContext{};
@@ -115,7 +123,7 @@ TEST_F(OsalPosixItTest, Thread_CreateWorker_ExecutesAndSelfTerminates)
     const auto replacementAttr = kiwi::test::workerAttr(parkedWorker, &replacementContext, "worker-replacement");
 
     KiwiTest_osalErr_e createStatus = KIWI_TEST_OSAL_THREAD_CREATE_ERR;
-    KiwiTest_osalTimeMs_t startMs = 0u;
+    KiwiTest_osalTimeMs_t startMs   = 0u;
     ASSERT_EQ(kiwiTest_osalTimeMsGet(osal(), &startMs), KIWI_TEST_OSAL_NO_ERR);
 
     while (createStatus == KIWI_TEST_OSAL_THREAD_CREATE_ERR)
@@ -135,7 +143,9 @@ TEST_F(OsalPosixItTest, Thread_CreateWorker_ExecutesAndSelfTerminates)
     /* Assert: successful replacement creation proves slot release by ThreadExit */
     ASSERT_EQ(createStatus, KIWI_TEST_OSAL_NO_ERR);
     replacementGuard.set(replacementWorker);
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&replacementContext]() { return replacementContext.started.load(); }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&replacementContext]() {
+        return replacementContext.started.load();
+    }));
     EXPECT_TRUE(exitContext.entered.load());
     EXPECT_TRUE(exitContext.completed.load());
 
@@ -168,7 +178,9 @@ TEST_F(OsalPosixItTest, Thread_ForeignInstance_CannotDeleteOwnedWorker)
     const auto attr = kiwi::test::workerAttr(parkedWorker, &context, "owned-worker");
     ASSERT_EQ(kiwiTest_osalThreadCreate(osal(), &worker, attr), KIWI_TEST_OSAL_NO_ERR);
     workerGuard.set(worker);
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() { return context.started.load(); }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() {
+        return context.started.load();
+    }));
 
     /* Act */
     EXPECT_EQ(kiwiTest_osalThreadDelete(secondaryOsal(), worker), KIWI_TEST_OSAL_INVALID_ARGS_ERR);
@@ -177,4 +189,3 @@ TEST_F(OsalPosixItTest, Thread_ForeignInstance_CannotDeleteOwnedWorker)
     ASSERT_EQ(kiwiTest_osalThreadDelete(osal(), worker), KIWI_TEST_OSAL_NO_ERR);
     workerGuard.release();
 }
-

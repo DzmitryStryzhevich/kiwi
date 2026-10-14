@@ -11,23 +11,23 @@
 
 namespace
 {
-
 struct EventWaitContext
 {
-    KiwiTest_osal_s *osal = nullptr;
-    KiwiTest_osalEventFlagsHandle_t eventFlags = nullptr;
-    uint32_t requestedFlags = 0u;
-    KiwiTest_osalEventFlagsOptions_e options = KIWI_TEST_OSAL_EVENT_FLAGS_WAIT_ANY;
-    KiwiTest_osalTimeMs_t timeoutMs = kiwi::test::kScenarioTimeoutMs;
-    std::atomic<bool> started{false};
-    std::atomic<bool> completed{false};
-    KiwiTest_osalErr_e status = KIWI_TEST_OSAL_PORT_SPECIFIC_ERR;
-    uint32_t actualFlags = 0u;
+    KiwiTest_osal_s                  *osal          = nullptr;
+    KiwiTest_osalEventFlagsHandle_t  eventFlags     = nullptr;
+    uint32_t                         requestedFlags = 0u;
+    KiwiTest_osalEventFlagsOptions_e options        = KIWI_TEST_OSAL_EVENT_FLAGS_WAIT_ANY;
+    KiwiTest_osalTimeMs_t            timeoutMs      = kiwi::test::kScenarioTimeoutMs;
+    std::atomic<bool>                started{false};
+    std::atomic<bool>                completed{false};
+    KiwiTest_osalErr_e               status      = KIWI_TEST_OSAL_PORT_SPECIFIC_ERR;
+    uint32_t                         actualFlags = 0u;
 };
 
 void eventWaitWorker(void *const args)
 {
     auto *const context = static_cast<EventWaitContext *>(args);
+
     context->started.store(true);
     context->status = kiwiTest_osalEventFlagsWait(context->osal,
                                                   context->eventFlags,
@@ -38,7 +38,6 @@ void eventWaitWorker(void *const args)
     context->completed.store(true);
     kiwi::test::parkWorker(context->osal);
 }
-
 } // namespace
 
 /**
@@ -57,8 +56,9 @@ TEST_F(OsalPosixItTest, EventFlags_SetGetClear_PreserveExpectedBitState)
 {
     /* Arrange */
     KiwiTest_osalEventFlagsHandle_t eventFlags = nullptr;
+
     ASSERT_EQ(kiwiTest_osalEventFlagsCreate(osal(), &eventFlags), KIWI_TEST_OSAL_NO_ERR);
-    constexpr uint32_t kFirst = 0x01u;
+    constexpr uint32_t kFirst  = 0x01u;
     constexpr uint32_t kSecond = 0x04u;
 
     /* Act: publish both bits and inspect real state */
@@ -94,11 +94,12 @@ TEST_F(OsalPosixItTest, EventFlags_WaitAny_WakesOnMatchingFlag)
 {
     /* Arrange */
     KiwiTest_osalEventFlagsHandle_t eventFlags = nullptr;
+
     ASSERT_EQ(kiwiTest_osalEventFlagsCreate(osal(), &eventFlags), KIWI_TEST_OSAL_NO_ERR);
 
     EventWaitContext context{};
-    context.osal = osal();
-    context.eventFlags = eventFlags;
+    context.osal           = osal();
+    context.eventFlags     = eventFlags;
     context.requestedFlags = 0x01u | 0x02u;
 
     KiwiTest_osalThreadHandle_t worker = nullptr;
@@ -106,12 +107,16 @@ TEST_F(OsalPosixItTest, EventFlags_WaitAny_WakesOnMatchingFlag)
     const auto attr = kiwi::test::workerAttr(eventWaitWorker, &context, "flags-any");
     ASSERT_EQ(kiwiTest_osalThreadCreate(osal(), &worker, attr), KIWI_TEST_OSAL_NO_ERR);
     workerGuard.set(worker);
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() { return context.started.load(); }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() {
+        return context.started.load();
+    }));
     EXPECT_TRUE(kiwi::test::staysFalseFor(osal(), context.completed, 10u));
 
     /* Act */
     ASSERT_EQ(kiwiTest_osalEventFlagsSet(osal(), eventFlags, 0x02u), KIWI_TEST_OSAL_NO_ERR);
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() { return context.completed.load(); }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() {
+        return context.completed.load();
+    }));
 
     /* Assert */
     EXPECT_EQ(context.status, KIWI_TEST_OSAL_NO_ERR);
@@ -139,20 +144,23 @@ TEST_F(OsalPosixItTest, EventFlags_WaitAll_WakesOnlyOnCompleteMask)
 {
     /* Arrange */
     KiwiTest_osalEventFlagsHandle_t eventFlags = nullptr;
+
     ASSERT_EQ(kiwiTest_osalEventFlagsCreate(osal(), &eventFlags), KIWI_TEST_OSAL_NO_ERR);
 
     EventWaitContext context{};
-    context.osal = osal();
-    context.eventFlags = eventFlags;
+    context.osal           = osal();
+    context.eventFlags     = eventFlags;
     context.requestedFlags = 0x01u | 0x02u;
-    context.options = KIWI_TEST_OSAL_EVENT_FLAGS_WAIT_ALL;
+    context.options        = KIWI_TEST_OSAL_EVENT_FLAGS_WAIT_ALL;
 
     KiwiTest_osalThreadHandle_t worker = nullptr;
     kiwi::test::RegisteredThreadGuard workerGuard(osal());
     const auto attr = kiwi::test::workerAttr(eventWaitWorker, &context, "flags-all");
     ASSERT_EQ(kiwiTest_osalThreadCreate(osal(), &worker, attr), KIWI_TEST_OSAL_NO_ERR);
     workerGuard.set(worker);
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() { return context.started.load(); }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() {
+        return context.started.load();
+    }));
 
     /* Publish states that must not satisfy WAIT_ALL */
     ASSERT_EQ(kiwiTest_osalEventFlagsSet(osal(), eventFlags, 0x04u), KIWI_TEST_OSAL_NO_ERR);
@@ -162,7 +170,9 @@ TEST_F(OsalPosixItTest, EventFlags_WaitAll_WakesOnlyOnCompleteMask)
 
     /* Act: complete the requested mask */
     ASSERT_EQ(kiwiTest_osalEventFlagsSet(osal(), eventFlags, 0x02u), KIWI_TEST_OSAL_NO_ERR);
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() { return context.completed.load(); }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() {
+        return context.completed.load();
+    }));
 
     /* Assert */
     EXPECT_EQ(context.status, KIWI_TEST_OSAL_NO_ERR);
@@ -190,6 +200,7 @@ TEST_F(OsalPosixItTest, EventFlags_DefaultWait_ClearsConsumedMaskOnly)
 {
     /* Arrange */
     KiwiTest_osalEventFlagsHandle_t eventFlags = nullptr;
+
     ASSERT_EQ(kiwiTest_osalEventFlagsCreate(osal(), &eventFlags), KIWI_TEST_OSAL_NO_ERR);
     ASSERT_EQ(kiwiTest_osalEventFlagsSet(osal(), eventFlags, 0x01u | 0x04u), KIWI_TEST_OSAL_NO_ERR);
 
@@ -228,13 +239,14 @@ TEST_F(OsalPosixItTest, EventFlags_NoClear_PreservesSatisfiedFlags)
 {
     /* Arrange */
     KiwiTest_osalEventFlagsHandle_t eventFlags = nullptr;
+
     ASSERT_EQ(kiwiTest_osalEventFlagsCreate(osal(), &eventFlags), KIWI_TEST_OSAL_NO_ERR);
     constexpr uint32_t kMask = 0x01u | 0x02u;
     ASSERT_EQ(kiwiTest_osalEventFlagsSet(osal(), eventFlags, kMask), KIWI_TEST_OSAL_NO_ERR);
 
     /* Act */
     uint32_t actualFlags = 0u;
-    const auto options = static_cast<KiwiTest_osalEventFlagsOptions_e>(
+    const auto options   = static_cast<KiwiTest_osalEventFlagsOptions_e>(
         KIWI_TEST_OSAL_EVENT_FLAGS_WAIT_ALL | KIWI_TEST_OSAL_EVENT_FLAGS_NO_CLEAR);
     ASSERT_EQ(kiwiTest_osalEventFlagsWait(osal(), eventFlags, kMask, options, 0u, &actualFlags),
               KIWI_TEST_OSAL_NO_ERR);
@@ -264,19 +276,20 @@ TEST_F(OsalPosixItTest, EventFlags_WaitWithoutMatchingFlags_ExpiresAfterTimeout)
 {
     /* Arrange */
     KiwiTest_osalEventFlagsHandle_t eventFlags = nullptr;
+
     ASSERT_EQ(kiwiTest_osalEventFlagsCreate(osal(), &eventFlags), KIWI_TEST_OSAL_NO_ERR);
     KiwiTest_osalTimeMs_t startMs = 0u;
-    KiwiTest_osalTimeMs_t endMs = 0u;
+    KiwiTest_osalTimeMs_t endMs   = 0u;
     ASSERT_EQ(kiwiTest_osalTimeMsGet(osal(), &startMs), KIWI_TEST_OSAL_NO_ERR);
 
     /* Act */
     uint32_t actualFlags = 0u;
-    const auto status = kiwiTest_osalEventFlagsWait(osal(),
-                                                    eventFlags,
-                                                    0x08u,
-                                                    KIWI_TEST_OSAL_EVENT_FLAGS_WAIT_ANY,
-                                                    kiwi::test::kShortTimeoutMs,
-                                                    &actualFlags);
+    const auto status    = kiwiTest_osalEventFlagsWait(osal(),
+                                                       eventFlags,
+                                                       0x08u,
+                                                       KIWI_TEST_OSAL_EVENT_FLAGS_WAIT_ANY,
+                                                       kiwi::test::kShortTimeoutMs,
+                                                       &actualFlags);
     ASSERT_EQ(kiwiTest_osalTimeMsGet(osal(), &endMs), KIWI_TEST_OSAL_NO_ERR);
 
     /* Assert */
@@ -316,4 +329,3 @@ TEST_F(OsalPosixItTest, EventFlags_ForeignInstance_CannotUseOwnedHandle)
     EXPECT_EQ(ownerFlags & 0x04u, 0x04u);
     ASSERT_EQ(kiwiTest_osalEventFlagsDelete(osal(), eventFlags), KIWI_TEST_OSAL_NO_ERR);
 }
-

@@ -31,9 +31,9 @@ struct QueueHandleDummy
  */
 TEST_F(OsalUnitTest, Queue_InvalidArgs)
 {
-    QueueHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalQueueHandle_t>(&dummy);
-    int item = 1;
+    QueueHandleDummy dummy         = {};
+    auto handle                    = static_cast<KiwiTest_osalQueueHandle_t>(&dummy);
+    int item                       = 1;
     KiwiTest_osalQueueHandle_t out = nullptr;
 
     EXPECT_EQ(kiwiTest_osalQueueCreate(nullptr, sizeof(item), 2u, &out), KIWI_TEST_OSAL_INVALID_ARGS_ERR);
@@ -65,12 +65,12 @@ TEST_F(OsalUnitTest, Queue_InvalidArgs)
  */
 TEST_F(OsalUnitTest, Queue_Create_DispatchesAndPropagatesStatus)
 {
-    QueueHandleDummy dummy = {};
-    auto expectedHandle = static_cast<KiwiTest_osalQueueHandle_t>(&dummy);
+    QueueHandleDummy dummy                  = {};
+    auto expectedHandle                     = static_cast<KiwiTest_osalQueueHandle_t>(&dummy);
     KiwiTest_osalQueueHandle_t actualHandle = nullptr;
 
     EXPECT_CALL(mock_, queueCreate(osal(), sizeof(uint32_t), 4u, _))
-        .WillOnce(DoAll(SetArgPointee<3>(expectedHandle), Return(KIWI_TEST_OSAL_QUEUE_CREATE_ERR)));
+    .WillOnce(DoAll(SetArgPointee<3>(expectedHandle), Return(KIWI_TEST_OSAL_QUEUE_CREATE_ERR)));
 
     EXPECT_EQ(kiwiTest_osalQueueCreate(osal(), sizeof(uint32_t), 4u, &actualHandle),
               KIWI_TEST_OSAL_QUEUE_CREATE_ERR);
@@ -91,9 +91,9 @@ TEST_F(OsalUnitTest, Queue_Create_DispatchesAndPropagatesStatus)
 TEST_F(OsalUnitTest, Queue_Operations_DispatchAndPropagateBackendStatus)
 {
     QueueHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalQueueHandle_t>(&dummy);
-    uint32_t item = 0x12345678u;
-    uint32_t out = 0u;
+    auto handle            = static_cast<KiwiTest_osalQueueHandle_t>(&dummy);
+    uint32_t item          = 0x12345678u;
+    uint32_t out           = 0u;
 
     EXPECT_CALL(mock_, queueItemPut(osal(), handle, &item)).WillOnce(Return(KIWI_TEST_OSAL_QUEUE_IS_FULL_ERR));
     EXPECT_CALL(mock_, queueItemPost(osal(), handle, &item, 25u)).WillOnce(Return(KIWI_TEST_OSAL_QUEUE_OVERFLOW_ERR));
@@ -124,8 +124,8 @@ TEST_F(OsalUnitTest, Queue_Operations_DispatchAndPropagateBackendStatus)
  */
 TEST_F(OsalUnitTest, Queue_HandleGet_ReturnsRegisteredHandle)
 {
-    QueueHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalQueueHandle_t>(&dummy);
+    QueueHandleDummy dummy            = {};
+    auto handle                       = static_cast<KiwiTest_osalQueueHandle_t>(&dummy);
     KiwiTest_osalQueueHandle_t actual = nullptr;
 
     osal()->queueObjHandle[1] = handle;
@@ -147,7 +147,7 @@ TEST_F(OsalUnitTest, Queue_HandleGet_ReturnsRegisteredHandle)
  */
 TEST_F(OsalUnitTest, Queue_NotInitialized_ReturnsNotInit)
 {
-    KiwiTest_osal_s uninitialized = {};
+    KiwiTest_osal_s uninitialized     = {};
     KiwiTest_osalQueueHandle_t handle = nullptr;
 
     EXPECT_EQ(kiwiTest_osalQueueCreate(&uninitialized, sizeof(uint32_t), 1u, &handle), KIWI_TEST_OSAL_NOT_INIT_ERR);
@@ -167,8 +167,9 @@ TEST_F(OsalUnitTest, Queue_NotInitialized_ReturnsNotInit)
 TEST_F(OsalUnitTest, Queue_MissingBackendOperation_ReturnsPortSpecific)
 {
     KiwiTest_osalVtable_s vtable = kOsalMockVtable;
+
     vtable.queueCreate = nullptr;
-    osal()->vtable = &vtable;
+    osal()->vtable     = &vtable;
     KiwiTest_osalQueueHandle_t handle = nullptr;
 
     EXPECT_EQ(kiwiTest_osalQueueCreate(osal(), sizeof(uint32_t), 1u, &handle), KIWI_TEST_OSAL_PORT_SPECIFIC_ERR);

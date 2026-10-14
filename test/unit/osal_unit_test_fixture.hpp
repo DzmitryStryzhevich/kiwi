@@ -21,7 +21,7 @@ protected:
         binder_ = std::make_unique<OsalMockBinder>(&osal_, &mock_);
 
         ON_CALL(mock_, isValid(::testing::_))
-            .WillByDefault(::testing::Return(true));
+        .WillByDefault(::testing::Return(true));
     }
 
     void TearDown() override

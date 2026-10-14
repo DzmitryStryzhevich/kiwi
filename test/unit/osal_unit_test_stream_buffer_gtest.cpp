@@ -31,11 +31,11 @@ struct StreamBufferHandleDummy
  */
 TEST_F(OsalUnitTest, StreamBuffer_InvalidArgs)
 {
-    StreamBufferHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalStreamBufferHandle_t>(&dummy);
+    StreamBufferHandleDummy dummy         = {};
+    auto handle                           = static_cast<KiwiTest_osalStreamBufferHandle_t>(&dummy);
     KiwiTest_osalStreamBufferHandle_t out = nullptr;
-    uint8_t data[4] = {};
-    size_t count = 0u;
+    uint8_t data[4]                       = {};
+    size_t count                          = 0u;
 
     EXPECT_EQ(kiwiTest_osalStreamBufferCreate(nullptr, 8u, 1u, &out), KIWI_TEST_OSAL_INVALID_ARGS_ERR);
     EXPECT_EQ(kiwiTest_osalStreamBufferCreate(osal(), 0u, 1u, &out), KIWI_TEST_OSAL_INVALID_ARGS_ERR);
@@ -56,8 +56,8 @@ TEST_F(OsalUnitTest, StreamBuffer_InvalidArgs)
               KIWI_TEST_OSAL_INVALID_ARGS_ERR);
     EXPECT_EQ(kiwiTest_osalStreamBufferReset(osal(), nullptr), KIWI_TEST_OSAL_INVALID_ARGS_ERR);
     EXPECT_EQ(kiwiTest_osalStreamBufferHandleGet(osal(),
-                                                   KIWI_TEST_OSAL_STREAM_BUFFER_SLOTS_NUM,
-                                                   &out),
+                                                 KIWI_TEST_OSAL_STREAM_BUFFER_SLOTS_NUM,
+                                                 &out),
               KIWI_TEST_OSAL_INVALID_ARGS_ERR);
 }
 
@@ -74,12 +74,12 @@ TEST_F(OsalUnitTest, StreamBuffer_InvalidArgs)
  */
 TEST_F(OsalUnitTest, StreamBuffer_Create_DispatchesConfigurationAndStatus)
 {
-    StreamBufferHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalStreamBufferHandle_t>(&dummy);
+    StreamBufferHandleDummy dummy         = {};
+    auto handle                           = static_cast<KiwiTest_osalStreamBufferHandle_t>(&dummy);
     KiwiTest_osalStreamBufferHandle_t out = nullptr;
 
     EXPECT_CALL(mock_, streamBufferCreate(osal(), 64u, 8u, _))
-        .WillOnce(DoAll(SetArgPointee<3>(handle), Return(KIWI_TEST_OSAL_STREAM_BUFFER_CREATE_ERR)));
+    .WillOnce(DoAll(SetArgPointee<3>(handle), Return(KIWI_TEST_OSAL_STREAM_BUFFER_CREATE_ERR)));
 
     EXPECT_EQ(kiwiTest_osalStreamBufferCreate(osal(), 64u, 8u, &out),
               KIWI_TEST_OSAL_STREAM_BUFFER_CREATE_ERR);
@@ -100,14 +100,14 @@ TEST_F(OsalUnitTest, StreamBuffer_Create_DispatchesConfigurationAndStatus)
 TEST_F(OsalUnitTest, StreamBuffer_WriteOperations_DispatchCompleteTransferContract)
 {
     StreamBufferHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalStreamBufferHandle_t>(&dummy);
-    const uint8_t data[6] = {1u, 2u, 3u, 4u, 5u, 6u};
-    size_t bytesPut = 0u;
+    auto handle                   = static_cast<KiwiTest_osalStreamBufferHandle_t>(&dummy);
+    const uint8_t data[6]         = {1u, 2u, 3u, 4u, 5u, 6u};
+    size_t bytesPut               = 0u;
 
     EXPECT_CALL(mock_, streamBufferPut(osal(), handle, data, sizeof(data), _))
-        .WillOnce(DoAll(SetArgPointee<4>(3u), Return(KIWI_TEST_OSAL_NO_ERR)));
+    .WillOnce(DoAll(SetArgPointee<4>(3u), Return(KIWI_TEST_OSAL_NO_ERR)));
     EXPECT_CALL(mock_, streamBufferPost(osal(), handle, data, sizeof(data), 40u, _))
-        .WillOnce(DoAll(SetArgPointee<5>(2u), Return(KIWI_TEST_OSAL_STREAM_BUFFER_IS_FULL_ERR)));
+    .WillOnce(DoAll(SetArgPointee<5>(2u), Return(KIWI_TEST_OSAL_STREAM_BUFFER_IS_FULL_ERR)));
 
     ASSERT_EQ(kiwiTest_osalStreamBufferPut(osal(), handle, data, sizeof(data), &bytesPut),
               KIWI_TEST_OSAL_NO_ERR);
@@ -133,16 +133,16 @@ TEST_F(OsalUnitTest, StreamBuffer_WriteOperations_DispatchCompleteTransferContra
 TEST_F(OsalUnitTest, StreamBuffer_ReadOperations_DispatchCompleteTransferContract)
 {
     StreamBufferHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalStreamBufferHandle_t>(&dummy);
-    uint8_t data[8] = {};
-    size_t bytesGet = 0u;
+    auto handle                   = static_cast<KiwiTest_osalStreamBufferHandle_t>(&dummy);
+    uint8_t data[8]               = {};
+    size_t bytesGet               = 0u;
 
     EXPECT_CALL(mock_, streamBufferGet(osal(), handle, data, sizeof(data), _))
-        .WillOnce(DoAll(SetArgPointee<4>(2u), Return(KIWI_TEST_OSAL_NO_ERR)));
+    .WillOnce(DoAll(SetArgPointee<4>(2u), Return(KIWI_TEST_OSAL_NO_ERR)));
     EXPECT_CALL(mock_, streamBufferWait(osal(), handle, data, sizeof(data), _))
-        .WillOnce(DoAll(SetArgPointee<4>(4u), Return(KIWI_TEST_OSAL_NO_ERR)));
+    .WillOnce(DoAll(SetArgPointee<4>(4u), Return(KIWI_TEST_OSAL_NO_ERR)));
     EXPECT_CALL(mock_, streamBufferPend(osal(), handle, data, sizeof(data), 55u, _))
-        .WillOnce(DoAll(SetArgPointee<5>(0u), Return(KIWI_TEST_OSAL_STREAM_BUFFER_IS_EMPTY_ERR)));
+    .WillOnce(DoAll(SetArgPointee<5>(0u), Return(KIWI_TEST_OSAL_STREAM_BUFFER_IS_EMPTY_ERR)));
 
     ASSERT_EQ(kiwiTest_osalStreamBufferGet(osal(), handle, data, sizeof(data), &bytesGet),
               KIWI_TEST_OSAL_NO_ERR);
@@ -172,8 +172,8 @@ TEST_F(OsalUnitTest, StreamBuffer_ReadOperations_DispatchCompleteTransferContrac
  */
 TEST_F(OsalUnitTest, StreamBuffer_ResetDeleteAndHandleGet_UseExpectedLayers)
 {
-    StreamBufferHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalStreamBufferHandle_t>(&dummy);
+    StreamBufferHandleDummy dummy         = {};
+    auto handle                           = static_cast<KiwiTest_osalStreamBufferHandle_t>(&dummy);
     KiwiTest_osalStreamBufferHandle_t out = nullptr;
 
     osal()->streamBufferObjHandle[0] = handle;
@@ -199,7 +199,7 @@ TEST_F(OsalUnitTest, StreamBuffer_ResetDeleteAndHandleGet_UseExpectedLayers)
  */
 TEST_F(OsalUnitTest, StreamBuffer_NotInitialized_ReturnsNotInit)
 {
-    KiwiTest_osal_s uninitialized = {};
+    KiwiTest_osal_s uninitialized            = {};
     KiwiTest_osalStreamBufferHandle_t handle = nullptr;
 
     EXPECT_EQ(kiwiTest_osalStreamBufferCreate(&uninitialized, 8u, 1u, &handle), KIWI_TEST_OSAL_NOT_INIT_ERR);
@@ -219,8 +219,9 @@ TEST_F(OsalUnitTest, StreamBuffer_NotInitialized_ReturnsNotInit)
 TEST_F(OsalUnitTest, StreamBuffer_MissingBackendOperation_ReturnsPortSpecific)
 {
     KiwiTest_osalVtable_s vtable = kOsalMockVtable;
+
     vtable.streamBufferCreate = nullptr;
-    osal()->vtable = &vtable;
+    osal()->vtable            = &vtable;
     KiwiTest_osalStreamBufferHandle_t handle = nullptr;
 
     EXPECT_EQ(kiwiTest_osalStreamBufferCreate(osal(), 8u, 1u, &handle), KIWI_TEST_OSAL_PORT_SPECIFIC_ERR);

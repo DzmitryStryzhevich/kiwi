@@ -42,7 +42,7 @@ TEST(OsalLifecycleUnitTest, Init_InvalidArgs)
 TEST(OsalLifecycleUnitTest, InitDeinit_PublishesAndClearsBaseState)
 {
     KiwiTest_osal_s osal = {};
-    int parent = 42;
+    int parent           = 42;
 
     /* Initialize an isolated generic OSAL object */
     ASSERT_EQ(kiwiTest_osalInit(&osal, "generic", &parent), KIWI_TEST_OSAL_NO_ERR);
@@ -93,8 +93,8 @@ TEST(OsalLifecycleUnitTest, Deinit_NotInitialized)
 TEST_F(OsalUnitTest, IsValid_DelegatesToBackendPredicate)
 {
     EXPECT_CALL(mock_, isValid(osal()))
-        .WillOnce(Return(false))
-        .WillOnce(Return(true));
+    .WillOnce(Return(false))
+    .WillOnce(Return(true));
 
     EXPECT_FALSE(kiwiTest_osalIsValid(osal()));
     EXPECT_TRUE(kiwiTest_osalIsValid(osal()));
@@ -114,8 +114,8 @@ TEST_F(OsalUnitTest, IsValid_DelegatesToBackendPredicate)
  */
 TEST_F(OsalUnitTest, Metadata_SetGet)
 {
-    int parent = 7;
-    void *parentOut = nullptr;
+    int parent          = 7;
+    void *parentOut     = nullptr;
     const char *nameOut = nullptr;
 
     /* Replace metadata through the public generic API */

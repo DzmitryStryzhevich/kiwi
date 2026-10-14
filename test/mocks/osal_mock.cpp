@@ -11,7 +11,6 @@
 
 namespace kiwi_test_osal_mock_registry
 {
-
 static std::unordered_map<const KiwiTest_osal_s *, OsalMock *> mockMap;
 static std::mutex mockMutex;
 
@@ -19,6 +18,7 @@ static std::mutex mockMutex;
 void bind(KiwiTest_osal_s *osal, OsalMock *mock)
 {
     std::lock_guard<std::mutex> lock(mockMutex);
+
     mockMap[osal] = mock;
 }
 
@@ -26,6 +26,7 @@ void bind(KiwiTest_osal_s *osal, OsalMock *mock)
 void unbind(KiwiTest_osal_s *osal)
 {
     std::lock_guard<std::mutex> lock(mockMutex);
+
     mockMap.erase(osal);
 }
 
@@ -37,7 +38,6 @@ OsalMock *get(const KiwiTest_osal_s *osal)
 
     return (it == mockMap.end()) ? nullptr : it->second;
 }
-
 } // namespace kiwi_test_osal_mock_registry
 
 
@@ -462,62 +462,62 @@ static bool bridge_isValid(const void *const osal)
 
 
 const KiwiTest_osalVtable_s kOsalMockVtable = []()
-{
-    KiwiTest_osalVtable_s vtable = {};
+                                              {
+                                                  KiwiTest_osalVtable_s vtable = {};
 
-    vtable.queueCreate = bridge_queueCreate;
-    vtable.queueDelete = bridge_queueDelete;
-    vtable.queueItemPut = bridge_queueItemPut;
-    vtable.queueItemPost = bridge_queueItemPost;
-    vtable.queueItemGet = bridge_queueItemGet;
-    vtable.queueItemWait = bridge_queueItemWait;
-    vtable.queueItemPend = bridge_queueItemPend;
-    vtable.queueReset = bridge_queueReset;
-    vtable.streamBufferCreate = bridge_streamBufferCreate;
-    vtable.streamBufferDelete = bridge_streamBufferDelete;
-    vtable.streamBufferPut = bridge_streamBufferPut;
-    vtable.streamBufferPost = bridge_streamBufferPost;
-    vtable.streamBufferGet = bridge_streamBufferGet;
-    vtable.streamBufferWait = bridge_streamBufferWait;
-    vtable.streamBufferPend = bridge_streamBufferPend;
-    vtable.streamBufferReset = bridge_streamBufferReset;
-    vtable.mutexCreate = bridge_mutexCreate;
-    vtable.mutexDelete = bridge_mutexDelete;
-    vtable.mutexLock = bridge_mutexLock;
-    vtable.mutexTryLock = bridge_mutexTryLock;
-    vtable.mutexPendLock = bridge_mutexPendLock;
-    vtable.mutexUnlock = bridge_mutexUnlock;
-    vtable.semaphoreCreate = bridge_semaphoreCreate;
-    vtable.semaphoreDelete = bridge_semaphoreDelete;
-    vtable.semaphoreWait = bridge_semaphoreWait;
-    vtable.semaphorePend = bridge_semaphorePend;
-    vtable.semaphorePost = bridge_semaphorePost;
-    vtable.semaphoreCountGet = bridge_semaphoreCountGet;
-    vtable.eventFlagsCreate = bridge_eventFlagsCreate;
-    vtable.eventFlagsDelete = bridge_eventFlagsDelete;
-    vtable.eventFlagsSet = bridge_eventFlagsSet;
-    vtable.eventFlagsClear = bridge_eventFlagsClear;
-    vtable.eventFlagsGet = bridge_eventFlagsGet;
-    vtable.eventFlagsWait = bridge_eventFlagsWait;
-    vtable.threadCreate = bridge_threadCreate;
-    vtable.threadDelete = bridge_threadDelete;
-    vtable.threadSuspend = bridge_threadSuspend;
-    vtable.threadResume = bridge_threadResume;
-    vtable.threadYield = bridge_threadYield;
-    vtable.threadDelay = bridge_threadDelay;
-    vtable.threadDelayUntil = bridge_threadDelayUntil;
-    vtable.threadExit = bridge_threadExit;
-    vtable.criticalSectionEnter = bridge_criticalSectionEnter;
-    vtable.criticalSectionExit = bridge_criticalSectionExit;
-    vtable.softwareTimerCreate = bridge_softwareTimerCreate;
-    vtable.softwareTimerDelete = bridge_softwareTimerDelete;
-    vtable.softwareTimerStart = bridge_softwareTimerStart;
-    vtable.softwareTimerStop = bridge_softwareTimerStop;
-    vtable.softwareTimerReset = bridge_softwareTimerReset;
-    vtable.timeMsGet = bridge_timeMsGet;
-    vtable.memAlloc = bridge_memAlloc;
-    vtable.memFree = bridge_memFree;
-    vtable.isValid = bridge_isValid;
+                                                  vtable.queueCreate          = bridge_queueCreate;
+                                                  vtable.queueDelete          = bridge_queueDelete;
+                                                  vtable.queueItemPut         = bridge_queueItemPut;
+                                                  vtable.queueItemPost        = bridge_queueItemPost;
+                                                  vtable.queueItemGet         = bridge_queueItemGet;
+                                                  vtable.queueItemWait        = bridge_queueItemWait;
+                                                  vtable.queueItemPend        = bridge_queueItemPend;
+                                                  vtable.queueReset           = bridge_queueReset;
+                                                  vtable.streamBufferCreate   = bridge_streamBufferCreate;
+                                                  vtable.streamBufferDelete   = bridge_streamBufferDelete;
+                                                  vtable.streamBufferPut      = bridge_streamBufferPut;
+                                                  vtable.streamBufferPost     = bridge_streamBufferPost;
+                                                  vtable.streamBufferGet      = bridge_streamBufferGet;
+                                                  vtable.streamBufferWait     = bridge_streamBufferWait;
+                                                  vtable.streamBufferPend     = bridge_streamBufferPend;
+                                                  vtable.streamBufferReset    = bridge_streamBufferReset;
+                                                  vtable.mutexCreate          = bridge_mutexCreate;
+                                                  vtable.mutexDelete          = bridge_mutexDelete;
+                                                  vtable.mutexLock            = bridge_mutexLock;
+                                                  vtable.mutexTryLock         = bridge_mutexTryLock;
+                                                  vtable.mutexPendLock        = bridge_mutexPendLock;
+                                                  vtable.mutexUnlock          = bridge_mutexUnlock;
+                                                  vtable.semaphoreCreate      = bridge_semaphoreCreate;
+                                                  vtable.semaphoreDelete      = bridge_semaphoreDelete;
+                                                  vtable.semaphoreWait        = bridge_semaphoreWait;
+                                                  vtable.semaphorePend        = bridge_semaphorePend;
+                                                  vtable.semaphorePost        = bridge_semaphorePost;
+                                                  vtable.semaphoreCountGet    = bridge_semaphoreCountGet;
+                                                  vtable.eventFlagsCreate     = bridge_eventFlagsCreate;
+                                                  vtable.eventFlagsDelete     = bridge_eventFlagsDelete;
+                                                  vtable.eventFlagsSet        = bridge_eventFlagsSet;
+                                                  vtable.eventFlagsClear      = bridge_eventFlagsClear;
+                                                  vtable.eventFlagsGet        = bridge_eventFlagsGet;
+                                                  vtable.eventFlagsWait       = bridge_eventFlagsWait;
+                                                  vtable.threadCreate         = bridge_threadCreate;
+                                                  vtable.threadDelete         = bridge_threadDelete;
+                                                  vtable.threadSuspend        = bridge_threadSuspend;
+                                                  vtable.threadResume         = bridge_threadResume;
+                                                  vtable.threadYield          = bridge_threadYield;
+                                                  vtable.threadDelay          = bridge_threadDelay;
+                                                  vtable.threadDelayUntil     = bridge_threadDelayUntil;
+                                                  vtable.threadExit           = bridge_threadExit;
+                                                  vtable.criticalSectionEnter = bridge_criticalSectionEnter;
+                                                  vtable.criticalSectionExit  = bridge_criticalSectionExit;
+                                                  vtable.softwareTimerCreate  = bridge_softwareTimerCreate;
+                                                  vtable.softwareTimerDelete  = bridge_softwareTimerDelete;
+                                                  vtable.softwareTimerStart   = bridge_softwareTimerStart;
+                                                  vtable.softwareTimerStop    = bridge_softwareTimerStop;
+                                                  vtable.softwareTimerReset   = bridge_softwareTimerReset;
+                                                  vtable.timeMsGet            = bridge_timeMsGet;
+                                                  vtable.memAlloc             = bridge_memAlloc;
+                                                  vtable.memFree              = bridge_memFree;
+                                                  vtable.isValid              = bridge_isValid;
 
-    return vtable;
-}();
+                                                  return vtable;
+                                              }();

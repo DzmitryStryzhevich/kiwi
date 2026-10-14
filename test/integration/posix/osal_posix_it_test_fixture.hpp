@@ -49,13 +49,16 @@ protected:
     {
         const KiwiTest_osalErr_e status =
             kiwiTest_osalPosixInit(&secondaryPort_, "posix-it-secondary", nullptr, nullptr);
+
         if (status != KIWI_TEST_OSAL_NO_ERR)
         {
             EXPECT_EQ(status, KIWI_TEST_OSAL_NO_ERR);
+
             return false;
         }
 
         secondaryInitialized_ = true;
+
         return true;
     }
 
@@ -64,10 +67,10 @@ protected:
         return &secondaryPort_.base;
     }
 
-    KiwiTest_osalPosix_s port_ = {};
+    KiwiTest_osalPosix_s port_          = {};
     KiwiTest_osalPosix_s secondaryPort_ = {};
-    bool initialized_ = false;
-    bool secondaryInitialized_ = false;
+    bool initialized_                   = false;
+    bool secondaryInitialized_          = false;
 };
 
 #endif /* KIWI_OSAL_POSIX_IT_TEST_FIXTURE_HPP_ */

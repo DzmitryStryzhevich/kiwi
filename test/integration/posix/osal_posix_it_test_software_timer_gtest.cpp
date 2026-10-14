@@ -10,16 +10,16 @@
 
 namespace
 {
-
 struct TimerCallbackContext
 {
     std::atomic<unsigned int> count{0u};
-    std::atomic<bool> parameterObserved{false};
+    std::atomic<bool>         parameterObserved{false};
 };
 
 void timerCallback(void *const timerParam)
 {
     auto *const context = static_cast<TimerCallbackContext *>(timerParam);
+
     if (context != nullptr)
     {
         context->parameterObserved.store(true);
@@ -33,15 +33,15 @@ KiwiTest_osalSoftwareTimerAttr_s timerAttr(TimerCallbackContext *const context,
                                            const char *const name)
 {
     KiwiTest_osalSoftwareTimerAttr_s attr = {};
-    attr.name = name;
-    attr.timerParam = context;
+
+    attr.name           = name;
+    attr.timerParam     = context;
     attr.timerExpiredCb = timerCallback;
-    attr.autoReload = autoReload;
-    attr.periodMs = periodMs;
+    attr.autoReload     = autoReload;
+    attr.periodMs       = periodMs;
 
     return attr;
 }
-
 } // namespace
 
 /**
@@ -60,8 +60,9 @@ TEST_F(OsalPosixItTest, SoftwareTimer_OneShot_ExpiresExactlyOnce)
 {
     /* Arrange */
     TimerCallbackContext context{};
-    KiwiTest_osalSoftwareTimerHandle_t timer = nullptr;
+    KiwiTest_osalSoftwareTimerHandle_t timer  = nullptr;
     constexpr KiwiTest_osalTimeMs_t kPeriodMs = 30u;
+
     ASSERT_EQ(kiwiTest_osalSoftwareTimerCreate(osal(),
                                                &timer,
                                                timerAttr(&context, kPeriodMs, false, "one-shot")),
@@ -69,7 +70,9 @@ TEST_F(OsalPosixItTest, SoftwareTimer_OneShot_ExpiresExactlyOnce)
 
     /* Act */
     ASSERT_EQ(kiwiTest_osalSoftwareTimerStart(osal(), timer), KIWI_TEST_OSAL_NO_ERR);
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() { return context.count.load() >= 1u; }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() {
+        return context.count.load() >= 1u;
+    }));
     ASSERT_EQ(kiwiTest_osalThreadDelay(osal(), 3u * kPeriodMs), KIWI_TEST_OSAL_NO_ERR);
 
     /* Assert */
@@ -96,8 +99,9 @@ TEST_F(OsalPosixItTest, SoftwareTimer_PeriodicTimer_RepeatsUntilStopped)
 {
     /* Arrange */
     TimerCallbackContext context{};
-    KiwiTest_osalSoftwareTimerHandle_t timer = nullptr;
+    KiwiTest_osalSoftwareTimerHandle_t timer  = nullptr;
     constexpr KiwiTest_osalTimeMs_t kPeriodMs = 20u;
+
     ASSERT_EQ(kiwiTest_osalSoftwareTimerCreate(osal(),
                                                &timer,
                                                timerAttr(&context, kPeriodMs, true, "periodic")),
@@ -105,7 +109,9 @@ TEST_F(OsalPosixItTest, SoftwareTimer_PeriodicTimer_RepeatsUntilStopped)
 
     /* Act: observe repeated expiration */
     ASSERT_EQ(kiwiTest_osalSoftwareTimerStart(osal(), timer), KIWI_TEST_OSAL_NO_ERR);
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() { return context.count.load() >= 3u; }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() {
+        return context.count.load() >= 3u;
+    }));
     ASSERT_EQ(kiwiTest_osalSoftwareTimerStop(osal(), timer), KIWI_TEST_OSAL_NO_ERR);
 
     /* Allow an already dispatched callback at the stop boundary to complete */
@@ -135,8 +141,9 @@ TEST_F(OsalPosixItTest, SoftwareTimer_Stop_PreventsPendingExpiration)
 {
     /* Arrange */
     TimerCallbackContext context{};
-    KiwiTest_osalSoftwareTimerHandle_t timer = nullptr;
+    KiwiTest_osalSoftwareTimerHandle_t timer  = nullptr;
     constexpr KiwiTest_osalTimeMs_t kPeriodMs = 100u;
+
     ASSERT_EQ(kiwiTest_osalSoftwareTimerCreate(osal(),
                                                &timer,
                                                timerAttr(&context, kPeriodMs, false, "stop")),
@@ -172,8 +179,9 @@ TEST_F(OsalPosixItTest, SoftwareTimer_Reset_RestartsFullPeriod)
 {
     /* Arrange */
     TimerCallbackContext context{};
-    KiwiTest_osalSoftwareTimerHandle_t timer = nullptr;
+    KiwiTest_osalSoftwareTimerHandle_t timer  = nullptr;
     constexpr KiwiTest_osalTimeMs_t kPeriodMs = 120u;
+
     ASSERT_EQ(kiwiTest_osalSoftwareTimerCreate(osal(),
                                                &timer,
                                                timerAttr(&context, kPeriodMs, false, "reset")),
@@ -189,7 +197,9 @@ TEST_F(OsalPosixItTest, SoftwareTimer_Reset_RestartsFullPeriod)
     EXPECT_EQ(context.count.load(), 0u);
 
     /* Wait for the reset-relative expiration */
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() { return context.count.load() >= 1u; }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() {
+        return context.count.load() >= 1u;
+    }));
     EXPECT_EQ(context.count.load(), 1u);
 
     ASSERT_EQ(kiwiTest_osalSoftwareTimerDelete(osal(), timer), KIWI_TEST_OSAL_NO_ERR);
@@ -211,8 +221,9 @@ TEST_F(OsalPosixItTest, SoftwareTimer_RestartAfterStop_ExpiresAgain)
 {
     /* Arrange */
     TimerCallbackContext context{};
-    KiwiTest_osalSoftwareTimerHandle_t timer = nullptr;
+    KiwiTest_osalSoftwareTimerHandle_t timer  = nullptr;
     constexpr KiwiTest_osalTimeMs_t kPeriodMs = 60u;
+
     ASSERT_EQ(kiwiTest_osalSoftwareTimerCreate(osal(),
                                                &timer,
                                                timerAttr(&context, kPeriodMs, false, "restart")),
@@ -225,7 +236,9 @@ TEST_F(OsalPosixItTest, SoftwareTimer_RestartAfterStop_ExpiresAgain)
 
     /* Act */
     ASSERT_EQ(kiwiTest_osalSoftwareTimerStart(osal(), timer), KIWI_TEST_OSAL_NO_ERR);
-    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() { return context.count.load() >= 1u; }));
+    ASSERT_TRUE(kiwi::test::waitUntil(osal(), [&context]() {
+        return context.count.load() >= 1u;
+    }));
 
     /* Assert */
     EXPECT_EQ(context.count.load(), 1u);
@@ -250,8 +263,9 @@ TEST_F(OsalPosixItTest, SoftwareTimer_IndependentTimers_DoNotInterfere)
     /* Arrange */
     TimerCallbackContext firstContext{};
     TimerCallbackContext secondContext{};
-    KiwiTest_osalSoftwareTimerHandle_t firstTimer = nullptr;
+    KiwiTest_osalSoftwareTimerHandle_t firstTimer  = nullptr;
     KiwiTest_osalSoftwareTimerHandle_t secondTimer = nullptr;
+
     ASSERT_EQ(kiwiTest_osalSoftwareTimerCreate(osal(),
                                                &firstTimer,
                                                timerAttr(&firstContext, 30u, false, "timer-a")),
@@ -266,10 +280,10 @@ TEST_F(OsalPosixItTest, SoftwareTimer_IndependentTimers_DoNotInterfere)
     ASSERT_EQ(kiwiTest_osalSoftwareTimerStart(osal(), secondTimer), KIWI_TEST_OSAL_NO_ERR);
     ASSERT_TRUE(kiwi::test::waitUntil(osal(),
                                       [&firstContext, &secondContext]()
-                                      {
-                                          return (firstContext.count.load() >= 1u) &&
-                                                 (secondContext.count.load() >= 1u);
-                                      }));
+    {
+        return (firstContext.count.load() >= 1u) &&
+               (secondContext.count.load() >= 1u);
+    }));
 
     /* Assert */
     EXPECT_EQ(firstContext.count.load(), 1u);
@@ -296,8 +310,9 @@ TEST_F(OsalPosixItTest, SoftwareTimer_DeleteBeforeExpiration_PreventsFutureCallb
 {
     /* Arrange */
     TimerCallbackContext context{};
-    KiwiTest_osalSoftwareTimerHandle_t timer = nullptr;
+    KiwiTest_osalSoftwareTimerHandle_t timer  = nullptr;
     constexpr KiwiTest_osalTimeMs_t kPeriodMs = 100u;
+
     ASSERT_EQ(kiwiTest_osalSoftwareTimerCreate(osal(),
                                                &timer,
                                                timerAttr(&context, kPeriodMs, false, "delete")),
@@ -343,4 +358,3 @@ TEST_F(OsalPosixItTest, SoftwareTimer_ForeignInstance_CannotUseOwnedHandle)
     EXPECT_EQ(context.count.load(), 0u);
     ASSERT_EQ(kiwiTest_osalSoftwareTimerDelete(osal(), timer), KIWI_TEST_OSAL_NO_ERR);
 }
-

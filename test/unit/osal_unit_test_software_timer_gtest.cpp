@@ -36,7 +36,7 @@ void timerCallback(void *)
 TEST_F(OsalUnitTest, SoftwareTimer_Create_InvalidArgs)
 {
     KiwiTest_osalSoftwareTimerHandle_t out = nullptr;
-    KiwiTest_osalSoftwareTimerAttr_s attr = {"timer", nullptr, timerCallback, false, 25u};
+    KiwiTest_osalSoftwareTimerAttr_s attr  = {"timer", nullptr, timerCallback, false, 25u};
 
     EXPECT_EQ(kiwiTest_osalSoftwareTimerCreate(nullptr, &out, attr), KIWI_TEST_OSAL_INVALID_ARGS_ERR);
     EXPECT_EQ(kiwiTest_osalSoftwareTimerCreate(osal(), nullptr, attr), KIWI_TEST_OSAL_INVALID_ARGS_ERR);
@@ -45,7 +45,7 @@ TEST_F(OsalUnitTest, SoftwareTimer_Create_InvalidArgs)
     EXPECT_EQ(kiwiTest_osalSoftwareTimerCreate(osal(), &out, attr), KIWI_TEST_OSAL_INVALID_ARGS_ERR);
 
     attr.timerExpiredCb = timerCallback;
-    attr.periodMs = 0u;
+    attr.periodMs       = 0u;
     EXPECT_EQ(kiwiTest_osalSoftwareTimerCreate(osal(), &out, attr), KIWI_TEST_OSAL_INVALID_ARGS_ERR);
 
     attr.periodMs = KIWI_TEST_OSAL_INFINITY_TOUT;
@@ -65,24 +65,25 @@ TEST_F(OsalUnitTest, SoftwareTimer_Create_InvalidArgs)
  */
 TEST_F(OsalUnitTest, SoftwareTimer_Create_DispatchesCompleteAttributes)
 {
-    TimerHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalSoftwareTimerHandle_t>(&dummy);
+    TimerHandleDummy dummy                 = {};
+    auto handle                            = static_cast<KiwiTest_osalSoftwareTimerHandle_t>(&dummy);
     KiwiTest_osalSoftwareTimerHandle_t out = nullptr;
-    int callbackParam = 9;
-    KiwiTest_osalSoftwareTimerAttr_s attr = {"periodic", &callbackParam, timerCallback, true, 125u};
+    int callbackParam                      = 9;
+    KiwiTest_osalSoftwareTimerAttr_s attr  = {"periodic", &callbackParam, timerCallback, true, 125u};
 
     EXPECT_CALL(mock_, softwareTimerCreate(osal(), _, _))
-        .WillOnce([&](void *, KiwiTest_osalSoftwareTimerHandle_t *timerHandle,
-                      KiwiTest_osalSoftwareTimerAttr_s actualAttr)
-        {
-            EXPECT_STREQ(actualAttr.name, attr.name);
-            EXPECT_EQ(actualAttr.timerParam, attr.timerParam);
-            EXPECT_EQ(actualAttr.timerExpiredCb, attr.timerExpiredCb);
-            EXPECT_EQ(actualAttr.autoReload, attr.autoReload);
-            EXPECT_EQ(actualAttr.periodMs, attr.periodMs);
-            *timerHandle = handle;
-            return KIWI_TEST_OSAL_SOFTWARE_TIMER_CREATE_ERR;
-        });
+    .WillOnce([&](void *, KiwiTest_osalSoftwareTimerHandle_t *timerHandle,
+                  KiwiTest_osalSoftwareTimerAttr_s actualAttr)
+    {
+        EXPECT_STREQ(actualAttr.name, attr.name);
+        EXPECT_EQ(actualAttr.timerParam, attr.timerParam);
+        EXPECT_EQ(actualAttr.timerExpiredCb, attr.timerExpiredCb);
+        EXPECT_EQ(actualAttr.autoReload, attr.autoReload);
+        EXPECT_EQ(actualAttr.periodMs, attr.periodMs);
+        *timerHandle = handle;
+
+        return KIWI_TEST_OSAL_SOFTWARE_TIMER_CREATE_ERR;
+    });
 
     EXPECT_EQ(kiwiTest_osalSoftwareTimerCreate(osal(), &out, attr),
               KIWI_TEST_OSAL_SOFTWARE_TIMER_CREATE_ERR);
@@ -103,7 +104,7 @@ TEST_F(OsalUnitTest, SoftwareTimer_Create_DispatchesCompleteAttributes)
 TEST_F(OsalUnitTest, SoftwareTimer_ControlOperations_DispatchAndPropagateStatus)
 {
     TimerHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalSoftwareTimerHandle_t>(&dummy);
+    auto handle            = static_cast<KiwiTest_osalSoftwareTimerHandle_t>(&dummy);
 
     EXPECT_CALL(mock_, softwareTimerStart(osal(), handle)).WillOnce(Return(KIWI_TEST_OSAL_SOFTWARE_TIMER_START_ERR));
     EXPECT_CALL(mock_, softwareTimerStop(osal(), handle)).WillOnce(Return(KIWI_TEST_OSAL_SOFTWARE_TIMER_STOP_ERR));
@@ -128,8 +129,8 @@ TEST_F(OsalUnitTest, SoftwareTimer_ControlOperations_DispatchAndPropagateStatus)
  */
 TEST_F(OsalUnitTest, SoftwareTimer_HandleGet_ReturnsRegisteredHandle)
 {
-    TimerHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalSoftwareTimerHandle_t>(&dummy);
+    TimerHandleDummy dummy                 = {};
+    auto handle                            = static_cast<KiwiTest_osalSoftwareTimerHandle_t>(&dummy);
     KiwiTest_osalSoftwareTimerHandle_t out = nullptr;
 
     osal()->softwareTimerObj[1].handle = handle;
@@ -150,10 +151,12 @@ TEST_F(OsalUnitTest, SoftwareTimer_HandleGet_ReturnsRegisteredHandle)
  */
 TEST_F(OsalUnitTest, SoftwareTimer_NotInitialized_ReturnsNotInit)
 {
-    KiwiTest_osal_s uninitialized = {};
+    KiwiTest_osal_s uninitialized             = {};
     KiwiTest_osalSoftwareTimerHandle_t handle = nullptr;
-    KiwiTest_osalSoftwareTimerAttr_s attr = {};
-    attr.timerExpiredCb = [](void *const) {};
+    KiwiTest_osalSoftwareTimerAttr_s attr     = {};
+
+    attr.timerExpiredCb = [](void *const) {
+                          };
     attr.periodMs = 10u;
 
     EXPECT_EQ(kiwiTest_osalSoftwareTimerCreate(&uninitialized, &handle, attr),
@@ -173,11 +176,13 @@ TEST_F(OsalUnitTest, SoftwareTimer_NotInitialized_ReturnsNotInit)
 TEST_F(OsalUnitTest, SoftwareTimer_MissingBackendOperation_ReturnsPortSpecific)
 {
     KiwiTest_osalVtable_s vtable = kOsalMockVtable;
+
     vtable.softwareTimerCreate = nullptr;
-    osal()->vtable = &vtable;
+    osal()->vtable             = &vtable;
     KiwiTest_osalSoftwareTimerHandle_t handle = nullptr;
-    KiwiTest_osalSoftwareTimerAttr_s attr = {};
-    attr.timerExpiredCb = [](void *const) {};
+    KiwiTest_osalSoftwareTimerAttr_s attr     = {};
+    attr.timerExpiredCb = [](void *const) {
+                          };
     attr.periodMs = 10u;
 
     EXPECT_EQ(kiwiTest_osalSoftwareTimerCreate(osal(), &handle, attr),

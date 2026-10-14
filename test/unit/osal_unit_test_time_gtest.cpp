@@ -27,16 +27,16 @@ TEST_F(OsalUnitTest, TimeMsGet_ValidatesAndDispatches)
     EXPECT_EQ(kiwiTest_osalTimeMsGet(osal(), nullptr), KIWI_TEST_OSAL_INVALID_ARGS_ERR);
 
     EXPECT_CALL(mock_, timeMsGet(osal(), &timeMs))
-        .WillOnce([&](void *, KiwiTest_osalTimeMs_t *out)
-        {
-            *out = 123456u;
-            return KIWI_TEST_OSAL_NO_ERR;
-        });
+    .WillOnce([&](void *, KiwiTest_osalTimeMs_t *out)
+    {
+        *out = 123456u;
+
+        return KIWI_TEST_OSAL_NO_ERR;
+    });
 
     ASSERT_EQ(kiwiTest_osalTimeMsGet(osal(), &timeMs), KIWI_TEST_OSAL_NO_ERR);
     EXPECT_EQ(timeMs, 123456u);
 }
-
 
 
 /**
@@ -51,7 +51,7 @@ TEST_F(OsalUnitTest, TimeMsGet_ValidatesAndDispatches)
 TEST_F(OsalUnitTest, Time_NotInitialized_ReturnsNotInit)
 {
     KiwiTest_osal_s uninitialized = {};
-    KiwiTest_osalTimeMs_t timeMs = 0u;
+    KiwiTest_osalTimeMs_t timeMs  = 0u;
 
     EXPECT_EQ(kiwiTest_osalTimeMsGet(&uninitialized, &timeMs), KIWI_TEST_OSAL_NOT_INIT_ERR);
 }
@@ -71,7 +71,7 @@ TEST_F(OsalUnitTest, Time_MissingBackendOperation_ReturnsPortSpecific)
     KiwiTest_osalTimeMs_t timeMs = 0u;
 
     vtable.timeMsGet = nullptr;
-    osal()->vtable = &vtable;
+    osal()->vtable   = &vtable;
 
     EXPECT_EQ(kiwiTest_osalTimeMsGet(osal(), &timeMs), KIWI_TEST_OSAL_PORT_SPECIFIC_ERR);
 

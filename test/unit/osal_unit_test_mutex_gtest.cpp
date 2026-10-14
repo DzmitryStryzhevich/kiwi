@@ -58,12 +58,12 @@ TEST_F(OsalUnitTest, Mutex_InvalidArgs)
  */
 TEST_F(OsalUnitTest, Mutex_LifecycleAndOperations_DispatchToBackend)
 {
-    MutexHandleDummy dummy = {};
-    auto handle = static_cast<KiwiTest_osalMutexHandle_t>(&dummy);
+    MutexHandleDummy dummy         = {};
+    auto handle                    = static_cast<KiwiTest_osalMutexHandle_t>(&dummy);
     KiwiTest_osalMutexHandle_t out = nullptr;
 
     EXPECT_CALL(mock_, mutexCreate(osal(), _))
-        .WillOnce(DoAll(SetArgPointee<1>(handle), Return(KIWI_TEST_OSAL_NO_ERR)));
+    .WillOnce(DoAll(SetArgPointee<1>(handle), Return(KIWI_TEST_OSAL_NO_ERR)));
     EXPECT_CALL(mock_, mutexLock(osal(), handle)).WillOnce(Return(KIWI_TEST_OSAL_NO_ERR));
     EXPECT_CALL(mock_, mutexTryLock(osal(), handle)).WillOnce(Return(KIWI_TEST_OSAL_MUTEX_LOCK_ERR));
     EXPECT_CALL(mock_, mutexPendLock(osal(), handle, 30u)).WillOnce(Return(KIWI_TEST_OSAL_MUTEX_LOCK_ERR));
@@ -92,7 +92,7 @@ TEST_F(OsalUnitTest, Mutex_LifecycleAndOperations_DispatchToBackend)
  */
 TEST_F(OsalUnitTest, Mutex_NotInitialized_ReturnsNotInit)
 {
-    KiwiTest_osal_s uninitialized = {};
+    KiwiTest_osal_s uninitialized     = {};
     KiwiTest_osalMutexHandle_t handle = nullptr;
 
     EXPECT_EQ(kiwiTest_osalMutexCreate(&uninitialized, &handle), KIWI_TEST_OSAL_NOT_INIT_ERR);
@@ -112,8 +112,9 @@ TEST_F(OsalUnitTest, Mutex_NotInitialized_ReturnsNotInit)
 TEST_F(OsalUnitTest, Mutex_MissingBackendOperation_ReturnsPortSpecific)
 {
     KiwiTest_osalVtable_s vtable = kOsalMockVtable;
+
     vtable.mutexCreate = nullptr;
-    osal()->vtable = &vtable;
+    osal()->vtable     = &vtable;
     KiwiTest_osalMutexHandle_t handle = nullptr;
 
     EXPECT_EQ(kiwiTest_osalMutexCreate(osal(), &handle), KIWI_TEST_OSAL_PORT_SPECIFIC_ERR);

@@ -19,8 +19,8 @@
  */
 TEST_F(OsalFreertosPosixItTest, Time_DelayAdvancesMonotonicClock)
 {
-    KiwiTest_osalTimeMs_t before = 0u;
-    KiwiTest_osalTimeMs_t after = 0u;
+    KiwiTest_osalTimeMs_t before            = 0u;
+    KiwiTest_osalTimeMs_t after             = 0u;
     constexpr KiwiTest_osalTimeMs_t delayMs = 20u;
 
     /* Capture the initial backend time */
@@ -33,5 +33,3 @@ TEST_F(OsalFreertosPosixItTest, Time_DelayAdvancesMonotonicClock)
     ASSERT_EQ(kiwiTest_osalTimeMsGet(osal(), &after), KIWI_TEST_OSAL_NO_ERR);
     EXPECT_GE(static_cast<KiwiTest_osalTimeMs_t>(after - before), delayMs);
 }
-
-
