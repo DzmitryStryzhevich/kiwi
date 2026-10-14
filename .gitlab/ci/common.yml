@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Kiwi contributors
+
+stages:
+  - generator_build
+  - generate
+  - build_generated
+  - static_analysis
+  - test
+
+variables:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  CMAKE_GENERATOR: "Ninja"
+  FREERTOS_KERNEL_REF: "V11.3.1"
+  GTEST_REF: "v1.14.0"
+
+.default-python-job:
+  image: python:3.12-bookworm
+
+.test-base:
+  extends: .default-python-job
+  stage: test
+  timeout: 15m

@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Kiwi contributors
+
+3-build-generated-code:
+  extends: .default-python-job
+  stage: build_generated
+  needs:
+    - job: 2-generate-full-osal-set
+      artifacts: true
+  script:
+    - .gitlab/scripts/build_generated_code.sh
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - build-generated/compile_commands.json
+
+4-static-analysis:
+  extends: .default-python-job
+  stage: static_analysis
+  needs:
+    - job: 2-generate-full-osal-set
+      artifacts: true
+    - job: 3-build-generated-code
+      artifacts: false
+  script:
+    - .gitlab/scripts/static_analysis.sh

@@ -316,3 +316,15 @@ GitHub Actions and GitLab CI follow the same five-stage verification sequence:
 ```
 
 The final GitLab `test` stage runs generator, generic unit, native POSIX integration and FreeRTOS-POSIX integration jobs independently. GitHub Actions runs the complete test harness in the fifth sequential job so the workflow graph keeps the same five-stage shape.
+
+## GitLab CI decomposition
+
+The repository-root `.gitlab-ci.yml` is only an include manifest.  Pipeline
+orchestration is split across `.gitlab/ci/common.yml`, `generator.yml`,
+`generated_code.yml`, and `tests.yml`.  Executable build, generation, analysis,
+and test commands live under `.gitlab/scripts/`; shared bootstrap, pinned
+dependency checkout, and CTest helpers are provided by `common.sh`.
+
+This keeps GitLab YAML focused on stages, dependencies, artifacts, and JUnit
+reports while keeping shell command sequences independently reviewable and
+reusable.

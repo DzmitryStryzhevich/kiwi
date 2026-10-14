@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Kiwi contributors
+
+5-generator-test:
+  extends: .test-base
+  script:
+    - .gitlab/scripts/test_generator.sh
+  artifacts:
+    when: always
+    expire_in: 7 days
+    reports:
+      junit: build/test-generator/junit.xml
+    paths:
+      - build/test-generator/Testing/
+
+5-osal-unit-test:
+  extends: .test-base
+  script:
+    - .gitlab/scripts/test_osal_unit.sh
+  artifacts:
+    when: always
+    expire_in: 7 days
+    reports:
+      junit: build/test-unit/junit.xml
+    paths:
+      - build/test-unit/Testing/
+
+5-osal-posix-it-test:
+  extends: .test-base
+  script:
+    - .gitlab/scripts/test_osal_posix_it.sh
+  artifacts:
+    when: always
+    expire_in: 7 days
+    reports:
+      junit: build/test-posix/junit.xml
+    paths:
+      - build/test-posix/Testing/
+
+5-osal-freertos-posix-it-test:
+  extends: .test-base
+  script:
+    - .gitlab/scripts/test_osal_freertos_posix_it.sh
+  artifacts:
+    when: always
+    expire_in: 7 days
+    reports:
+      junit: build/test-freertos-posix/junit.xml
+    paths:
+      - build/test-freertos-posix/Testing/
